@@ -10,22 +10,23 @@ import SwiftUI
 
 struct OnboardingToneView: View {
 
+    // MARK: - Environment
+
+    @Environment(OnboardingManager.self) private var manager
+
     // MARK: - State
 
-    @Binding var selectedTone: String?
     @State private var contentVisible = false
 
     // MARK: - Constants
 
-    let onContinue: () -> Void
-
-    private let tones = [
-        ("Calm", "leaf.fill"),
-        ("Encourage", "hand.thumbsup.fill"),
-        ("Push", "bolt.fill"),
-        ("Strict", "exclamationmark.triangle.fill"),
-        ("Fun", "face.smiling.fill"),
-        ("Other", "ellipsis.circle.fill")
+    private let tones: [(AlarmTone, String, String)] = [
+        (.calm, "Calm", "leaf.fill"),
+        (.encourage, "Encourage", "hand.thumbsup.fill"),
+        (.push, "Push", "bolt.fill"),
+        (.strict, "Strict", "exclamationmark.triangle.fill"),
+        (.fun, "Fun", "face.smiling.fill"),
+        (.other, "Other", "ellipsis.circle.fill")
     ]
 
     // MARK: - Body
@@ -50,7 +51,7 @@ struct OnboardingToneView: View {
             // Tone options — staggered entry
             VStack(spacing: 4) {
                 ForEach(Array(tones.enumerated()), id: \.element.0) { index, tone in
-                    toneRow(name: tone.0, icon: tone.1, index: index)
+                    toneRow(tone: tone.0, name: tone.1, icon: tone.2, index: index)
                 }
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
@@ -59,16 +60,15 @@ struct OnboardingToneView: View {
 
             // Continue button
             Button {
-                HapticManager.shared.buttonTap()
-                onContinue()
+                manager.completeTone()
             } label: {
                 Text("Continue")
             }
-            .primaryButton(isEnabled: selectedTone != nil)
-            .disabled(selectedTone == nil)
+            .primaryButton(isEnabled: manager.configuration.tone != nil)
+            .disabled(manager.configuration.tone == nil)
             .padding(.horizontal, AppButtons.horizontalPadding)
             .padding(.bottom, AppSpacing.screenBottom)
-            .animation(.easeOut(duration: 0.25), value: selectedTone)
+            .animation(.easeOut(duration: 0.25), value: manager.configuration.tone)
             .blur(radius: contentVisible ? 0 : 8)
             .opacity(contentVisible ? 1 : 0)
             .animation(.easeOut(duration: 0.4).delay(Double(tones.count) * 0.06 + 0.15), value: contentVisible)
@@ -82,16 +82,13 @@ struct OnboardingToneView: View {
     // MARK: - Subviews
 
     @ViewBuilder
-    private func toneRow(name: String, icon: String, index: Int) -> some View {
-        let isSelected = selectedTone == name
-        let hasSelection = selectedTone != nil
+    private func toneRow(tone: AlarmTone, name: String, icon: String, index: Int) -> some View {
+        let isSelected = manager.configuration.tone == tone
+        let hasSelection = manager.configuration.tone != nil
         let isDeselected = hasSelection && !isSelected
 
         Button {
-            HapticManager.shared.selection()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                selectedTone = name
-            }
+            manager.selectTone(tone)
         } label: {
             HStack(spacing: AppSpacing.rowIconGap) {
 
@@ -110,13 +107,11 @@ struct OnboardingToneView: View {
 
                 // Selection indicator
                 ZStack {
-                    // Empty circle
                     Circle()
                         .strokeBorder(.white.opacity(0.2), lineWidth: AppSpacing.selectionStrokeWidth)
                         .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
                         .opacity(isSelected ? 0 : 1)
 
-                    // Filled circle + checkmark
                     Circle()
                         .fill(.white)
                         .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
@@ -138,8 +133,8 @@ struct OnboardingToneView: View {
         .buttonStyle(.plain)
         .opacity(isDeselected ? 0.6 : 1)
         .blur(radius: isDeselected ? 1.5 : 0)
-        .animation(.easeOut(duration: 0.3), value: selectedTone)
-        // Staggered entry — per row
+        .animation(.easeOut(duration: 0.3), value: manager.configuration.tone)
+        // Staggered entry
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
         .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.06), value: contentVisible)
@@ -149,13 +144,20 @@ struct OnboardingToneView: View {
 #Preview {
     ZStack {
         NightSkyBackground()
-        OnboardingToneView(selectedTone: .constant(nil), onContinue: {})
+        OnboardingToneView()
+            .environment(OnboardingManager())
     }
 }
 
 #Preview("With Selection") {
+    let manager = OnboardingManager()
+
     ZStack {
         NightSkyBackground()
-        OnboardingToneView(selectedTone: .constant("Calm"), onContinue: {})
+        OnboardingToneView()
+            .environment(manager)
+    }
+    .onAppear {
+        manager.configuration.tone = .calm
     }
 }

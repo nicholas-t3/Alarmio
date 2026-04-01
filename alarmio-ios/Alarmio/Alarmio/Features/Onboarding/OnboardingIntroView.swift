@@ -10,14 +10,14 @@ import SwiftUI
 
 struct OnboardingIntroView: View {
 
+    // MARK: - Environment
+
+    @Environment(OnboardingManager.self) private var manager
+
     // MARK: - State
 
     @State private var subtitleRevealed = false
     @State private var buttonRevealed = false
-
-    // MARK: - Constants
-
-    let onContinue: () -> Void
 
     // MARK: - Body
 
@@ -26,7 +26,7 @@ struct OnboardingIntroView: View {
 
             Spacer()
 
-            // Title — word by word reveal in logo font
+            // Title — word by word reveal
             WordRevealText(
                 "Wake Up Your Way.",
                 font: AppTypography.logoSubhead,
@@ -48,8 +48,7 @@ struct OnboardingIntroView: View {
 
             // Get started button
             Button {
-                HapticManager.shared.buttonTap()
-                onContinue()
+                manager.completeIntro()
             } label: {
                 Text("Get Started")
             }
@@ -75,6 +74,7 @@ struct OnboardingIntroView: View {
 #Preview {
     ZStack {
         NightSkyBackground()
-        OnboardingIntroView(onContinue: {})
+        OnboardingIntroView()
+            .environment(OnboardingManager())
     }
 }

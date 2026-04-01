@@ -16,18 +16,24 @@ enum OnboardingPhase {
 enum OnboardingStep: Int, CaseIterable {
     case intro = 0
     case tone
-    // Future steps: why, intensity, difficulty, voice, content, leaveTime, wakeTime, snooze
+    case why
+    case intensity
+    case difficulty
+    case voice
+    case content
+    case leaveTime
+    case wakeTime
+    case snooze
 }
 
 struct OnboardingContainerView: View {
 
     // MARK: - State
 
-    @State private var phase: OnboardingPhase = .splash
-    @State private var currentStep: OnboardingStep = .intro
+    @State private var manager = OnboardingManager()
     @State private var stepVisible = false
     @State private var splashVisible = true
-    @State private var selectedTone: String? = nil
+    @State private var previousStep: OnboardingStep = .intro
 
     // MARK: - Body
 
@@ -38,7 +44,7 @@ struct OnboardingContainerView: View {
             NightSkyBackground()
 
             // Current phase
-            switch phase {
+            switch manager.phase {
             case .splash:
                 SplashContentView(onFinished: {
                     transitionToSteps()
@@ -49,23 +55,35 @@ struct OnboardingContainerView: View {
                 stepContent
             }
         }
+        .environment(manager)
+        .task {
+            await manager.startOnboarding()
+        }
+        .onChange(of: manager.currentStep) { oldStep, newStep in
+            guard manager.phase == .steps, oldStep != newStep else { return }
+            animateStepTransition()
+        }
     }
 
     // MARK: - Subviews
 
     @ViewBuilder
     private var stepContent: some View {
-        switch currentStep {
+        switch manager.currentStep {
         case .intro:
-            OnboardingIntroView(onContinue: { advanceToStep(.tone) })
+            OnboardingIntroView()
                 .premiumBlur(isVisible: stepVisible)
 
         case .tone:
-            OnboardingToneView(
-                selectedTone: $selectedTone,
-                onContinue: { /* next step */ }
-            )
-            .premiumBlur(isVisible: stepVisible)
+            OnboardingToneView()
+                .premiumBlur(isVisible: stepVisible)
+
+        // Future steps
+        default:
+            Text("Step \(manager.currentStep.rawValue + 1)")
+                .font(AppTypography.headlineLarge)
+                .foregroundStyle(.white)
+                .premiumBlur(isVisible: stepVisible)
         }
     }
 
@@ -73,18 +91,12 @@ struct OnboardingContainerView: View {
 
     private func transitionToSteps() {
         HapticManager.shared.softTap()
-
-        // Blur out splash
         splashVisible = false
 
         Task {
-            // Wait for blur-out to finish
             try? await Task.sleep(for: .milliseconds(500))
+            manager.phase = .steps
 
-            // Swap phase
-            phase = .steps
-
-            // Blur in first step
             try? await Task.sleep(for: .milliseconds(100))
             withAnimation(.easeOut(duration: 0.4)) {
                 stepVisible = true
@@ -92,17 +104,13 @@ struct OnboardingContainerView: View {
         }
     }
 
-    private func advanceToStep(_ step: OnboardingStep) {
-        HapticManager.shared.softTap()
-
+    private func animateStepTransition() {
         withAnimation(.easeOut(duration: 0.3)) {
             stepVisible = false
         }
 
         Task {
             try? await Task.sleep(for: .milliseconds(350))
-            currentStep = step
-
             withAnimation(.easeOut(duration: 0.4)) {
                 stepVisible = true
             }
