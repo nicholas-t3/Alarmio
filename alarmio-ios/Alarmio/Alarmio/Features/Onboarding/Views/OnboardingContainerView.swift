@@ -46,7 +46,7 @@ struct OnboardingContainerView: View {
         ZStack {
 
             // Shared night sky background
-            NightSkyBackground()
+            RotatingNightSky()
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
