@@ -27,34 +27,23 @@ struct OnboardingIntroView: View {
 
             Spacer()
 
-            // Title
-            VStack(spacing: 16) {
-                Text("Wake up")
-                    .font(.system(size: 48, weight: .light))
-                    .tracking(2)
-                    .foregroundStyle(.white)
+            // Title block
+            VStack(spacing: 0) {
+                Text("Wake up your way")
+                    .displayLarge()
+                    .multilineTextAlignment(.center)
                     .blur(radius: titleRevealed ? 0 : 12)
                     .opacity(titleRevealed ? 1 : 0)
                     .scaleEffect(titleRevealed ? 1 : 0.95)
                     .animation(.easeOut(duration: 0.5), value: titleRevealed)
-
-                Text("your way")
-                    .font(.system(size: 48, weight: .light))
-                    .tracking(2)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .blur(radius: titleRevealed ? 0 : 12)
-                    .opacity(titleRevealed ? 1 : 0)
-                    .scaleEffect(titleRevealed ? 1 : 0.95)
-                    .animation(.easeOut(duration: 0.5).delay(0.15), value: titleRevealed)
             }
 
             // Subtitle
             Text("Personalized alarms that actually\nmake you want to get up.")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.white.opacity(0.4))
+                .bodyMedium()
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
-                .padding(.top, 24)
+                .padding(.top, AppSpacing.itemGap)
                 .blur(radius: subtitleRevealed ? 0 : 8)
                 .opacity(subtitleRevealed ? 1 : 0)
                 .animation(.easeOut(duration: 0.4).delay(0.1), value: subtitleRevealed)
@@ -67,15 +56,10 @@ struct OnboardingIntroView: View {
                 onContinue()
             } label: {
                 Text("Get started")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 60)
+            .primaryButton()
+            .padding(.horizontal, AppButtons.horizontalPadding)
+            .padding(.bottom, AppSpacing.screenBottom)
             .blur(radius: buttonRevealed ? 0 : 8)
             .opacity(buttonRevealed ? 1 : 0)
             .offset(y: buttonRevealed ? 0 : 20)

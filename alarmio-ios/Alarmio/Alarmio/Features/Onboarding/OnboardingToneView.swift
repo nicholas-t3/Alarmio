@@ -34,24 +34,16 @@ struct OnboardingToneView: View {
         VStack(spacing: 0) {
 
             Spacer()
-                .frame(height: 80)
+                .frame(height: AppSpacing.screenTopInset)
 
             // Header
-            VStack(spacing: 12) {
-                Text("What gets you")
-                    .font(.system(size: 32, weight: .light))
-                    .tracking(1)
-                    .foregroundStyle(.white)
-
-                Text("out of bed?")
-                    .font(.system(size: 32, weight: .light))
-                    .tracking(1)
-                    .foregroundStyle(.white.opacity(0.6))
-            }
-            .modifier(PremiumBlurEffectExplicit(isVisible: contentVisible, delay: 0))
+            Text("What gets you\nout of bed?")
+                .headlineLarge()
+                .multilineTextAlignment(.center)
+                .modifier(PremiumBlurEffectExplicit(isVisible: contentVisible, delay: 0))
 
             Spacer()
-                .frame(height: 48)
+                .frame(height: AppSpacing.sectionGap)
 
             // Tone options
             VStack(spacing: 0) {
@@ -59,7 +51,7 @@ struct OnboardingToneView: View {
                     toneRow(name: tone.0, icon: tone.1, index: index)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, AppSpacing.screenHorizontal)
 
             Spacer()
 
@@ -69,17 +61,12 @@ struct OnboardingToneView: View {
                 onContinue()
             } label: {
                 Text("Continue")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(selectedTone != nil ? .black : .white.opacity(0.3))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .background(selectedTone != nil ? .white : .white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .animation(.easeOut(duration: 0.25), value: selectedTone)
             }
+            .primaryButton(isEnabled: selectedTone != nil)
             .disabled(selectedTone == nil)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 60)
+            .padding(.horizontal, AppButtons.horizontalPadding)
+            .padding(.bottom, AppSpacing.screenBottom)
+            .animation(.easeOut(duration: 0.25), value: selectedTone)
             .blur(radius: contentVisible ? 0 : 8)
             .opacity(contentVisible ? 1 : 0)
             .animation(.easeOut(duration: 0.3).delay(Double(tones.count) * 0.03 + 0.1), value: contentVisible)
@@ -102,26 +89,25 @@ struct OnboardingToneView: View {
                 selectedTone = name
             }
         } label: {
-            HStack(spacing: 16) {
+            HStack(spacing: AppSpacing.rowIconGap) {
 
                 // Icon
                 Image(systemName: icon)
-                    .font(.system(size: 18))
+                    .font(AppTypography.bodyLarge)
                     .foregroundStyle(.white.opacity(0.6))
-                    .frame(width: 32)
+                    .frame(width: AppSpacing.rowIconWidth)
 
                 // Label
                 Text(name)
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(.white)
+                    .labelLarge()
 
                 Spacer()
 
                 // Selection indicator
                 selectionCircle(isSelected: isSelected)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.horizontal, AppSpacing.rowHorizontal)
+            .padding(.vertical, AppSpacing.rowVertical)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -134,16 +120,16 @@ struct OnboardingToneView: View {
     private func selectionCircle(isSelected: Bool) -> some View {
         ZStack {
             Circle()
-                .strokeBorder(.white.opacity(isSelected ? 0 : 0.2), lineWidth: 1.5)
-                .frame(width: 28, height: 28)
+                .strokeBorder(.white.opacity(isSelected ? 0 : 0.2), lineWidth: AppSpacing.selectionStrokeWidth)
+                .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
 
             if isSelected {
                 Circle()
                     .fill(.white)
-                    .frame(width: 28, height: 28)
+                    .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
 
                 Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: AppSpacing.selectionCheckmarkSize, weight: .bold))
                     .foregroundStyle(.black)
             }
         }
