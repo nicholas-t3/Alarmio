@@ -32,8 +32,8 @@ struct OnboardingContainerView: View {
 
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
-    @State private var stepVisible = false
     @State private var splashVisible = true
+    @State private var contentVisible = true
     @State private var buttonVisible = false
     @State private var backVisible = false
     @State private var buttonLabel = "Get Started"
@@ -58,28 +58,33 @@ struct OnboardingContainerView: View {
             case .steps:
                 VStack(spacing: 0) {
 
-                    // Back button
+                    // Back button — always reserve the space
                     HStack {
-                        if manager.canGoBack {
-                            Button {
-                                goBack()
-                            } label: {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .premiumBlur(isVisible: backVisible, duration: 0.3)
+                        Button {
+                            goBack()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
+                        .opacity(backVisible ? 1 : 0)
+                        .blur(radius: backVisible ? 0 : 8)
+                        .animation(.easeOut(duration: 0.3), value: backVisible)
+                        .disabled(!backVisible)
+
                         Spacer()
                     }
                     .padding(.horizontal, AppSpacing.screenHorizontal - 8)
                     .frame(height: 44)
 
-                    // Step content
+                    // Step content — blur controlled for exit, each step handles entry
                     stepContent
                         .frame(maxHeight: .infinity)
+                        .opacity(contentVisible ? 1 : 0)
+                        .blur(radius: contentVisible ? 0 : 10)
+                        .animation(.easeOut(duration: 0.3), value: contentVisible)
 
                     // Bottom bar
                     bottomBar
@@ -105,21 +110,22 @@ struct OnboardingContainerView: View {
         switch manager.currentStep {
         case .intro:
             OnboardingIntroView(onTitleComplete: {
-                withAnimation(.easeOut(duration: 0.4)) {
-                    buttonVisible = true
-                }
+                showButton()
             })
-            .premiumBlur(isVisible: stepVisible)
 
         case .tone:
-            OnboardingToneView()
-                .premiumBlur(isVisible: stepVisible)
+            OnboardingToneView(onReadyForButton: {
+                showButton()
+            })
 
         default:
             Text("Step \(manager.currentStep.rawValue + 1)")
                 .font(AppTypography.headlineLarge)
                 .foregroundStyle(.white)
-                .premiumBlur(isVisible: stepVisible)
+                .task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    showButton()
+                }
         }
     }
 
@@ -129,7 +135,7 @@ struct OnboardingContainerView: View {
             // Continue / Get Started button
             Button {
                 guard !isTransitioning else { return }
-                continueForward()
+                navigateForward()
             } label: {
                 if manager.isSyncing {
                     ProgressView()
@@ -141,21 +147,18 @@ struct OnboardingContainerView: View {
             .primaryButton(isEnabled: manager.canContinue && !isTransitioning)
             .disabled(!manager.canContinue || manager.isSyncing || isTransitioning)
             .padding(.horizontal, AppButtons.horizontalPadding)
-            .premiumBlur(isVisible: buttonVisible, duration: 0.4)
-
-            // Progress bar (commented out for now)
-//            if manager.currentStep != .intro {
-//                OnboardingProgressBar(
-//                    currentStep: manager.progressStep,
-//                    totalSteps: OnboardingManager.interactiveStepCount
-//                )
-//                .padding(.horizontal, AppButtons.horizontalPadding + 8)
-//            }
+            .opacity(buttonVisible ? 1 : 0)
+            .blur(radius: buttonVisible ? 0 : 8)
+            .animation(.easeOut(duration: 0.35), value: buttonVisible)
         }
         .padding(.bottom, AppSpacing.screenBottom)
     }
 
     // MARK: - Private Methods
+
+    private func showButton() {
+        buttonVisible = true
+    }
 
     private func transitionToSteps() {
         HapticManager.shared.softTap()
@@ -165,45 +168,29 @@ struct OnboardingContainerView: View {
             try? await Task.sleep(for: .milliseconds(500))
             manager.phase = .steps
             buttonLabel = "Get Started"
-
-            try? await Task.sleep(for: .milliseconds(100))
-            withAnimation(.easeOut(duration: 0.4)) {
-                stepVisible = true
-            }
+            contentVisible = true
         }
     }
 
-    private func continueForward() {
+    private func navigateForward() {
         isTransitioning = true
 
-        // Blur everything out together
-        withAnimation(.easeOut(duration: 0.3)) {
-            stepVisible = false
-            buttonVisible = false
-            backVisible = false
-        }
-
-        // Let the manager do its sync + advance
-        manager.continueToNextStep()
+        // Blur out content + button + back
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
 
         Task {
-            // Wait for blur-out + sync
+            // Wait for blur-out
             try? await Task.sleep(for: .milliseconds(400))
 
-            // Update button label while hidden
+            // Advance step (synchronous)
+            manager.advanceToNextStep()
             buttonLabel = "Continue"
 
-            // Blur everything back in
-            withAnimation(.easeOut(duration: 0.4)) {
-                stepVisible = true
-                backVisible = manager.canGoBack
-            }
-
-            // Button comes in slightly after content
-            try? await Task.sleep(for: .milliseconds(200))
-            withAnimation(.easeOut(duration: 0.4)) {
-                buttonVisible = true
-            }
+            // Show content — the new step's .task handles its own staggered entry
+            contentVisible = true
+            backVisible = manager.canGoBack
 
             isTransitioning = false
         }
@@ -213,31 +200,22 @@ struct OnboardingContainerView: View {
         guard !isTransitioning else { return }
         isTransitioning = true
 
-        // Blur everything out
-        withAnimation(.easeOut(duration: 0.3)) {
-            stepVisible = false
-            buttonVisible = false
-            backVisible = false
-        }
+        // Blur out content + button + back
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
 
         Task {
-            try? await Task.sleep(for: .milliseconds(350))
+            // Wait for blur-out
+            try? await Task.sleep(for: .milliseconds(400))
 
+            // Go back (synchronous)
             manager.goBack()
-
-            // Update button label
             buttonLabel = manager.currentStep == .intro ? "Get Started" : "Continue"
 
-            // Blur in
-            withAnimation(.easeOut(duration: 0.4)) {
-                stepVisible = true
-                backVisible = manager.canGoBack
-            }
-
-            try? await Task.sleep(for: .milliseconds(200))
-            withAnimation(.easeOut(duration: 0.4)) {
-                buttonVisible = true
-            }
+            // Show content
+            contentVisible = true
+            backVisible = manager.canGoBack
 
             isTransitioning = false
         }

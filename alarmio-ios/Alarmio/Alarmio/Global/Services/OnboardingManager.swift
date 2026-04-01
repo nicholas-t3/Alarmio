@@ -123,25 +123,22 @@ final class OnboardingManager {
 
     // MARK: - Continue (called by container)
 
-    func continueToNextStep() {
+    /// Advance to next step synchronously. Sync happens in background.
+    func advanceToNextStep() {
         guard canContinue else { return }
         HapticManager.shared.buttonTap()
 
-        let nextStep = nextStep(after: currentStep)
+        if let next = nextStep(after: currentStep) {
+            currentStep = next
+        } else {
+            Task { await completeOnboarding() }
+        }
 
+        // Background sync — doesn't block navigation
         Task {
             isSyncing = true
-            syncError = nil
-
             await syncConfiguration()
-
             isSyncing = false
-
-            if let next = nextStep {
-                currentStep = next
-            } else {
-                await completeOnboarding()
-            }
         }
     }
 

@@ -22,6 +22,8 @@ struct OnboardingToneView: View {
 
     // MARK: - Constants
 
+    let onReadyForButton: () -> Void
+
     private let tones: [(AlarmTone, String, String)] = [
         (.calm, "Calm", "leaf.fill"),
         (.encourage, "Encourage", "hand.thumbsup.fill"),
@@ -65,6 +67,11 @@ struct OnboardingToneView: View {
         .task {
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
+
+            // Button appears right after the last row starts animating in
+            let lastRowStart = Double(tones.count - 1) * 0.06 + 0.15
+            try? await Task.sleep(for: .seconds(lastRowStart))
+            onReadyForButton()
         }
     }
 
@@ -135,7 +142,7 @@ struct OnboardingToneView: View {
 #Preview {
     ZStack {
         NightSkyBackground()
-        OnboardingToneView()
+        OnboardingToneView(onReadyForButton: {})
             .environment(OnboardingManager())
     }
 }
