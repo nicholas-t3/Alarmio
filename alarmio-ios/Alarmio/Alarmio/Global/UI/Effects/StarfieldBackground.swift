@@ -263,8 +263,8 @@ private struct StarCanvas: View {
             let isBright = Double.random(in: 0...1) > 0.82
 
             return FieldStar(
-                x: CGFloat.random(in: -1.0...2.0),
-                y: CGFloat.random(in: -1.0...2.0),
+                x: CGFloat.random(in: -0.2...1.2),
+                y: CGFloat.random(in: -0.2...1.2),
                 radius: isBright ? CGFloat.random(in: 0.5...0.9) : CGFloat.random(in: 0.2...0.45),
                 baseOpacity: Double.random(in: 0.2...0.55),
                 twinkleRange: Double.random(in: 0.05...0.3),
@@ -392,19 +392,19 @@ private struct StarCanvas: View {
                 })
 
                 let lifetime = Double.random(in: 10...16)
+                let actualElapsed = Date.now.timeIntervalSince(startTime)
 
                 let ac = ActiveConstellation(
                     template: template,
                     offsetX: ox,
                     offsetY: oy,
-                    appearTime: nextTime,
+                    appearTime: actualElapsed,
                     lifetime: lifetime
                 )
                 activeConstellations.append(ac)
 
                 poolIndex += 1
                 let waitUntilNext = Double.random(in: 4...7)
-                nextTime += waitUntilNext
 
                 try? await Task.sleep(for: .seconds(waitUntilNext))
 

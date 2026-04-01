@@ -46,7 +46,6 @@ struct OnboardingTimeView: View {
                 .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
             Spacer()
-                .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
 
             // Time picker
             DatePicker("", selection: $wakeTime, displayedComponents: .hourAndMinute)

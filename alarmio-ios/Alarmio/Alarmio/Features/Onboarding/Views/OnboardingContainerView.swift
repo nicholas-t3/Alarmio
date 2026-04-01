@@ -22,6 +22,7 @@ enum OnboardingStep: Int, CaseIterable {
     case voice
     case time
     case snooze
+    case permission
 }
 
 struct OnboardingContainerView: View {
@@ -37,6 +38,7 @@ struct OnboardingContainerView: View {
     @State private var backVisible = false
     @State private var buttonLabel = "Get Started"
     @State private var isTransitioning = false
+    @State private var customBackground: [Color]? = nil
 
     // MARK: - Body
 
@@ -45,6 +47,27 @@ struct OnboardingContainerView: View {
 
             // Shared night sky background
             NightSkyBackground()
+
+            // Dynamic voice background (covers starfield when active)
+            if let colors = customBackground {
+                ZStack {
+                    Color(hex: "020810")
+
+                    LinearGradient(
+                        stops: [
+                            .init(color: colors[0].opacity(0.5), location: 0.2),
+                            .init(color: colors[1].opacity(0.4), location: 0.5),
+                            .init(color: colors[2].opacity(0.3), location: 0.8),
+                            .init(color: Color(hex: "020810"), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.6), value: colors.map { $0.description })
+            }
 
             // Current phase
             switch manager.phase {
@@ -133,13 +156,23 @@ struct OnboardingContainerView: View {
             OnboardingDifficultyView(onReadyForButton: { showButton() })
 
         case .voice:
-            OnboardingVoiceView(onReadyForButton: { showButton() })
+            OnboardingVoiceView(
+                onReadyForButton: { showButton() },
+                onColorChange: { colors in
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        customBackground = colors
+                    }
+                }
+            )
 
         case .time:
             OnboardingTimeView(onReadyForButton: { showButton() })
 
         case .snooze:
             OnboardingSnoozeView(onReadyForButton: { showButton() })
+
+        case .permission:
+            OnboardingPermissionView(onReadyForButton: { showButton() })
         }
     }
 
@@ -189,10 +222,13 @@ struct OnboardingContainerView: View {
     private func navigateForward() {
         isTransitioning = true
 
-        // Blur out content + button + back
+        // Blur out content + button + back + custom background
         contentVisible = false
         buttonVisible = false
         backVisible = false
+        withAnimation(.easeOut(duration: 0.4)) {
+            customBackground = nil
+        }
 
         Task {
             // Wait for blur-out
@@ -214,10 +250,13 @@ struct OnboardingContainerView: View {
         guard !isTransitioning else { return }
         isTransitioning = true
 
-        // Blur out content + button + back
+        // Blur out content + button + back + custom background
         contentVisible = false
         buttonVisible = false
         backVisible = false
+        withAnimation(.easeOut(duration: 0.4)) {
+            customBackground = nil
+        }
 
         Task {
             // Wait for blur-out

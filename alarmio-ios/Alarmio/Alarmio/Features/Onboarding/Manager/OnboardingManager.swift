@@ -20,6 +20,8 @@ final class OnboardingManager {
     var isCompleted = false
     var isSyncing = false
     var syncError: String?
+    var alarmPermissionGranted = false
+    var alarmPermissionDenied = false
 
     var canContinue: Bool {
         guard !isSyncing else { return false }
@@ -32,6 +34,7 @@ final class OnboardingManager {
         case .voice: return configuration.voicePersona != nil
         case .time: return configuration.wakeTime != nil
         case .snooze: return true
+        case .permission: return alarmPermissionGranted
         }
     }
 
@@ -103,6 +106,19 @@ final class OnboardingManager {
     func setSnoozeInterval(_ interval: Int) {
         HapticManager.shared.selection()
         configuration.snoozeInterval = interval
+    }
+
+    func requestAlarmPermission() async {
+        // TODO: Replace with real AlarmKit authorization
+        // let state = try await AlarmManager().requestAuthorization()
+        // alarmPermissionGranted = state == .authorized
+        // alarmPermissionDenied = state == .denied
+
+        // Stub: simulate permission grant
+        try? await Task.sleep(for: .milliseconds(500))
+        alarmPermissionGranted = true
+        alarmPermissionDenied = false
+        HapticManager.shared.success()
     }
 
     var canGoBack: Bool {

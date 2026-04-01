@@ -8,6 +8,31 @@
 
 import SwiftUI
 
+struct VoiceOption {
+    let persona: VoicePersona
+    let name: String
+    let description: String
+    let colors: [Color]
+}
+
+private let voiceOptions: [VoiceOption] = [
+    VoiceOption(persona: .calmGuide, name: "Calm Guide", description: "A soothing, gentle voice that eases you awake", colors: [
+        Color(hex: "1a3a5c"), Color(hex: "2d5a8e"), Color(hex: "1a4a6e")
+    ]),
+    VoiceOption(persona: .energeticCoach, name: "Energetic Coach", description: "An upbeat, motivating voice to get you moving", colors: [
+        Color(hex: "2d6a1e"), Color(hex: "4a8e2d"), Color(hex: "3a7a28")
+    ]),
+    VoiceOption(persona: .hardSergeant, name: "Hard Sergeant", description: "A firm, no-nonsense voice that demands action", colors: [
+        Color(hex: "6e1a1a"), Color(hex: "8e2d2d"), Color(hex: "7a2828")
+    ]),
+    VoiceOption(persona: .evilSpaceLord, name: "Evil Space Lord", description: "A dramatic, commanding voice from beyond", colors: [
+        Color(hex: "3a1a5c"), Color(hex: "5a2d8e"), Color(hex: "4a1a7a")
+    ]),
+    VoiceOption(persona: .playful, name: "Playful", description: "A fun, lighthearted voice that makes mornings bright", colors: [
+        Color(hex: "5c4a1a"), Color(hex: "8e7a2d"), Color(hex: "7a6a28")
+    ])
+]
+
 struct OnboardingVoiceView: View {
 
     // MARK: - Environment
@@ -18,103 +43,197 @@ struct OnboardingVoiceView: View {
     // MARK: - State
 
     @State private var contentVisible = false
-    @State private var iconTriggers = Array(repeating: 0, count: 5)
+    @State private var selectedIndex = 0
+    @State private var isPlaying = false
 
     // MARK: - Constants
 
     let onReadyForButton: () -> Void
-
-    private let options: [(VoicePersona, String, String)] = [
-        (.calmGuide, "Calm Guide", "person.and.background.dotted"),
-        (.energeticCoach, "Energetic Coach", "figure.run"),
-        (.hardSergeant, "Hard Sergeant", "shield.fill"),
-        (.evilSpaceLord, "Evil Space Lord", "sparkles"),
-        (.playful, "Playful", "theatermask.and.paintbrush.fill")
-    ]
+    let onColorChange: ([Color]) -> Void
 
     // MARK: - Body
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
 
-                Spacer()
-                    .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
+            Spacer()
+                .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
 
-                // Header
-                Text("What kind\nof voice?")
-                    .font(AppTypography.headlineLarge)
-                    .tracking(AppTypography.headlineLargeTracking)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .premiumBlur(isVisible: contentVisible, duration: 0.4)
+            // Title
+            Text("Choose\nyour voice")
+                .font(AppTypography.headlineLarge)
+                .tracking(AppTypography.headlineLargeTracking)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
-                Spacer()
-                    .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
+            // Full-area swipeable pager — waveform + card together
+            TabView(selection: $selectedIndex) {
+                ForEach(0..<voiceOptions.count, id: \.self) { index in
+                    VStack(spacing: 32) {
 
-                // Options
-                VStack(spacing: 4) {
-                    ForEach(Array(options.enumerated()), id: \.element.0) { index, option in
-                        optionRow(value: option.0, name: option.1, icon: option.2, index: index)
+                        Spacer()
+
+                        // Waveform
+                        WaveformVisualizer(
+                            colors: voiceOptions[index].colors,
+                            isPlaying: isPlaying && selectedIndex == index
+                        )
+                        .frame(height: 140)
+                        .padding(.horizontal, 32)
+
+                        Spacer()
+                            .frame(height: 24)
+
+                        // Card
+                        VoiceCard(
+                            option: voiceOptions[index],
+                            isPlaying: isPlaying && selectedIndex == index,
+                            onPreviewTap: {
+                                HapticManager.shared.buttonTap()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    isPlaying.toggle()
+                                }
+                            }
+                        )
+
+                        Spacer()
+                            .frame(height: 20)
                     }
+                    .tag(index)
                 }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .blur(radius: contentVisible ? 0 : 8)
+            .opacity(contentVisible ? 1 : 0)
+            .animation(.easeOut(duration: 0.4).delay(0.1), value: contentVisible)
+            .onChange(of: selectedIndex) {
+                HapticManager.shared.selection()
+                manager.selectVoice(voiceOptions[selectedIndex].persona)
+                onColorChange(voiceOptions[selectedIndex].colors)
+                isPlaying = false
             }
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
         .task {
+            // Signal initial colors immediately
+            onColorChange(voiceOptions[selectedIndex].colors)
+            manager.selectVoice(voiceOptions[selectedIndex].persona)
+
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
 
-            let lastRowStart = Double(options.count - 1) * 0.06 + 0.15
-            try? await Task.sleep(for: .seconds(lastRowStart))
+            try? await Task.sleep(for: .milliseconds(500))
             onReadyForButton()
         }
     }
+}
 
-    // MARK: - Subviews
+// MARK: - Voice Card
 
-    @ViewBuilder
-    private func optionRow(value: VoicePersona, name: String, icon: String, index: Int) -> some View {
-        let isSelected = manager.configuration.voicePersona == value
-        let hasSelection = manager.configuration.voicePersona != nil
-        let isDeselected = hasSelection && !isSelected
+private struct VoiceCard: View {
 
-        Button {
-            manager.selectVoice(value)
-            iconTriggers[index] += 1
-        } label: {
-            HStack(spacing: AppSpacing.rowIconGap) {
+    let option: VoiceOption
+    let isPlaying: Bool
+    let onPreviewTap: () -> Void
 
-                // Icon
-                Image(systemName: icon)
-                    .font(AppTypography.bodyLarge)
-                    .symbolEffect(.bounce.down.byLayer, value: iconTriggers[index])
-                    .foregroundStyle(.white.opacity(isDeselected ? 0.3 : 0.6))
-                    .frame(width: AppSpacing.rowIconWidth)
+    var body: some View {
+        VStack(spacing: 16) {
 
-                // Label
-                Text(name)
-                    .font(AppTypography.labelLarge)
-                    .foregroundStyle(.white.opacity(isDeselected ? 0.4 : 1))
+            // Voice name
+            Text(option.name)
+                .font(AppTypography.headlineMedium)
+                .tracking(AppTypography.headlineMediumTracking)
+                .foregroundStyle(.white)
 
-                Spacer()
+            // Description
+            Text(option.description)
+                .font(AppTypography.bodySmall)
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
 
-                // Selection indicator
-                SelectionCircle(isSelected: isSelected)
+            // Preview button
+            Button(action: onPreviewTap) {
+                HStack(spacing: 8) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 14))
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(isPlaying ? "Stop" : "Preview")
+                        .font(AppTypography.labelMedium)
+                }
+                .foregroundStyle(.white)
+                .frame(height: 40)
+                .frame(width: 130)
+                .background(.white.opacity(0.15))
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+                )
             }
-            .padding(.horizontal, AppSpacing.rowHorizontal)
-            .padding(.vertical, AppSpacing.rowVertical(deviceInfo.spacingScale))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .opacity(isDeselected ? 0.6 : 1)
-        .blur(radius: isDeselected ? 1.5 : 0)
-        .animation(.easeOut(duration: 0.3), value: manager.configuration.voicePersona)
-        .blur(radius: contentVisible ? 0 : 8)
-        .opacity(contentVisible ? 1 : 0)
-        .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.06), value: contentVisible)
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+    }
+}
+
+// MARK: - Waveform Visualizer
+
+struct WaveformVisualizer: View {
+
+    let colors: [Color]
+    let isPlaying: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let now = timeline.date.timeIntervalSinceReferenceDate
+
+            Canvas { context, size in
+                let barCount = 40
+                let barWidth: CGFloat = size.width / CGFloat(barCount) * 0.6
+                let gap = size.width / CGFloat(barCount) * 0.4
+                let centerY = size.height / 2
+
+                for i in 0..<barCount {
+                    let x = CGFloat(i) * (barWidth + gap) + gap / 2
+                    let phase = Double(i) * 0.3 + now * (isPlaying ? 3.0 : 0.5)
+
+                    let wave1 = sin(phase) * (isPlaying ? 0.8 : 0.15)
+                    let wave2 = sin(phase * 1.7 + 1.3) * (isPlaying ? 0.5 : 0.1)
+                    let amplitude = abs(wave1 + wave2)
+
+                    let maxHeight = size.height * 0.8
+                    let barHeight = max(2, maxHeight * CGFloat(amplitude))
+
+                    let rect = CGRect(
+                        x: x,
+                        y: centerY - barHeight / 2,
+                        width: barWidth,
+                        height: barHeight
+                    )
+
+                    let progress = CGFloat(i) / CGFloat(barCount)
+                    let c0 = UIColor(colors[0])
+                    let c1 = UIColor(colors[1])
+                    var r0: CGFloat = 0, g0: CGFloat = 0, b0: CGFloat = 0, a0: CGFloat = 0
+                    var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+                    c0.getRed(&r0, green: &g0, blue: &b0, alpha: &a0)
+                    c1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+
+                    let blended = Color(
+                        red: Double(r0 * (1 - progress) + r1 * progress),
+                        green: Double(g0 * (1 - progress) + g1 * progress),
+                        blue: Double(b0 * (1 - progress) + b1 * progress)
+                    )
+
+                    context.opacity = isPlaying ? 0.8 : 0.3
+                    context.fill(
+                        RoundedRectangle(cornerRadius: barWidth / 2).path(in: rect),
+                        with: .color(blended.opacity(0.6 + amplitude * 0.4))
+                    )
+                }
+            }
+        }
     }
 }
 
