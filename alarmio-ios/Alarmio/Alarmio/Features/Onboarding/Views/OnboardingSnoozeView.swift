@@ -131,20 +131,14 @@ struct OnboardingSnoozeView: View {
                 .foregroundStyle(.white.opacity(0.3))
 
             // Slider
-            Slider(value: value, in: range) {
-                EmptyView()
-            }
-            .tint(.white)
-            .padding(.horizontal, 8)
-            .onChange(of: value.wrappedValue) {
-                let rounded = (value.wrappedValue / step).rounded() * step
-                if value.wrappedValue != rounded {
-                    value.wrappedValue = rounded
+            Slider(value: value, in: range, step: step)
+                .tint(.white)
+                .padding(.horizontal, 8)
+                .onChange(of: value.wrappedValue) {
+                    HapticManager.shared.selection()
+                    manager.setSnoozeCount(Int(snoozeCount))
+                    manager.setSnoozeInterval(Int(snoozeInterval))
                 }
-                HapticManager.shared.selection()
-                manager.setSnoozeCount(Int(snoozeCount))
-                manager.setSnoozeInterval(Int(snoozeInterval))
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
