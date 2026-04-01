@@ -37,7 +37,8 @@ struct OnboardingIntroView: View {
 
             // Subtitle
             Text("Personalized alarms that actually\nmake you want to get up.")
-                .bodyMedium()
+                .font(AppTypography.bodyMedium)
+                .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
                 .padding(.top, AppSpacing.itemGap)
@@ -50,7 +51,7 @@ struct OnboardingIntroView: View {
                 HapticManager.shared.buttonTap()
                 onContinue()
             } label: {
-                Text("Get started")
+                Text("Get Started")
             }
             .primaryButton()
             .padding(.horizontal, AppButtons.horizontalPadding)

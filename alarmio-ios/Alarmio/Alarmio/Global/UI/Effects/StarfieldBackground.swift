@@ -17,9 +17,10 @@ struct NightSkyBackground: View {
             LinearGradient(
                 stops: [
                     .init(color: Color(hex: "020810"), location: 0),
-                    .init(color: Color(hex: "0a1628"), location: 0.3),
-                    .init(color: Color(hex: "111d35"), location: 0.55),
-                    .init(color: Color(hex: "1a2744"), location: 0.75),
+                    .init(color: Color(hex: "060e1c"), location: 0.35),
+                    .init(color: Color(hex: "0a1628"), location: 0.55),
+                    .init(color: Color(hex: "111d35"), location: 0.75),
+                    .init(color: Color(hex: "1a2744"), location: 0.9),
                     .init(color: Color(hex: "1f2b4a"), location: 1.0)
                 ],
                 startPoint: .top,
@@ -257,17 +258,19 @@ private struct StarCanvas: View {
     private func generateStars() {
         let colors: [Color] = [.white, Color(hex: "E8DFF5"), Color(hex: "FFF4E0"), Color(hex: "D4E5FF")]
 
-        stars = (0..<400).map { _ in
+        stars = (0..<500).map { _ in
             let isBright = Double.random(in: 0...1) > 0.82
-            // Denser in top half, thinning toward bottom
-            let y = CGFloat.random(in: 0...1)
-            let keepTop = y < 0.6 || Double.random(in: 0...1) > 0.6
+            // Spread far beyond screen so rotation never reveals empty space
+            // Dimmer toward bottom to blend with horizon
+            let y = CGFloat.random(in: -0.5...1.5)
+            let distanceFromTop = max(0, y)
+            let bottomDim = max(0.2, 1.0 - distanceFromTop * 0.4)
 
             return FieldStar(
-                x: CGFloat.random(in: -0.1...1.1),
-                y: keepTop ? CGFloat.random(in: -0.05...0.6) : y,
+                x: CGFloat.random(in: -0.5...1.5),
+                y: y,
                 radius: isBright ? CGFloat.random(in: 0.5...0.9) : CGFloat.random(in: 0.2...0.45),
-                baseOpacity: Double.random(in: 0.2...0.55),
+                baseOpacity: Double.random(in: 0.2...0.55) * bottomDim,
                 twinkleRange: Double.random(in: 0.05...0.3),
                 speed: Double.random(in: 0.3...1.5),
                 phase: Double.random(in: 0...(.pi * 2)),
