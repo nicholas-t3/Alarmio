@@ -30,6 +30,7 @@ struct OnboardingContainerView: View {
 
     // MARK: - State
 
+    @Environment(\.previewStep) private var previewStep
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
     @State private var splashVisible = true
@@ -100,6 +101,14 @@ struct OnboardingContainerView: View {
         }
         .task {
             await manager.startOnboarding()
+
+            // If previewing a specific step, skip splash
+            if let step = previewStep {
+                manager.phase = .steps
+                manager.currentStep = step
+                contentVisible = true
+                backVisible = manager.canGoBack
+            }
         }
     }
 
@@ -114,9 +123,16 @@ struct OnboardingContainerView: View {
             })
 
         case .tone:
-            OnboardingToneView(onReadyForButton: {
-                showButton()
-            })
+            OnboardingToneView(onReadyForButton: { showButton() })
+
+        case .why:
+            OnboardingWhyView(onReadyForButton: { showButton() })
+
+        case .intensity:
+            OnboardingIntensityView(onReadyForButton: { showButton() })
+
+        case .difficulty:
+            OnboardingDifficultyView(onReadyForButton: { showButton() })
 
         default:
             Text("Step \(manager.currentStep.rawValue + 1)")
@@ -219,6 +235,38 @@ struct OnboardingContainerView: View {
 
             isTransitioning = false
         }
+    }
+}
+
+// MARK: - Preview Helper
+
+struct OnboardingStepPreview: View {
+    let step: OnboardingStep
+
+    var body: some View {
+        OnboardingContainerView()
+            .onAppear {
+                // Handled via the startStep environment key
+            }
+    }
+}
+
+extension OnboardingContainerView {
+    @MainActor
+    static func preview(step: OnboardingStep) -> some View {
+        OnboardingContainerView()
+            .environment(\.previewStep, step)
+    }
+}
+
+private struct PreviewStepKey: EnvironmentKey {
+    static let defaultValue: OnboardingStep? = nil
+}
+
+extension EnvironmentValues {
+    var previewStep: OnboardingStep? {
+        get { self[PreviewStepKey.self] }
+        set { self[PreviewStepKey.self] = newValue }
     }
 }
 

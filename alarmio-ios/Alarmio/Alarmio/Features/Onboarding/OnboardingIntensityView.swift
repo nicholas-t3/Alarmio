@@ -1,5 +1,5 @@
 //
-//  OnboardingToneView.swift
+//  OnboardingIntensityView.swift
 //  Alarmio
 //
 //  Created by Parenthood ApS on 4/1/26
@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-struct OnboardingToneView: View {
+struct OnboardingIntensityView: View {
 
     // MARK: - Environment
 
@@ -18,58 +18,52 @@ struct OnboardingToneView: View {
     // MARK: - State
 
     @State private var contentVisible = false
-    @State private var iconTriggers = Array(repeating: 0, count: 6)
+    @State private var iconTriggers = Array(repeating: 0, count: 3)
 
     // MARK: - Constants
 
     let onReadyForButton: () -> Void
 
-    private let tones: [(AlarmTone, String, String)] = [
-        (.calm, "Calm", "leaf.fill"),
-        (.encourage, "Encourage", "hand.thumbsup.fill"),
-        (.push, "Push", "bolt.fill"),
-        (.strict, "Strict", "exclamationmark.triangle.fill"),
-        (.fun, "Fun", "face.smiling.fill"),
-        (.other, "Other", "ellipsis.circle.fill")
+    private let options: [(AlarmIntensity, String, String)] = [
+        (.gentle, "Gentle", "wind"),
+        (.balanced, "Balanced", "equal.circle.fill"),
+        (.intense, "Intense", "flame.fill")
     ]
 
     // MARK: - Body
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
 
-                Spacer()
-                    .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
+            Spacer()
+                .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
 
-                // Header
-                Text("What gets you\nout of bed?")
-                    .font(AppTypography.headlineLarge)
-                    .tracking(AppTypography.headlineLargeTracking)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .premiumBlur(isVisible: contentVisible, duration: 0.4)
+            // Header
+            Text("How intense\nshould we be?")
+                .font(AppTypography.headlineLarge)
+                .tracking(AppTypography.headlineLargeTracking)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
-                Spacer()
-                    .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
+            Spacer()
+                .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
 
-                // Tone options — staggered entry
-                VStack(spacing: 4) {
-                    ForEach(Array(tones.enumerated()), id: \.element.0) { index, tone in
-                        toneRow(tone: tone.0, name: tone.1, icon: tone.2, index: index)
-                    }
+            // Options
+            VStack(spacing: 4) {
+                ForEach(Array(options.enumerated()), id: \.element.0) { index, option in
+                    optionRow(value: option.0, name: option.1, icon: option.2, index: index)
                 }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
             }
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+
+            Spacer()
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
         .task {
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
 
-            // Button appears right after the last row starts animating in
-            let lastRowStart = Double(tones.count - 1) * 0.06 + 0.15
+            let lastRowStart = Double(options.count - 1) * 0.06 + 0.15
             try? await Task.sleep(for: .seconds(lastRowStart))
             onReadyForButton()
         }
@@ -78,13 +72,13 @@ struct OnboardingToneView: View {
     // MARK: - Subviews
 
     @ViewBuilder
-    private func toneRow(tone: AlarmTone, name: String, icon: String, index: Int) -> some View {
-        let isSelected = manager.configuration.tone == tone
-        let hasSelection = manager.configuration.tone != nil
+    private func optionRow(value: AlarmIntensity, name: String, icon: String, index: Int) -> some View {
+        let isSelected = manager.configuration.intensity == value
+        let hasSelection = manager.configuration.intensity != nil
         let isDeselected = hasSelection && !isSelected
 
         Button {
-            manager.selectTone(tone)
+            manager.selectIntensity(value)
             iconTriggers[index] += 1
         } label: {
             HStack(spacing: AppSpacing.rowIconGap) {
@@ -113,8 +107,7 @@ struct OnboardingToneView: View {
         .buttonStyle(.plain)
         .opacity(isDeselected ? 0.6 : 1)
         .blur(radius: isDeselected ? 1.5 : 0)
-        .animation(.easeOut(duration: 0.3), value: manager.configuration.tone)
-        // Staggered entry
+        .animation(.easeOut(duration: 0.3), value: manager.configuration.intensity)
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
         .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.06), value: contentVisible)
@@ -122,5 +115,5 @@ struct OnboardingToneView: View {
 }
 
 #Preview {
-    OnboardingContainerView.preview(step: .tone)
+    OnboardingContainerView.preview(step: .intensity)
 }
