@@ -13,22 +13,35 @@ enum AppSpacing {
     // MARK: - Screen Layout
 
     static let screenHorizontal: CGFloat = 24
-    static let screenBottom: CGFloat = 60
     static let screenTopInset: CGFloat = 80
 
-    // MARK: - Content
+    static var screenBottom: CGFloat {
+        let bottomInset = (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?.safeAreaInsets.bottom) ?? 0
+        return bottomInset > 0 ? 40 : 32
+    }
 
-    static let sectionGap: CGFloat = 48
-    static let itemGap: CGFloat = 16
+    // MARK: - Content (fixed)
+
     static let tightGap: CGFloat = 8
     static let titleSubtitleGap: CGFloat = 12
 
-    // MARK: - List Rows
+    // MARK: - Content (scaled by DeviceInfo.spacingScale)
+
+    static func sectionGap(_ scale: CGFloat) -> CGFloat { 48 * scale }
+    static func itemGap(_ scale: CGFloat) -> CGFloat { 16 * scale }
+    static func rowVertical(_ scale: CGFloat) -> CGFloat { 16 * scale }
+
+    // MARK: - List Rows (fixed)
 
     static let rowHorizontal: CGFloat = 20
-    static let rowVertical: CGFloat = 16
     static let rowIconWidth: CGFloat = 32
     static let rowIconGap: CGFloat = 16
+
+    // MARK: - Bottom Bar
+
+    static let bottomBarHeight: CGFloat = 130
 
     // MARK: - Selection Indicators
 

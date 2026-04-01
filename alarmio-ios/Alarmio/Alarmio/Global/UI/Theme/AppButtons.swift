@@ -34,10 +34,12 @@ struct PrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(isEnabled ? .black : .white.opacity(0.3))
             .frame(maxWidth: .infinity)
             .frame(height: AppButtons.height)
-            .background(isEnabled ? Color.white : Color.white.opacity(0.08))
-            .clipShape(Capsule())
+            .background(
+                Capsule()
+                    .fill(isEnabled ? Color.white : Color.white.opacity(0.08))
+            )
             .overlay {
-                // Rotating glow stroke
+                // Rotating glow stroke — only when enabled
                 Capsule()
                     .strokeBorder(
                         AngularGradient(
@@ -51,11 +53,14 @@ struct PrimaryButtonStyle: ButtonStyle {
                             center: .center,
                             angle: rotation
                         ),
-                        lineWidth: isEnabled ? 1.5 : 0
+                        lineWidth: 1.5
                     )
                     .blur(radius: 3)
+                    .opacity(isEnabled ? 1 : 0)
             }
+            .clipShape(Capsule())
             .shadow(color: .white.opacity(isEnabled ? 0.15 : 0), radius: 20, y: 0)
+            .animation(.easeOut(duration: 0.4), value: isEnabled)
             .scaleEffect(pressed ? 0.96 : 1.0)
             .brightness(pressed ? -0.05 : 0)
             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: pressed)

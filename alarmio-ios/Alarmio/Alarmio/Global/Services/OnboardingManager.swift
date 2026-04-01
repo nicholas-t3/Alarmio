@@ -18,6 +18,36 @@ final class OnboardingManager {
     var phase: OnboardingPhase = .splash
     var configuration = AlarmConfiguration()
     var isCompleted = false
+    var isSyncing = false
+    var syncError: String?
+
+    var canContinue: Bool {
+        guard !isSyncing else { return false }
+        switch currentStep {
+        case .intro: return true
+        case .tone: return configuration.tone != nil
+        case .why: return configuration.whyContext != nil
+        case .intensity: return configuration.intensity != nil
+        case .difficulty: return configuration.difficulty != nil
+        case .voice: return configuration.voicePersona != nil
+        case .content: return !configuration.contentFlags.isEmpty
+        case .leaveTime: return true // optional
+        case .wakeTime: return configuration.wakeTime != nil
+        case .snooze: return true // has defaults
+        }
+    }
+
+    /// Steps that show a continue button (not intro)
+    var showsContinueButton: Bool {
+        currentStep != .intro
+    }
+
+    /// Progress as step index (1-indexed, excluding intro)
+    var progressStep: Int {
+        max(0, currentStep.rawValue - 1)
+    }
+
+    static let interactiveStepCount = OnboardingStep.allCases.count - 1 // exclude intro
 
     // MARK: - Auth
 
@@ -30,86 +60,31 @@ final class OnboardingManager {
         await signInAnonymously()
     }
 
-    // MARK: - Step Navigation
-
-    func completeIntro() {
-        HapticManager.shared.buttonTap()
-        advanceToStep(.tone)
-    }
+    // MARK: - Selection Actions
 
     func selectTone(_ tone: AlarmTone) {
         HapticManager.shared.selection()
-        configuration.tone = tone
-    }
-
-    func completeTone() {
-        guard configuration.tone != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.why)
-        }
+        configuration.tone = configuration.tone == tone ? nil : tone
     }
 
     func selectWhy(_ why: WhyContext) {
         HapticManager.shared.selection()
-        configuration.whyContext = why
-    }
-
-    func completeWhy() {
-        guard configuration.whyContext != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.intensity)
-        }
+        configuration.whyContext = configuration.whyContext == why ? nil : why
     }
 
     func selectIntensity(_ intensity: AlarmIntensity) {
         HapticManager.shared.selection()
-        configuration.intensity = intensity
-    }
-
-    func completeIntensity() {
-        guard configuration.intensity != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.difficulty)
-        }
+        configuration.intensity = configuration.intensity == intensity ? nil : intensity
     }
 
     func selectDifficulty(_ difficulty: AlarmDifficulty) {
         HapticManager.shared.selection()
-        configuration.difficulty = difficulty
-    }
-
-    func completeDifficulty() {
-        guard configuration.difficulty != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.voice)
-        }
+        configuration.difficulty = configuration.difficulty == difficulty ? nil : difficulty
     }
 
     func selectVoice(_ voice: VoicePersona) {
         HapticManager.shared.selection()
-        configuration.voicePersona = voice
-    }
-
-    func completeVoice() {
-        guard configuration.voicePersona != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.content)
-        }
+        configuration.voicePersona = configuration.voicePersona == voice ? nil : voice
     }
 
     func toggleContentFlag(_ flag: ContentFlag) {
@@ -121,41 +96,12 @@ final class OnboardingManager {
         }
     }
 
-    func completeContent() {
-        guard !configuration.contentFlags.isEmpty else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.leaveTime)
-        }
-    }
-
     func setLeaveTime(_ time: Date?) {
         configuration.leaveTime = time
     }
 
-    func completeLeaveTime() {
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.wakeTime)
-        }
-    }
-
     func setWakeTime(_ time: Date) {
         configuration.wakeTime = time
-    }
-
-    func completeWakeTime() {
-        guard configuration.wakeTime != nil else { return }
-        HapticManager.shared.buttonTap()
-
-        Task {
-            await syncConfiguration()
-            advanceToStep(.snooze)
-        }
     }
 
     func setSnooze(count: Int, interval: Int) {
@@ -163,19 +109,49 @@ final class OnboardingManager {
         configuration.snoozeInterval = interval
     }
 
-    func completeSnooze() {
+    var canGoBack: Bool {
+        currentStep.rawValue > OnboardingStep.intro.rawValue
+    }
+
+    func goBack() {
+        let all = OnboardingStep.allCases
+        guard let index = all.firstIndex(of: currentStep),
+              index > 0 else { return }
+        HapticManager.shared.lightTap()
+        currentStep = all[index - 1]
+    }
+
+    // MARK: - Continue (called by container)
+
+    func continueToNextStep() {
+        guard canContinue else { return }
         HapticManager.shared.buttonTap()
 
+        let nextStep = nextStep(after: currentStep)
+
         Task {
+            isSyncing = true
+            syncError = nil
+
             await syncConfiguration()
-            await completeOnboarding()
+
+            isSyncing = false
+
+            if let next = nextStep {
+                currentStep = next
+            } else {
+                await completeOnboarding()
+            }
         }
     }
 
     // MARK: - Private — Navigation
 
-    private func advanceToStep(_ step: OnboardingStep) {
-        currentStep = step
+    private func nextStep(after step: OnboardingStep) -> OnboardingStep? {
+        let all = OnboardingStep.allCases
+        guard let index = all.firstIndex(of: step),
+              index + 1 < all.count else { return nil }
+        return all[index + 1]
     }
 
     // MARK: - Private — Supabase Stubs

@@ -13,10 +13,12 @@ struct OnboardingToneView: View {
     // MARK: - Environment
 
     @Environment(OnboardingManager.self) private var manager
+    @Environment(\.deviceInfo) private var deviceInfo
 
     // MARK: - State
 
     @State private var contentVisible = false
+    @State private var iconTriggers = Array(repeating: 0, count: 6)
 
     // MARK: - Constants
 
@@ -32,47 +34,34 @@ struct OnboardingToneView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
+        ScrollView {
+            VStack(spacing: 0) {
 
-            Spacer()
-                .frame(height: AppSpacing.screenTopInset)
+                Spacer()
+                    .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
 
-            // Header
-            Text("What gets you\nout of bed?")
-                .font(AppTypography.headlineLarge)
-                .tracking(AppTypography.headlineLargeTracking)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .premiumBlur(isVisible: contentVisible, duration: 0.4)
+                // Header
+                Text("What gets you\nout of bed?")
+                    .font(AppTypography.headlineLarge)
+                    .tracking(AppTypography.headlineLargeTracking)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
-            Spacer()
-                .frame(height: AppSpacing.sectionGap)
+                Spacer()
+                    .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
 
-            // Tone options — staggered entry
-            VStack(spacing: 4) {
-                ForEach(Array(tones.enumerated()), id: \.element.0) { index, tone in
-                    toneRow(tone: tone.0, name: tone.1, icon: tone.2, index: index)
+                // Tone options — staggered entry
+                VStack(spacing: 4) {
+                    ForEach(Array(tones.enumerated()), id: \.element.0) { index, tone in
+                        toneRow(tone: tone.0, name: tone.1, icon: tone.2, index: index)
+                    }
                 }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
             }
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-
-            Spacer()
-
-            // Continue button
-            Button {
-                manager.completeTone()
-            } label: {
-                Text("Continue")
-            }
-            .primaryButton(isEnabled: manager.configuration.tone != nil)
-            .disabled(manager.configuration.tone == nil)
-            .padding(.horizontal, AppButtons.horizontalPadding)
-            .padding(.bottom, AppSpacing.screenBottom)
-            .animation(.easeOut(duration: 0.25), value: manager.configuration.tone)
-            .blur(radius: contentVisible ? 0 : 8)
-            .opacity(contentVisible ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(Double(tones.count) * 0.06 + 0.15), value: contentVisible)
         }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
         .task {
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
@@ -89,12 +78,14 @@ struct OnboardingToneView: View {
 
         Button {
             manager.selectTone(tone)
+            iconTriggers[index] += 1
         } label: {
             HStack(spacing: AppSpacing.rowIconGap) {
 
                 // Icon
                 Image(systemName: icon)
                     .font(AppTypography.bodyLarge)
+                    .symbolEffect(.bounce.down.byLayer, value: iconTriggers[index])
                     .foregroundStyle(.white.opacity(isDeselected ? 0.3 : 0.6))
                     .frame(width: AppSpacing.rowIconWidth)
 
@@ -127,7 +118,7 @@ struct OnboardingToneView: View {
                 .animation(.spring(response: 0.3, dampingFraction: 0.65), value: isSelected)
             }
             .padding(.horizontal, AppSpacing.rowHorizontal)
-            .padding(.vertical, AppSpacing.rowVertical)
+            .padding(.vertical, AppSpacing.rowVertical(deviceInfo.spacingScale))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -146,18 +137,5 @@ struct OnboardingToneView: View {
         NightSkyBackground()
         OnboardingToneView()
             .environment(OnboardingManager())
-    }
-}
-
-#Preview("With Selection") {
-    let manager = OnboardingManager()
-
-    ZStack {
-        NightSkyBackground()
-        OnboardingToneView()
-            .environment(manager)
-    }
-    .onAppear {
-        manager.configuration.tone = .calm
     }
 }

@@ -11,7 +11,7 @@ import SwiftUI
 struct AlarmioApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            OnboardingContainerView()
         }
     }
 }

@@ -10,14 +10,13 @@ import SwiftUI
 
 struct OnboardingIntroView: View {
 
-    // MARK: - Environment
-
-    @Environment(OnboardingManager.self) private var manager
-
     // MARK: - State
 
     @State private var subtitleRevealed = false
-    @State private var buttonRevealed = false
+
+    // MARK: - Constants
+
+    let onTitleComplete: () -> Void
 
     // MARK: - Body
 
@@ -31,7 +30,10 @@ struct OnboardingIntroView: View {
                 "Wake Up Your Way.",
                 font: AppTypography.logoSubhead,
                 wordDelay: 0.4,
-                onComplete: { revealRest() }
+                onComplete: {
+                    subtitleRevealed = true
+                    onTitleComplete()
+                }
             )
             .padding(.horizontal, AppSpacing.screenHorizontal)
 
@@ -41,32 +43,10 @@ struct OnboardingIntroView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
-                .padding(.top, AppSpacing.itemGap)
+                .padding(.top, AppSpacing.itemGap(1.0))
                 .premiumBlur(isVisible: subtitleRevealed, duration: 0.4)
 
             Spacer()
-
-            // Get started button
-            Button {
-                manager.completeIntro()
-            } label: {
-                Text("Get Started")
-            }
-            .primaryButton()
-            .padding(.horizontal, AppButtons.horizontalPadding)
-            .padding(.bottom, AppSpacing.screenBottom)
-            .premiumBlur(isVisible: buttonRevealed, duration: 0.4)
-        }
-    }
-
-    // MARK: - Private Methods
-
-    private func revealRest() {
-        subtitleRevealed = true
-
-        Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            buttonRevealed = true
         }
     }
 }
@@ -74,7 +54,6 @@ struct OnboardingIntroView: View {
 #Preview {
     ZStack {
         NightSkyBackground()
-        OnboardingIntroView()
-            .environment(OnboardingManager())
+        OnboardingIntroView(onTitleComplete: {})
     }
 }
