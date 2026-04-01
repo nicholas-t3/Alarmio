@@ -20,9 +20,7 @@ enum OnboardingStep: Int, CaseIterable {
     case intensity
     case difficulty
     case voice
-    case content
-    case leaveTime
-    case wakeTime
+    case time
     case snooze
 }
 
@@ -134,14 +132,14 @@ struct OnboardingContainerView: View {
         case .difficulty:
             OnboardingDifficultyView(onReadyForButton: { showButton() })
 
-        default:
-            Text("Step \(manager.currentStep.rawValue + 1)")
-                .font(AppTypography.headlineLarge)
-                .foregroundStyle(.white)
-                .task {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    showButton()
-                }
+        case .voice:
+            OnboardingVoiceView(onReadyForButton: { showButton() })
+
+        case .time:
+            OnboardingTimeView(onReadyForButton: { showButton() })
+
+        case .snooze:
+            OnboardingSnoozeView(onReadyForButton: { showButton() })
         }
     }
 

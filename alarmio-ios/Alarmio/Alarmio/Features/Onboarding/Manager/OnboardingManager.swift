@@ -30,10 +30,8 @@ final class OnboardingManager {
         case .intensity: return configuration.intensity != nil
         case .difficulty: return configuration.difficulty != nil
         case .voice: return configuration.voicePersona != nil
-        case .content: return !configuration.contentFlags.isEmpty
-        case .leaveTime: return true // optional
-        case .wakeTime: return configuration.wakeTime != nil
-        case .snooze: return true // has defaults
+        case .time: return configuration.wakeTime != nil
+        case .snooze: return true
         }
     }
 
@@ -87,25 +85,23 @@ final class OnboardingManager {
         configuration.voicePersona = configuration.voicePersona == voice ? nil : voice
     }
 
-    func toggleContentFlag(_ flag: ContentFlag) {
-        HapticManager.shared.selection()
-        if configuration.contentFlags.contains(flag) {
-            configuration.contentFlags.removeAll { $0 == flag }
-        } else {
-            configuration.contentFlags.append(flag)
-        }
-    }
-
-    func setLeaveTime(_ time: Date?) {
-        configuration.leaveTime = time
-    }
-
     func setWakeTime(_ time: Date) {
+        HapticManager.shared.selection()
         configuration.wakeTime = time
     }
 
-    func setSnooze(count: Int, interval: Int) {
+    func setLeaveTime(_ time: Date?) {
+        HapticManager.shared.selection()
+        configuration.leaveTime = time
+    }
+
+    func setSnoozeCount(_ count: Int) {
+        HapticManager.shared.selection()
         configuration.snoozeCount = count
+    }
+
+    func setSnoozeInterval(_ interval: Int) {
+        HapticManager.shared.selection()
         configuration.snoozeInterval = interval
     }
 
