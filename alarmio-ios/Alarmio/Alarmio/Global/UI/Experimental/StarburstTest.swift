@@ -48,12 +48,12 @@ struct StarburstView: View {
                     let length = maxRadius * ray.length
 
                     let startPoint = CGPoint(
-                        x: center.x + cos(angle.radians) * ray.innerRadius,
-                        y: center.y + sin(angle.radians) * ray.innerRadius
+                        x: center.x + CGFloat(cos(angle.radians)) * ray.innerRadius,
+                        y: center.y + CGFloat(sin(angle.radians)) * ray.innerRadius
                     )
                     let endPoint = CGPoint(
-                        x: center.x + cos(angle.radians) * length,
-                        y: center.y + sin(angle.radians) * length
+                        x: center.x + CGFloat(cos(angle.radians)) * length,
+                        y: center.y + CGFloat(sin(angle.radians)) * length
                     )
 
                     var path = Path()
