@@ -239,7 +239,7 @@ private struct StarCanvas: View {
                 }
             }
         }
-        .rotationEffect(rotation, anchor: .init(x: 0.6, y: 0.3))
+        .rotationEffect(rotation, anchor: .center)
         .ignoresSafeArea()
         .onAppear {
             startTime = .now
@@ -262,9 +262,16 @@ private struct StarCanvas: View {
         stars = (0..<1400).map { _ in
             let isBright = Double.random(in: 0...1) > 0.82
 
+            // Distribute in a circle from center (0.5, 0.5)
+            // Radius 0.7 covers the screen diagonal at any rotation
+            let angle = CGFloat.random(in: 0...(.pi * 2))
+            let radius = CGFloat.random(in: 0...0.7)
+            let cx: CGFloat = 0.5 + cos(angle) * radius
+            let cy: CGFloat = 0.5 + sin(angle) * radius
+
             return FieldStar(
-                x: CGFloat.random(in: -0.2...1.2),
-                y: CGFloat.random(in: -0.2...1.2),
+                x: cx,
+                y: cy,
                 radius: isBright ? CGFloat.random(in: 0.5...0.9) : CGFloat.random(in: 0.2...0.45),
                 baseOpacity: Double.random(in: 0.2...0.55),
                 twinkleRange: Double.random(in: 0.05...0.3),
