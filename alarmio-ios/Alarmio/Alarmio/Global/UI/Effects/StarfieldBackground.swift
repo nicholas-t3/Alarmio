@@ -19,9 +19,8 @@ struct NightSkyBackground: View {
                     .init(color: Color(hex: "020810"), location: 0),
                     .init(color: Color(hex: "060e1c"), location: 0.35),
                     .init(color: Color(hex: "0a1628"), location: 0.55),
-                    .init(color: Color(hex: "111d35"), location: 0.75),
-                    .init(color: Color(hex: "1a2744"), location: 0.9),
-                    .init(color: Color(hex: "1f2b4a"), location: 1.0)
+                    .init(color: Color(hex: "111d35"), location: 0.78),
+                    .init(color: Color(hex: "182440"), location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -35,8 +34,8 @@ struct NightSkyBackground: View {
             GeometryReader { geometry in
                 RadialGradient(
                     colors: [
-                        Color(hex: "2a1f3d").opacity(0.4),
-                        Color(hex: "1a1530").opacity(0.2),
+                        Color(hex: "2a1f3d").opacity(0.3),
+                        Color(hex: "1a1530").opacity(0.15),
                         .clear
                     ],
                     center: .init(x: 0.5, y: 1.0),
@@ -258,19 +257,14 @@ private struct StarCanvas: View {
     private func generateStars() {
         let colors: [Color] = [.white, Color(hex: "E8DFF5"), Color(hex: "FFF4E0"), Color(hex: "D4E5FF")]
 
-        stars = (0..<700).map { _ in
+        stars = (0..<900).map { _ in
             let isBright = Double.random(in: 0...1) > 0.82
-            // Spread well beyond screen bounds in all directions
-            // so rotation around (0.6, 0.3) never exposes empty space
-            let y = CGFloat.random(in: -1.0...2.0)
-            let distanceFromTop = max(0, min(y, 1.0))
-            let bottomDim = max(0.15, 1.0 - distanceFromTop * 0.35)
 
             return FieldStar(
                 x: CGFloat.random(in: -1.0...2.0),
-                y: y,
+                y: CGFloat.random(in: -1.0...2.0),
                 radius: isBright ? CGFloat.random(in: 0.5...0.9) : CGFloat.random(in: 0.2...0.45),
-                baseOpacity: Double.random(in: 0.2...0.55) * bottomDim,
+                baseOpacity: Double.random(in: 0.2...0.55),
                 twinkleRange: Double.random(in: 0.05...0.3),
                 speed: Double.random(in: 0.3...1.5),
                 phase: Double.random(in: 0...(.pi * 2)),
@@ -375,13 +369,26 @@ private struct StarCanvas: View {
         Task { @MainActor in
             var nextTime: Double = 2.0
             var poolIndex = 0
+            let minDistance: CGFloat = 0.25
 
             while true {
                 let template = constellationPool[poolIndex % constellationPool.count]
 
-                // Random position in visible top 55% of screen
-                let ox = CGFloat.random(in: 0.08...0.70)
-                let oy = CGFloat.random(in: 0.04...0.40)
+                // Find a position that doesn't overlap with active constellations
+                var ox: CGFloat = 0
+                var oy: CGFloat = 0
+                var attempts = 0
+
+                repeat {
+                    ox = CGFloat.random(in: 0.05...0.75)
+                    oy = CGFloat.random(in: 0.02...0.45)
+                    attempts += 1
+                } while attempts < 20 && activeConstellations.contains(where: { ac in
+                    let dx = ac.offsetX - ox
+                    let dy = ac.offsetY - oy
+                    return sqrt(dx * dx + dy * dy) < minDistance
+                })
+
                 let lifetime = Double.random(in: 10...16)
 
                 let ac = ActiveConstellation(
