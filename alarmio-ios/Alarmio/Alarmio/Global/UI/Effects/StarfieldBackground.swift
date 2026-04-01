@@ -125,13 +125,16 @@ private struct StarCanvas: View {
                     let cycleDuration = ac.lifetime
                     let drawPhase = 2.5
                     let fadeOutStart = cycleDuration - 1.5
-                    guard cElapsed < cycleDuration + 2 else { continue }
+                    guard cElapsed > 0 else { continue }
 
-                    // Line opacity fades out, star opacity stays
+                    // Stars always render once faded in
                     let starFadeIn = min(cElapsed / 1.0, 1.0)
 
+                    // Lines fade out after their lifetime
                     var lineOpacityMaster: Double
-                    if cElapsed < drawPhase {
+                    if cElapsed > fadeOutStart + 1.5 {
+                        lineOpacityMaster = 0
+                    } else if cElapsed < drawPhase {
                         lineOpacityMaster = min(cElapsed / 1.0, 1.0)
                     } else if cElapsed > fadeOutStart {
                         lineOpacityMaster = max(0, 1.0 - (cElapsed - fadeOutStart) / 1.5)

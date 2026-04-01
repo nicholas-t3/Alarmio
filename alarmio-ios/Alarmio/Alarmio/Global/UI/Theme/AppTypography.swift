@@ -10,6 +10,10 @@ import SwiftUI
 
 enum AppTypography {
 
+    // MARK: - Logo
+
+    static let logo = Font.system(size: 52, weight: .black, design: .rounded)
+
     // MARK: - Display
 
     static let displayLarge = Font.system(size: 48, weight: .light)

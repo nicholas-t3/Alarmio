@@ -8,6 +8,11 @@
 
 import SwiftUI
 
+enum OnboardingPhase {
+    case splash
+    case steps
+}
+
 enum OnboardingStep: Int, CaseIterable {
     case intro = 0
     case tone
@@ -18,8 +23,10 @@ struct OnboardingContainerView: View {
 
     // MARK: - State
 
+    @State private var phase: OnboardingPhase = .splash
     @State private var currentStep: OnboardingStep = .intro
     @State private var stepVisible = false
+    @State private var splashVisible = true
     @State private var selectedTone: String? = nil
 
     // MARK: - Body
@@ -27,16 +34,19 @@ struct OnboardingContainerView: View {
     var body: some View {
         ZStack {
 
-            // Night sky background
+            // Shared night sky background
             NightSkyBackground()
 
-            // Step content
-            stepContent
-        }
-        .task {
-            try? await Task.sleep(for: .milliseconds(100))
-            withAnimation {
-                stepVisible = true
+            // Current phase
+            switch phase {
+            case .splash:
+                SplashContentView(onFinished: {
+                    transitionToSteps()
+                })
+                .premiumBlur(isVisible: splashVisible, duration: 0.5)
+
+            case .steps:
+                stepContent
             }
         }
     }
@@ -60,6 +70,27 @@ struct OnboardingContainerView: View {
     }
 
     // MARK: - Private Methods
+
+    private func transitionToSteps() {
+        HapticManager.shared.softTap()
+
+        // Blur out splash
+        splashVisible = false
+
+        Task {
+            // Wait for blur-out to finish
+            try? await Task.sleep(for: .milliseconds(500))
+
+            // Swap phase
+            phase = .steps
+
+            // Blur in first step
+            try? await Task.sleep(for: .milliseconds(100))
+            withAnimation(.easeOut(duration: 0.4)) {
+                stepVisible = true
+            }
+        }
+    }
 
     private func advanceToStep(_ step: OnboardingStep) {
         HapticManager.shared.softTap()
