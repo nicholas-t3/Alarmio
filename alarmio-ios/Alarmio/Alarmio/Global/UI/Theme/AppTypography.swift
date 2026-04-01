@@ -12,7 +12,8 @@ enum AppTypography {
 
     // MARK: - Logo
 
-    static let logo = Font.system(size: 52, weight: .black, design: .rounded)
+    static let logo = Font.system(size: 58, weight: .black, design: .rounded)
+    static let logoSubhead = Font.system(size: 42, weight: .black, design: .rounded)
 
     // MARK: - Display
 

@@ -29,9 +29,8 @@ struct OnboardingIntroView: View {
             // Title — word by word reveal in logo font
             WordRevealText(
                 "Wake Up Your Way.",
-                font: AppTypography.logo,
+                font: AppTypography.logoSubhead,
                 wordDelay: 0.4,
-                lineSpacing: 2,
                 onComplete: { revealRest() }
             )
             .padding(.horizontal, AppSpacing.screenHorizontal)

@@ -50,7 +50,7 @@ struct WordRevealText: View {
         Text(words.joined(separator: " "))
             .font(font)
             .multilineTextAlignment(.center)
-            .lineSpacing(lineSpacing)
+            .lineSpacing(0)
             .frame(maxWidth: .infinity)
             .hidden()
             .overlay {
@@ -59,7 +59,7 @@ struct WordRevealText: View {
                     Text(visibleText)
                         .font(font)
                         .multilineTextAlignment(.center)
-                        .lineSpacing(lineSpacing)
+                        .lineSpacing(0)
                         .foregroundStyle(color)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.5, dampingFraction: 0.75), value: visibleCount)
