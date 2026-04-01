@@ -143,14 +143,7 @@ struct OnboardingSnoozeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(.white.opacity(0.08))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-                )
-        )
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
         .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.1), value: contentVisible)
