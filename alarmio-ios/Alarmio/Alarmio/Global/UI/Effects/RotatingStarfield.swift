@@ -10,6 +10,10 @@ import SwiftUI
 
 struct RotatingNightSky: View {
 
+    // MARK: - State
+    var starOpacity: Double = 1.0
+
+    // MARK: - Body
     var body: some View {
         ZStack {
 
@@ -29,6 +33,7 @@ struct RotatingNightSky: View {
 
             // Rotating star canvas
             RotatingStarCanvas()
+                .opacity(starOpacity)
 
             // Horizon glow
             GeometryReader { geometry in

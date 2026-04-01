@@ -39,14 +39,15 @@ struct OnboardingContainerView: View {
     @State private var buttonLabel = "Get Started"
     @State private var isTransitioning = false
     @State private var customBackground: [Color]? = nil
+    @State private var starDimmed = false
 
     // MARK: - Body
 
     var body: some View {
         ZStack {
 
-            // Shared night sky background
-            RotatingNightSky()
+            // Shared night sky background — gradient is unaffected, only stars dim
+            RotatingNightSky(starOpacity: starDimmed ? 0.5 : 1.0)
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
@@ -238,6 +239,12 @@ struct OnboardingContainerView: View {
             manager.advanceToNextStep()
             buttonLabel = "Continue"
 
+            // Dim stars from the tone screen onward
+            let shouldDim = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
+            withAnimation(.easeInOut(duration: 0.5)) {
+                starDimmed = shouldDim
+            }
+
             // Show content — the new step's .task handles its own staggered entry
             contentVisible = true
             backVisible = manager.canGoBack
@@ -265,6 +272,11 @@ struct OnboardingContainerView: View {
             // Go back (synchronous)
             manager.goBack()
             buttonLabel = manager.currentStep == .intro ? "Get Started" : "Continue"
+
+            // Restore star brightness if back before tone
+            withAnimation(.easeInOut(duration: 0.5)) {
+                starDimmed = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
+            }
 
             // Show content
             contentVisible = true
