@@ -53,7 +53,7 @@ struct NightSkyBackground: View {
 private struct StarCanvas: View {
 
     @State private var stars: [FieldStar] = []
-    @State private var permanentStars: [PermanentStar] = []
+    @State private var promotedGroups: [PromotedStarGroup] = []
     @State private var constellationPool: [ConstellationTemplate] = []
     @State private var activeConstellations: [ActiveConstellation] = []
     @State private var shootingStars: [ShootingStar] = []
@@ -104,27 +104,19 @@ private struct StarCanvas: View {
                     context.fill(Circle().path(in: rect), with: .color(star.color))
                 }
 
-                // Permanent stars (promoted from constellations, capped)
-                for star in permanentStars {
-                    let twinkle = sin(now * star.speed + star.phase)
-                    let brightness = 0.5 + (twinkle + 1) / 2 * 0.5
+                // Promoted constellation stars (FIFO, max 15 groups)
+                for group in promotedGroups {
+                    for star in group.stars {
+                        let twinkle = sin(now * star.speed + star.phase)
+                        let brightness = 0.5 + (twinkle + 1) / 2 * 0.5
 
-                    // Fade in over 1s from birth
-                    let age = elapsed - star.bornAt
-                    let fadeInAmount = min(age / 1.0, 1.0)
-
-                    // Fade out over 2s if expiring
-                    var fadeOutAmount = 1.0
-                    if let fadeOut = star.fadeOutAt {
-                        fadeOutAmount = max(0, 1.0 - (elapsed - fadeOut) / 2.0)
+                        let x = (group.offsetX + star.x) * size.width
+                        let y = (group.offsetY + star.y) * size.height
+                        let r = star.radius
+                        let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+                        context.opacity = group.opacity * brightness * 0.85
+                        context.fill(Circle().path(in: rect), with: .color(star.color))
                     }
-
-                    let x = star.x * size.width
-                    let y = star.y * size.height
-                    let r = star.radius
-                    let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
-                    context.opacity = fadeInAmount * fadeOutAmount * brightness * 0.85
-                    context.fill(Circle().path(in: rect), with: .color(star.color))
                 }
 
                 // Active constellations
@@ -267,7 +259,7 @@ private struct StarCanvas: View {
     private func generateStars() {
         let colors: [Color] = [.white, Color(hex: "E8DFF5"), Color(hex: "FFF4E0"), Color(hex: "D4E5FF")]
 
-        stars = (0..<900).map { _ in
+        stars = (0..<1400).map { _ in
             let isBright = Double.random(in: 0...1) > 0.82
 
             return FieldStar(
@@ -416,39 +408,47 @@ private struct StarCanvas: View {
 
                 try? await Task.sleep(for: .seconds(waitUntilNext))
 
-                // Promote expired constellation stars, capped at 15
                 let currentElapsed = Date.now.timeIntervalSince(startTime)
-                let maxPermanent = 15
-                let expired = activeConstellations.filter { currentElapsed - $0.appearTime > $0.lifetime + 2 }
-                for ac in expired {
-                    for star in ac.template.stars {
-                        // If at cap, mark the oldest one for fade-out
-                        let activeCount = permanentStars.filter { !$0.isExpiring }.count
-                        if activeCount >= maxPermanent {
-                            if let oldestIndex = permanentStars.firstIndex(where: { !$0.isExpiring }) {
-                                permanentStars[oldestIndex].fadeOutAt = currentElapsed
+
+                // Promote constellations that are past their lifetime (lines gone) but still active
+                let readyToPromote = activeConstellations.filter {
+                    let age = currentElapsed - $0.appearTime
+                    return age > $0.lifetime + 1 && !$0.promoted
+                }
+                for ac in readyToPromote {
+                    // Mark as promoted so we don't double-add
+                    if let idx = activeConstellations.firstIndex(where: { $0.appearTime == ac.appearTime && !$0.promoted }) {
+                        activeConstellations[idx].promoted = true
+                    }
+
+                    let group = PromotedStarGroup(
+                        stars: ac.template.stars,
+                        offsetX: ac.offsetX,
+                        offsetY: ac.offsetY
+                    )
+                    promotedGroups.append(group)
+
+                    // If over 15, fade out and remove the oldest
+                    if promotedGroups.count > 15 {
+                        let fadeIndex = 0
+                        Task { @MainActor in
+                            // Fade out over 2 seconds
+                            let steps = 20
+                            for i in 1...steps {
+                                try? await Task.sleep(for: .milliseconds(100))
+                                if fadeIndex < promotedGroups.count {
+                                    promotedGroups[fadeIndex].opacity = 1.0 - (Double(i) / Double(steps))
+                                }
+                            }
+                            if !promotedGroups.isEmpty {
+                                promotedGroups.removeFirst()
                             }
                         }
-
-                        permanentStars.append(PermanentStar(
-                            x: ac.offsetX + star.x,
-                            y: ac.offsetY + star.y,
-                            radius: star.radius,
-                            speed: star.speed,
-                            phase: star.phase,
-                            color: star.color,
-                            bornAt: currentElapsed
-                        ))
                     }
                 }
 
-                // Remove fully faded permanent stars
-                permanentStars.removeAll { star in
-                    guard let fadeOut = star.fadeOutAt else { return false }
-                    return currentElapsed - fadeOut > 2.5
-                }
-
-                activeConstellations.removeAll { currentElapsed - $0.appearTime > $0.lifetime + 2 }
+                // Remove active constellations well after promotion
+                activeConstellations.removeAll { currentElapsed - $0.appearTime > $0.lifetime + 3 }
             }
         }
     }
@@ -489,20 +489,6 @@ private struct StarCanvas: View {
 
 // MARK: - Models
 
-private struct PermanentStar: Identifiable {
-    let id = UUID()
-    let x: CGFloat
-    let y: CGFloat
-    let radius: CGFloat
-    let speed: Double
-    let phase: Double
-    let color: Color
-    let bornAt: Double
-    var fadeOutAt: Double?
-
-    var isExpiring: Bool { fadeOutAt != nil }
-}
-
 private struct FieldStar {
     let x: CGFloat
     let y: CGFloat
@@ -537,6 +523,14 @@ private struct ActiveConstellation {
     let offsetY: CGFloat
     let appearTime: Double
     let lifetime: Double
+    var promoted = false
+}
+
+private struct PromotedStarGroup {
+    let stars: [ConstellationStar]
+    let offsetX: CGFloat
+    let offsetY: CGFloat
+    var opacity: Double = 1.0
 }
 
 private struct ShootingStar {
