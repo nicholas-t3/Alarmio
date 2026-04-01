@@ -308,11 +308,33 @@ private struct RotatingStarCanvas: View {
 
         guard visibleBright.count >= constellationStarRange.lowerBound else { return nil }
 
-        // Try several random seeds, pick the best cluster
+        // Weight seeds toward screen edges so constellations stay out of center UI area.
+        // Distance from center → higher weight → more likely to be picked as seed.
+        let centerX = w / 2
+        let centerY = h / 2
+        let maxDist = sqrt(centerX * centerX + centerY * centerY)
+
+        let weights: [Double] = visibleBright.map { star in
+            let ddx = star.sx - centerX
+            let ddy = star.sy - centerY
+            let dist = sqrt(ddx * ddx + ddy * ddy) / maxDist
+            // Cubic weighting — strongly favors outer stars
+            return dist * dist * dist + 0.05
+        }
+        let totalWeight = weights.reduce(0, +)
+
+        // Try several weighted-random seeds, pick the best cluster
         var bestCluster: [(index: Int, sx: CGFloat, sy: CGFloat)] = []
 
         for _ in 0..<10 {
-            guard let seed = visibleBright.randomElement() else { break }
+            // Weighted random selection
+            var roll = Double.random(in: 0..<totalWeight)
+            var seedIndex = 0
+            for (i, w) in weights.enumerated() {
+                roll -= w
+                if roll <= 0 { seedIndex = i; break }
+            }
+            let seed = visibleBright[seedIndex]
 
             var cluster = visibleBright.filter { candidate in
                 let ddx = candidate.sx - seed.sx
