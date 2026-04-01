@@ -38,15 +38,17 @@ struct OnboardingToneView: View {
 
             // Header
             Text("What gets you\nout of bed?")
-                .headlineLarge()
+                .font(AppTypography.headlineLarge)
+                .tracking(AppTypography.headlineLargeTracking)
+                .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
-                .modifier(PremiumBlurEffectExplicit(isVisible: contentVisible, delay: 0))
+                .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
             Spacer()
                 .frame(height: AppSpacing.sectionGap)
 
-            // Tone options
-            VStack(spacing: 0) {
+            // Tone options — staggered entry
+            VStack(spacing: 4) {
                 ForEach(Array(tones.enumerated()), id: \.element.0) { index, tone in
                     toneRow(name: tone.0, icon: tone.1, index: index)
                 }
@@ -69,7 +71,7 @@ struct OnboardingToneView: View {
             .animation(.easeOut(duration: 0.25), value: selectedTone)
             .blur(radius: contentVisible ? 0 : 8)
             .opacity(contentVisible ? 1 : 0)
-            .animation(.easeOut(duration: 0.3).delay(Double(tones.count) * 0.03 + 0.1), value: contentVisible)
+            .animation(.easeOut(duration: 0.4).delay(Double(tones.count) * 0.06 + 0.15), value: contentVisible)
         }
         .task {
             try? await Task.sleep(for: .milliseconds(100))
@@ -82,10 +84,12 @@ struct OnboardingToneView: View {
     @ViewBuilder
     private func toneRow(name: String, icon: String, index: Int) -> some View {
         let isSelected = selectedTone == name
+        let hasSelection = selectedTone != nil
+        let isDeselected = hasSelection && !isSelected
 
         Button {
             HapticManager.shared.selection()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 selectedTone = name
             }
         } label: {
@@ -94,59 +98,64 @@ struct OnboardingToneView: View {
                 // Icon
                 Image(systemName: icon)
                     .font(AppTypography.bodyLarge)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(isDeselected ? 0.3 : 0.6))
                     .frame(width: AppSpacing.rowIconWidth)
 
                 // Label
                 Text(name)
-                    .labelLarge()
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white.opacity(isDeselected ? 0.4 : 1))
 
                 Spacer()
 
                 // Selection indicator
-                selectionCircle(isSelected: isSelected)
+                ZStack {
+                    // Empty circle
+                    Circle()
+                        .strokeBorder(.white.opacity(0.2), lineWidth: AppSpacing.selectionStrokeWidth)
+                        .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
+                        .opacity(isSelected ? 0 : 1)
+
+                    // Filled circle + checkmark
+                    Circle()
+                        .fill(.white)
+                        .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
+                        .opacity(isSelected ? 1 : 0)
+                        .scaleEffect(isSelected ? 1 : 0.5)
+
+                    Image(systemName: "checkmark")
+                        .font(.system(size: AppSpacing.selectionCheckmarkSize, weight: .bold))
+                        .foregroundStyle(.black)
+                        .opacity(isSelected ? 1 : 0)
+                        .scaleEffect(isSelected ? 1 : 0.3)
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.65), value: isSelected)
             }
             .padding(.horizontal, AppSpacing.rowHorizontal)
             .padding(.vertical, AppSpacing.rowVertical)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .opacity(isDeselected ? 0.6 : 1)
+        .blur(radius: isDeselected ? 1.5 : 0)
+        .animation(.easeOut(duration: 0.3), value: selectedTone)
+        // Staggered entry — per row
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
-        .animation(.easeOut(duration: 0.3).delay(Double(index) * 0.03), value: contentVisible)
-    }
-
-    @ViewBuilder
-    private func selectionCircle(isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .strokeBorder(.white.opacity(isSelected ? 0 : 0.2), lineWidth: AppSpacing.selectionStrokeWidth)
-                .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
-
-            if isSelected {
-                Circle()
-                    .fill(.white)
-                    .frame(width: AppSpacing.selectionCircleSize, height: AppSpacing.selectionCircleSize)
-
-                Image(systemName: "checkmark")
-                    .font(.system(size: AppSpacing.selectionCheckmarkSize, weight: .bold))
-                    .foregroundStyle(.black)
-            }
-        }
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+        .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.06), value: contentVisible)
     }
 }
 
 #Preview {
     ZStack {
-        Color(hex: "050505").ignoresSafeArea()
+        NightSkyBackground()
         OnboardingToneView(selectedTone: .constant(nil), onContinue: {})
     }
 }
 
 #Preview("With Selection") {
     ZStack {
-        Color(hex: "050505").ignoresSafeArea()
+        NightSkyBackground()
         OnboardingToneView(selectedTone: .constant("Calm"), onContinue: {})
     }
 }

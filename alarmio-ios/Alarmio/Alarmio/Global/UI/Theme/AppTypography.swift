@@ -25,11 +25,11 @@ enum AppTypography {
 
     // MARK: - Headings
 
-    static let headlineLarge = Font.system(size: 32, weight: .light)
-    static let headlineLargeTracking: CGFloat = 1
+    static let headlineLarge = Font.system(size: 34, weight: .bold, design: .rounded)
+    static let headlineLargeTracking: CGFloat = -0.5
 
-    static let headlineMedium = Font.system(size: 24, weight: .regular)
-    static let headlineMediumTracking: CGFloat = 0.5
+    static let headlineMedium = Font.system(size: 24, weight: .semibold, design: .rounded)
+    static let headlineMediumTracking: CGFloat = -0.3
 
     // MARK: - Body
 
@@ -42,6 +42,11 @@ enum AppTypography {
     static let labelLarge = Font.system(size: 18, weight: .medium)
     static let labelMedium = Font.system(size: 15, weight: .medium)
     static let labelSmall = Font.system(size: 13, weight: .medium)
+
+    // MARK: - Button
+
+    static let button = Font.system(size: 17, weight: .semibold)
+    static let buttonTracking: CGFloat = 0.3
 
     // MARK: - Caption
 

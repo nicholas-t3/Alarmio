@@ -61,6 +61,7 @@ struct SplashContentView: View {
         try? await Task.sleep(for: .milliseconds(800))
         logoText = "alarmio"
         logoVisible = true
+        HapticManager.shared.softTap()
 
         // 2. Start glow pulse
         try? await Task.sleep(for: .milliseconds(700))
@@ -68,6 +69,7 @@ struct SplashContentView: View {
 
         // 3. Hold for a moment, then signal done
         try? await Task.sleep(for: .milliseconds(2000))
+        HapticManager.shared.lightTap()
         onFinished()
     }
 }

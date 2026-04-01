@@ -258,16 +258,16 @@ private struct StarCanvas: View {
     private func generateStars() {
         let colors: [Color] = [.white, Color(hex: "E8DFF5"), Color(hex: "FFF4E0"), Color(hex: "D4E5FF")]
 
-        stars = (0..<500).map { _ in
+        stars = (0..<700).map { _ in
             let isBright = Double.random(in: 0...1) > 0.82
-            // Spread far beyond screen so rotation never reveals empty space
-            // Dimmer toward bottom to blend with horizon
-            let y = CGFloat.random(in: -0.5...1.5)
-            let distanceFromTop = max(0, y)
-            let bottomDim = max(0.2, 1.0 - distanceFromTop * 0.4)
+            // Spread well beyond screen bounds in all directions
+            // so rotation around (0.6, 0.3) never exposes empty space
+            let y = CGFloat.random(in: -1.0...2.0)
+            let distanceFromTop = max(0, min(y, 1.0))
+            let bottomDim = max(0.15, 1.0 - distanceFromTop * 0.35)
 
             return FieldStar(
-                x: CGFloat.random(in: -0.5...1.5),
+                x: CGFloat.random(in: -1.0...2.0),
                 y: y,
                 radius: isBright ? CGFloat.random(in: 0.5...0.9) : CGFloat.random(in: 0.2...0.45),
                 baseOpacity: Double.random(in: 0.2...0.55) * bottomDim,

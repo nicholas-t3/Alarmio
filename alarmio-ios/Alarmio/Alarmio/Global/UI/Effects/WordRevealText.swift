@@ -22,7 +22,6 @@ struct WordRevealText: View {
     let color: Color
     let wordDelay: Double
     let initialDelay: Double
-    let lineSpacing: CGFloat
     let onComplete: (() -> Void)?
 
     init(
@@ -31,7 +30,6 @@ struct WordRevealText: View {
         color: Color = .white,
         wordDelay: Double = 0.35,
         initialDelay: Double = 0,
-        lineSpacing: CGFloat = -4,
         onComplete: (() -> Void)? = nil
     ) {
         self.words = text.components(separatedBy: " ")
@@ -39,7 +37,6 @@ struct WordRevealText: View {
         self.color = color
         self.wordDelay = wordDelay
         self.initialDelay = initialDelay
-        self.lineSpacing = lineSpacing
         self.onComplete = onComplete
     }
 
