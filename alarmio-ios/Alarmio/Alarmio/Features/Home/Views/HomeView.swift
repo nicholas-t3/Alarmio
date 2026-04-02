@@ -21,6 +21,7 @@ struct HomeView: View {
     @State private var contentVisible = false
     @State private var fabVisible = false
     @State private var glowPulse = false
+    @State private var showCreateAlarm = false
 
     // MARK: - Body
 
@@ -56,6 +57,11 @@ struct HomeView: View {
             contentVisible = true
             try? await Task.sleep(for: .milliseconds(400))
             fabVisible = true
+        }
+        .fullScreenCover(isPresented: $showCreateAlarm) {
+            CreateAlarmView { newAlarm in
+                viewModel.addAlarm(newAlarm)
+            }
         }
     }
 
@@ -169,6 +175,7 @@ struct HomeView: View {
 
                 Button {
                     HapticManager.shared.buttonTap()
+                    showCreateAlarm = true
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 24, weight: .medium))

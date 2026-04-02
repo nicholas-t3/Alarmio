@@ -21,8 +21,8 @@ struct RootView: View {
     var body: some View {
         ZStack {
 
-            // Main app
-            HomeView()
+            // Onboarding
+            OnboardingContainerView()
 
             // Global alert overlay — always on top
             GlobalAlertOverlay()

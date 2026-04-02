@@ -35,8 +35,8 @@ struct SplashContentView: View {
                     // Navy glow behind — visible on dark backgrounds
                     Text(logoText)
                         .font(AppTypography.logo)
-                        .foregroundStyle(Color(hex: "3A6EAA").opacity(0.4))
-                        .blur(radius: 6)
+                        .foregroundStyle(Color(hex: "3A6EAA").opacity(0.7))
+                        .blur(radius: 12)
 
                     // Navy left/right edges
                     Text(logoText)

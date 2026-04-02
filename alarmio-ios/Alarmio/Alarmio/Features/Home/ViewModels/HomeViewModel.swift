@@ -28,6 +28,11 @@ final class HomeViewModel {
         HapticManager.shared.selection()
     }
 
+    func addAlarm(_ alarm: AlarmConfiguration) {
+        alarms.insert(alarm, at: 0)
+        HapticManager.shared.success()
+    }
+
     func deleteAlarm(_ id: UUID) {
         alarms.removeAll { $0.id == id }
         HapticManager.shared.warning()

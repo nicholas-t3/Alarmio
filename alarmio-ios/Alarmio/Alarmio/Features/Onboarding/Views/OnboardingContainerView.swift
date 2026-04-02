@@ -32,6 +32,7 @@ struct OnboardingContainerView: View {
     // MARK: - State
 
     @Environment(\.previewStep) private var previewStep
+    @State private var showHome = false
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
     @State private var splashVisible = true
@@ -99,7 +100,7 @@ struct OnboardingContainerView: View {
             case .steps:
                 VStack(spacing: 0) {
 
-                    // Back button — always reserve the space
+                    // Nav bar
                     HStack {
                         Button {
                             goBack()
@@ -116,6 +117,20 @@ struct OnboardingContainerView: View {
                         .disabled(!backVisible)
 
                         Spacer()
+
+                        // Dev: skip to home (intro only)
+                        if manager.currentStep == .intro {
+                            Button {
+                                HapticManager.shared.buttonTap()
+                                showHome = true
+                            } label: {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                        }
                     }
                     .padding(.horizontal, AppSpacing.screenHorizontal - 8)
                     .frame(height: 44)
@@ -134,6 +149,11 @@ struct OnboardingContainerView: View {
         }
         .environment(manager)
         .environment(\.deviceInfo, deviceInfo)
+        .fullScreenCover(isPresented: $showHome) {
+            HomeView()
+                .environment(AppState())
+                .environment(\.deviceInfo, deviceInfo)
+        }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
