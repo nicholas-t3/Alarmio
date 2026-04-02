@@ -31,12 +31,32 @@ struct SplashContentView: View {
             VStack(spacing: 12) {
 
                 // Logo text — hidden dot seeds numericText, blur-in synced with morph
-                Text(logoText)
-                    .font(AppTypography.logo)
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: logoText)
-                    .premiumBlur(isVisible: logoVisible, duration: 0.6)
+                ZStack {
+                    // Navy glow behind — visible on dark backgrounds
+                    Text(logoText)
+                        .font(AppTypography.logo)
+                        .foregroundStyle(Color(hex: "3A6EAA").opacity(0.4))
+                        .blur(radius: 6)
+
+                    // Navy left/right edges
+                    Text(logoText)
+                        .font(AppTypography.logo)
+                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                        .offset(x: -1.2)
+
+                    Text(logoText)
+                        .font(AppTypography.logo)
+                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                        .offset(x: 1.2)
+
+                    // White text on top
+                    Text(logoText)
+                        .font(AppTypography.logo)
+                        .foregroundStyle(.white)
+                }
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: logoText)
+                .premiumBlur(isVisible: logoVisible, duration: 0.6)
 
                 // Glow underneath logo
                 Ellipse()

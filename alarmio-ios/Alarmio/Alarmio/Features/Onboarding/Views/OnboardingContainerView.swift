@@ -40,6 +40,9 @@ struct OnboardingContainerView: View {
     @State private var isTransitioning = false
     @State private var customBackground: [Color]? = nil
     @State private var starDimmed = false
+    @State private var voiceVisualizerPalette: VisualizerPalette? = nil
+    @State private var voiceVisualizerPlaying = false
+    @State private var voiceVisualizerVisible = false
 
     // MARK: - Body
 
@@ -68,6 +71,14 @@ struct OnboardingContainerView: View {
                 .ignoresSafeArea()
                 .transition(.opacity)
                 .animation(.easeInOut(duration: 0.6), value: colors.map { $0.description })
+            }
+
+            // Voice visualizer background — full screen, behind all content
+            if let palette = voiceVisualizerPalette {
+                VoiceVisualizer(palette: palette, isPlaying: voiceVisualizerPlaying)
+                    .opacity(voiceVisualizerVisible ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
+                    .allowsHitTesting(false)
             }
 
             // Current phase
@@ -159,10 +170,11 @@ struct OnboardingContainerView: View {
         case .voice:
             OnboardingVoiceView(
                 onReadyForButton: { showButton() },
-                onColorChange: { colors in
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        customBackground = colors
-                    }
+                onPaletteChange: { palette in
+                    voiceVisualizerPalette = palette
+                },
+                onPlayingChange: { playing in
+                    voiceVisualizerPlaying = playing
                 }
             )
 
@@ -223,10 +235,11 @@ struct OnboardingContainerView: View {
     private func navigateForward() {
         isTransitioning = true
 
-        // Blur out content + button + back + custom background
+        // Blur out content + button + back + backgrounds
         contentVisible = false
         buttonVisible = false
         backVisible = false
+        voiceVisualizerVisible = false
         withAnimation(.easeOut(duration: 0.4)) {
             customBackground = nil
         }
@@ -245,6 +258,9 @@ struct OnboardingContainerView: View {
                 starDimmed = shouldDim
             }
 
+            // Show/hide voice visualizer background
+            voiceVisualizerVisible = manager.currentStep == .voice
+
             // Show content — the new step's .task handles its own staggered entry
             contentVisible = true
             backVisible = manager.canGoBack
@@ -261,6 +277,7 @@ struct OnboardingContainerView: View {
         contentVisible = false
         buttonVisible = false
         backVisible = false
+        voiceVisualizerVisible = false
         withAnimation(.easeOut(duration: 0.4)) {
             customBackground = nil
         }
@@ -277,6 +294,9 @@ struct OnboardingContainerView: View {
             withAnimation(.easeInOut(duration: 0.5)) {
                 starDimmed = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
             }
+
+            // Show/hide voice visualizer background
+            voiceVisualizerVisible = manager.currentStep == .voice
 
             // Show content
             contentVisible = true
