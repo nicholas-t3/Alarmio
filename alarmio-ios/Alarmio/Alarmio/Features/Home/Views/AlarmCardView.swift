@@ -49,7 +49,7 @@ struct AlarmCardView: View {
 
                             Text(personaLabel(persona))
                                 .font(AppTypography.caption)
-                                .tracking(AppTypography.captionTracking)
+                                .tracking(0.3)
                         }
                         .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.3 : 0.15))
                     }
@@ -60,7 +60,7 @@ struct AlarmCardView: View {
                 // Toggle
                 Toggle("", isOn: $alarm.isEnabled)
                     .labelsHidden()
-                    .tint(Color(hex: "3A6EAA"))
+                    .tint(Color(hex: "0a1628"))
                     .onChange(of: alarm.isEnabled) {
                         onToggle()
                     }
