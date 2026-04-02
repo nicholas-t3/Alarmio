@@ -404,9 +404,9 @@ struct VoiceVisualizer: View {
         let rect = CGRect(origin: .zero, size: size)
 
         let topFade = LinearGradient(
-            colors: [Color(hex: "020206"), Color(hex: "020206").opacity(0.6), .clear],
+            colors: [Color(hex: "020206"), Color(hex: "020206").opacity(0.7), .clear],
             startPoint: .top,
-            endPoint: UnitPoint(x: 0.5, y: 0.2)
+            endPoint: UnitPoint(x: 0.5, y: 0.25)
         )
         context.opacity = 1.0
         context.fill(Rectangle().path(in: rect), with: .style(topFade))

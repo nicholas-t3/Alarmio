@@ -61,74 +61,75 @@ struct OnboardingVoiceView: View {
 
     // MARK: - Body
     var body: some View {
+        VStack(spacing: 0) {
 
-        // Full-screen swipeable TabView — background is handled by the container
-        TabView(selection: $selectedIndex) {
-            ForEach(0..<voiceEntries.count, id: \.self) { index in
+            // Title — fixed, doesn't swipe
+            Text("Choose\nyour voice")
+                .font(AppTypography.headlineLarge)
+                .tracking(AppTypography.headlineLargeTracking)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
-                // Page content
-                VStack(spacing: 0) {
+            // Swipeable voice cards
+            TabView(selection: $selectedIndex) {
+                ForEach(0..<voiceEntries.count, id: \.self) { index in
 
-                    // Title
-                    Text("Choose\nyour voice")
-                        .font(AppTypography.headlineLarge)
-                        .tracking(AppTypography.headlineLargeTracking)
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .premiumBlur(isVisible: contentVisible, duration: 0.4)
+                    VStack {
 
-                    Spacer()
+                        Spacer()
 
-                    // Voice card
-                    VStack(spacing: 16) {
+                        // Voice card
+                        VStack(spacing: 16) {
 
-                        // Voice name
-                        Text(voiceEntries[index].name)
-                            .font(AppTypography.headlineMedium)
-                            .tracking(AppTypography.headlineMediumTracking)
-                            .foregroundStyle(.white)
+                            // Voice name
+                            Text(voiceEntries[index].name)
+                                .font(AppTypography.headlineMedium)
+                                .tracking(AppTypography.headlineMediumTracking)
+                                .foregroundStyle(.white)
 
-                        // Description
-                        Text(voiceEntries[index].description)
-                            .font(AppTypography.bodySmall)
-                            .foregroundStyle(.white.opacity(0.5))
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(2)
+                            // Description
+                            Text(voiceEntries[index].description)
+                                .font(AppTypography.bodySmall)
+                                .foregroundStyle(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
+                                .lineSpacing(2)
 
-                        // Preview / Stop button
-                        Button {
-                            HapticManager.shared.buttonTap()
-                            togglePreview(for: index)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: player.isPlaying && selectedIndex == index ? "stop.fill" : "play.fill")
-                                    .font(.system(size: 14))
-                                    .contentTransition(.symbolEffect(.replace))
+                            // Preview / Stop button
+                            Button {
+                                HapticManager.shared.buttonTap()
+                                togglePreview(for: index)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: player.isPlaying && selectedIndex == index ? "stop.fill" : "play.fill")
+                                        .font(.system(size: 14))
+                                        .contentTransition(.symbolEffect(.replace))
 
-                                Text(player.isPlaying && selectedIndex == index ? "Stop" : "Preview")
-                                    .font(AppTypography.labelMedium)
+                                    Text(player.isPlaying && selectedIndex == index ? "Stop" : "Preview")
+                                        .font(AppTypography.labelMedium)
+                                }
+                                .foregroundStyle(.white)
+                                .frame(height: 40)
+                                .frame(width: 130)
+                                .background(.white.opacity(0.15))
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+                                )
                             }
-                            .foregroundStyle(.white)
-                            .frame(height: 40)
-                            .frame(width: 130)
-                            .background(.white.opacity(0.15))
-                            .clipShape(Capsule())
-                            .overlay(
-                                Capsule()
-                                    .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
-                            )
                         }
-                    }
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
 
-                    // Space for page dots + container bottom bar
-                    Spacer()
-                        .frame(height: 56)
+                        // Space for page dots + container bottom bar
+                        Spacer()
+                            .frame(height: 56)
+                    }
+                    .tag(index)
                 }
-                .tag(index)
             }
+            .tabViewStyle(.page(indexDisplayMode: .always))
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
         .animation(.easeOut(duration: 0.4).delay(0.1), value: contentVisible)
