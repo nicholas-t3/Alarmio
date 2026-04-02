@@ -44,7 +44,8 @@ struct OnboardingVoiceView: View {
 
     @State private var contentVisible = false
     @State private var selectedIndex = 0
-    @State private var isPlaying = false
+    @State private var previewActive = false
+    @State private var player = VoicePreviewPlayer()
 
     // MARK: - Constants
 
@@ -54,68 +55,76 @@ struct OnboardingVoiceView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
 
-            Spacer()
-                .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
+            // Full-screen frequency visualizer background
+            FrequencyVisualizer(
+                bands: player.bands,
+                colors: voiceOptions[selectedIndex].colors,
+                isPlaying: player.isPlaying
+            )
+            .ignoresSafeArea()
+            .opacity(contentVisible ? 1 : 0)
+            .animation(.easeOut(duration: 0.6), value: contentVisible)
 
-            // Title
-            Text("Choose\nyour voice")
-                .font(AppTypography.headlineLarge)
-                .tracking(AppTypography.headlineLargeTracking)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .premiumBlur(isVisible: contentVisible, duration: 0.4)
+            // Foreground content
+            VStack(spacing: 0) {
 
-            // Full-area swipeable pager — waveform + card together
-            TabView(selection: $selectedIndex) {
-                ForEach(0..<voiceOptions.count, id: \.self) { index in
-                    VStack(spacing: 32) {
+                Spacer()
+                    .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
 
-                        Spacer()
+                // Title
+                Text("Choose\nyour voice")
+                    .font(AppTypography.headlineLarge)
+                    .tracking(AppTypography.headlineLargeTracking)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .premiumBlur(isVisible: contentVisible, duration: 0.4)
 
-                        // Waveform
-                        WaveformVisualizer(
-                            colors: voiceOptions[index].colors,
-                            isPlaying: isPlaying && selectedIndex == index
-                        )
-                        .frame(height: 140)
-                        .padding(.horizontal, 32)
+                // Swipeable voice pager
+                TabView(selection: $selectedIndex) {
+                    ForEach(0..<voiceOptions.count, id: \.self) { index in
+                        VStack(spacing: 32) {
 
-                        Spacer()
-                            .frame(height: 24)
+                            Spacer()
 
-                        // Card
-                        VoiceCard(
-                            option: voiceOptions[index],
-                            isPlaying: isPlaying && selectedIndex == index,
-                            onPreviewTap: {
-                                HapticManager.shared.buttonTap()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    isPlaying.toggle()
+                            // Voice card
+                            VoiceCard(
+                                option: voiceOptions[index],
+                                isPlaying: player.isPlaying && selectedIndex == index,
+                                onPreviewTap: {
+                                    HapticManager.shared.buttonTap()
+                                    togglePreview(for: index)
                                 }
-                            }
-                        )
+                            )
 
-                        Spacer()
-                            .frame(height: 20)
+                            Spacer()
+                                .frame(height: 40)
+                        }
+                        .tag(index)
                     }
-                    .tag(index)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .blur(radius: contentVisible ? 0 : 8)
+                .opacity(contentVisible ? 1 : 0)
+                .animation(.easeOut(duration: 0.4).delay(0.1), value: contentVisible)
+                .onChange(of: selectedIndex) {
+                    HapticManager.shared.selection()
+                    manager.selectVoice(voiceOptions[selectedIndex].persona)
+                    onColorChange(voiceOptions[selectedIndex].colors)
+
+                    // Auto-play on swipe only if preview is active
+                    if previewActive {
+                        player.play(persona: voiceOptions[selectedIndex].persona)
+                    }
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .blur(radius: contentVisible ? 0 : 8)
-            .opacity(contentVisible ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.1), value: contentVisible)
-            .onChange(of: selectedIndex) {
-                HapticManager.shared.selection()
-                manager.selectVoice(voiceOptions[selectedIndex].persona)
-                onColorChange(voiceOptions[selectedIndex].colors)
-                isPlaying = false
-            }
+        }
+        .onDisappear {
+            player.stop()
+            previewActive = false
         }
         .task {
-            // Signal initial colors immediately
             onColorChange(voiceOptions[selectedIndex].colors)
             manager.selectVoice(voiceOptions[selectedIndex].persona)
 
@@ -124,6 +133,18 @@ struct OnboardingVoiceView: View {
 
             try? await Task.sleep(for: .milliseconds(500))
             onReadyForButton()
+        }
+    }
+
+    // MARK: - Private Methods
+
+    private func togglePreview(for index: Int) {
+        if previewActive {
+            previewActive = false
+            player.stop()
+        } else {
+            previewActive = true
+            player.play(persona: voiceOptions[index].persona)
         }
     }
 }
@@ -152,10 +173,10 @@ private struct VoiceCard: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
 
-            // Preview button
+            // Preview / Stop button
             Button(action: onPreviewTap) {
                 HStack(spacing: 8) {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
                         .font(.system(size: 14))
                         .contentTransition(.symbolEffect(.replace))
 
@@ -177,7 +198,111 @@ private struct VoiceCard: View {
     }
 }
 
-// MARK: - Waveform Visualizer
+// MARK: - Frequency Visualizer
+
+private struct FrequencyVisualizer: View {
+
+    let bands: [CGFloat]
+    let colors: [Color]
+    let isPlaying: Bool
+
+    @State private var displayBands: [CGFloat] = Array(repeating: 0, count: 24)
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let now = timeline.date.timeIntervalSinceReferenceDate
+
+            Canvas { context, size in
+                let barCount = bands.count
+                guard barCount > 0 else { return }
+
+                let barSpacing = size.width / CGFloat(barCount)
+                let barWidth = barSpacing * 0.55
+                let maxBarHeight = size.height * 0.75
+
+                for i in 0..<barCount {
+                    let centerX = barSpacing * CGFloat(i) + barSpacing / 2
+
+                    // Smooth toward target
+                    let target: CGFloat
+                    if isPlaying {
+                        target = bands[i]
+                    } else {
+                        // Gentle idle breathing
+                        let phase = Double(i) * 0.35 + now * 0.5
+                        let wave = sin(phase) * 0.5 + sin(phase * 1.6 + 1.2) * 0.3
+                        target = CGFloat(wave * 0.03 + 0.05)
+                    }
+
+                    let current = displayBands[i]
+                    let smoothed = current + (target - current) * 0.14
+                    displayBands[i] = smoothed
+
+                    let barHeight = max(3, maxBarHeight * smoothed)
+
+                    // Bar grows from bottom of screen
+                    let barRect = CGRect(
+                        x: centerX - barWidth / 2,
+                        y: size.height - barHeight,
+                        width: barWidth,
+                        height: barHeight
+                    )
+
+                    // Color — interpolate across the bar array
+                    let progress = CGFloat(i) / CGFloat(barCount - 1)
+                    let barColor = interpolateColor(colors: colors, at: progress)
+
+                    let baseOpacity: Double = isPlaying
+                        ? 0.35 + Double(smoothed) * 0.45
+                        : 0.08 + Double(smoothed) * 0.15
+
+                    // Glow pass — soft bloom behind each strip
+                    context.drawLayer { glowCtx in
+                        glowCtx.opacity = baseOpacity * 0.4
+                        glowCtx.addFilter(.blur(radius: 16))
+                        glowCtx.fill(
+                            RoundedRectangle(cornerRadius: barWidth / 2).path(in: barRect.insetBy(dx: -4, dy: 0)),
+                            with: .color(barColor)
+                        )
+                    }
+
+                    // Sharp pass — the visible strip
+                    context.opacity = baseOpacity
+                    context.fill(
+                        RoundedRectangle(cornerRadius: barWidth / 2).path(in: barRect),
+                        with: .color(barColor)
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func interpolateColor(colors: [Color], at progress: CGFloat) -> Color {
+        guard colors.count >= 2 else { return colors.first ?? .white }
+
+        let segment = progress * CGFloat(colors.count - 1)
+        let index = min(Int(segment), colors.count - 2)
+        let localProgress = segment - CGFloat(index)
+
+        let c0 = UIColor(colors[index])
+        let c1 = UIColor(colors[index + 1])
+        var r0: CGFloat = 0, g0: CGFloat = 0, b0: CGFloat = 0, a0: CGFloat = 0
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        c0.getRed(&r0, green: &g0, blue: &b0, alpha: &a0)
+        c1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+
+        return Color(
+            red: Double(r0 * (1 - localProgress) + r1 * localProgress),
+            green: Double(g0 * (1 - localProgress) + g1 * localProgress),
+            blue: Double(b0 * (1 - localProgress) + b1 * localProgress)
+        )
+    }
+}
+
+/* ============================================================
+   MARK: - Old Waveform Visualizer (kept for reference)
+   ============================================================
 
 struct WaveformVisualizer: View {
 
@@ -236,6 +361,8 @@ struct WaveformVisualizer: View {
         }
     }
 }
+
+============================================================ */
 
 #Preview {
     OnboardingContainerView.preview(step: .voice)
