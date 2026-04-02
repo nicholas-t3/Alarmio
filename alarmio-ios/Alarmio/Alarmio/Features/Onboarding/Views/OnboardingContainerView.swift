@@ -22,7 +22,9 @@ enum OnboardingStep: Int, CaseIterable {
     case voice
     case time
     case snooze
-    case permission
+    // case permission
+    case generating
+    case confirmation
 }
 
 struct OnboardingContainerView: View {
@@ -40,9 +42,10 @@ struct OnboardingContainerView: View {
     @State private var isTransitioning = false
     @State private var customBackground: [Color]? = nil
     @State private var starDimmed = false
-    @State private var voiceVisualizerPalette: VisualizerPalette? = nil
+    @State private var voiceVisualizerPalette: VisualizerPalette = .blue
     @State private var voiceVisualizerPlaying = false
     @State private var voiceVisualizerVisible = false
+    @State private var generatingVisible = false
 
     // MARK: - Body
 
@@ -73,13 +76,17 @@ struct OnboardingContainerView: View {
                 .animation(.easeInOut(duration: 0.6), value: colors.map { $0.description })
             }
 
-            // Voice visualizer background — full screen, behind all content
-            if let palette = voiceVisualizerPalette {
-                VoiceVisualizer(palette: palette, isPlaying: voiceVisualizerPlaying)
-                    .opacity(voiceVisualizerVisible ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
-                    .allowsHitTesting(false)
-            }
+            // Voice visualizer background — always in hierarchy, faded via opacity
+            VoiceVisualizer(palette: voiceVisualizerPalette, isPlaying: voiceVisualizerPlaying)
+                .opacity(voiceVisualizerVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
+                .allowsHitTesting(false)
+
+            // Generating background — always in hierarchy, faded via opacity
+            GeneratingBackground()
+                .opacity(generatingVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.5), value: generatingVisible)
+                .allowsHitTesting(false)
 
             // Current phase
             switch manager.phase {
@@ -135,12 +142,23 @@ struct OnboardingContainerView: View {
         .task {
             await manager.startOnboarding()
 
-            // If previewing a specific step, skip splash
-            if let step = previewStep {
+            // DEV: Skip to a specific step on launch. Comment out for production.
+            let devStartStep: OnboardingStep? = .snooze // nil = normal flow
+
+            if let step = devStartStep ?? previewStep {
                 manager.phase = .steps
                 manager.currentStep = step
                 contentVisible = true
                 backVisible = manager.canGoBack
+
+                // Set up backgrounds for specific steps in preview
+                if step == .generating {
+                    generatingVisible = true
+                }
+                if step == .voice {
+                    voiceVisualizerPalette = .blue
+                    voiceVisualizerVisible = true
+                }
             }
         }
     }
@@ -184,8 +202,16 @@ struct OnboardingContainerView: View {
         case .snooze:
             OnboardingSnoozeView(onReadyForButton: { showButton() })
 
-        case .permission:
-            OnboardingPermissionView(onReadyForButton: { showButton() })
+//        case .permission:
+//            OnboardingPermissionView(onReadyForButton: { showButton() })
+
+        case .generating:
+            OnboardingGeneratingView(onComplete: {
+                autoAdvanceFromGenerating()
+            })
+
+        case .confirmation:
+            OnboardingConfirmationView()
         }
     }
 
@@ -258,14 +284,49 @@ struct OnboardingContainerView: View {
                 starDimmed = shouldDim
             }
 
-            // Show/hide voice visualizer background
+            // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
+            withAnimation(.easeInOut(duration: 0.5)) {
+                generatingVisible = manager.currentStep == .generating
+            }
 
             // Show content — the new step's .task handles its own staggered entry
             contentVisible = true
-            backVisible = manager.canGoBack
+
+            // Hide back/button on generating and confirmation
+            let isAutoStep = manager.currentStep == .generating || manager.currentStep == .confirmation
+            backVisible = !isAutoStep && manager.canGoBack
+            if isAutoStep {
+                buttonVisible = false
+            }
 
             isTransitioning = false
+        }
+    }
+
+    private func autoAdvanceFromGenerating() {
+        isTransitioning = true
+        contentVisible = false
+
+        withAnimation(.easeOut(duration: 0.5)) {
+            generatingVisible = false
+        }
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+
+            // Set step directly — bypass canContinue which returns false for .generating
+            manager.currentStep = .confirmation
+            buttonLabel = "Schedule Alarm"
+
+            contentVisible = true
+            backVisible = true
+
+            isTransitioning = false
+
+            // Show the Schedule Alarm button after content fades in
+            try? await Task.sleep(for: .milliseconds(800))
+            buttonVisible = true
         }
     }
 
@@ -286,8 +347,11 @@ struct OnboardingContainerView: View {
             // Wait for blur-out
             try? await Task.sleep(for: .milliseconds(400))
 
-            // Go back (synchronous)
+            // Go back — skip .generating (it's not a user-navigable step)
             manager.goBack()
+            if manager.currentStep == .generating {
+                manager.goBack()
+            }
             buttonLabel = manager.currentStep == .intro ? "Get Started" : "Continue"
 
             // Restore star brightness if back before tone
@@ -295,8 +359,11 @@ struct OnboardingContainerView: View {
                 starDimmed = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
             }
 
-            // Show/hide voice visualizer background
+            // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
+            withAnimation(.easeInOut(duration: 0.5)) {
+                generatingVisible = manager.currentStep == .generating
+            }
 
             // Show content
             contentVisible = true

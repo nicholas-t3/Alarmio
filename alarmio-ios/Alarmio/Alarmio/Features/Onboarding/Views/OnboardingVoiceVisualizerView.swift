@@ -135,7 +135,7 @@ struct OnboardingVoiceView: View {
         .animation(.easeOut(duration: 0.4).delay(0.1), value: contentVisible)
         .onChange(of: selectedIndex) {
             HapticManager.shared.selection()
-            manager.selectVoice(voiceEntries[selectedIndex].persona)
+            manager.configuration.voicePersona = voiceEntries[selectedIndex].persona
             onPaletteChange(voiceEntries[selectedIndex].palette)
 
             if player.isPlaying {
@@ -149,7 +149,7 @@ struct OnboardingVoiceView: View {
             player.stop()
         }
         .task {
-            manager.selectVoice(voiceEntries[selectedIndex].persona)
+            manager.configuration.voicePersona = voiceEntries[selectedIndex].persona
             onPaletteChange(voiceEntries[selectedIndex].palette)
 
             try? await Task.sleep(for: .milliseconds(100))

@@ -34,7 +34,9 @@ final class OnboardingManager {
         case .voice: return configuration.voicePersona != nil
         case .time: return configuration.wakeTime != nil
         case .snooze: return true
-        case .permission: return alarmPermissionGranted
+        // case .permission: return alarmPermissionGranted
+        case .generating: return false
+        case .confirmation: return true
         }
     }
 

@@ -168,7 +168,7 @@ struct OnboardingPermissionView: View {
         }
     }
 }
-
-#Preview {
-    OnboardingContainerView.preview(step: .permission)
-}
+//
+//#Preview {
+//    OnboardingContainerView.preview(step: .permission)
+//}
