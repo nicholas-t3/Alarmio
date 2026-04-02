@@ -60,8 +60,9 @@ enum ContentFlag: String, CaseIterable, Codable, Sendable {
 
 // MARK: - Alarm Configuration
 
-struct AlarmConfiguration: Codable, Sendable {
-    var alarmId: UUID = UUID()
+struct AlarmConfiguration: Codable, Sendable, Identifiable {
+    var id: UUID = UUID()
+    var isEnabled: Bool = true
     var wakeTime: Date?
     var repeatDays: [Int]?
     var leaveTime: Date?

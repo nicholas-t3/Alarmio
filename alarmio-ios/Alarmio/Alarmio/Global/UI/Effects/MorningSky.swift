@@ -12,6 +12,7 @@ struct MorningSky: View {
 
     // MARK: - State
     var starOpacity: Double = 1.0
+    var showConstellations: Bool = true
 
     // MARK: - Body
     var body: some View {
@@ -36,7 +37,7 @@ struct MorningSky: View {
             .ignoresSafeArea()
 
             // Rotating star canvas — masked to fade out toward the sunrise
-            MorningStarCanvas()
+            MorningStarCanvas(showConstellations: showConstellations)
                 .opacity(starOpacity)
                 .mask(starFadeMask)
 
@@ -109,6 +110,9 @@ struct MorningSky: View {
 
 private struct MorningStarCanvas: View {
 
+    // MARK: - Constants
+    var showConstellations: Bool = true
+
     // MARK: - State
     @State private var stars: [MorningFieldStar] = []
     @State private var shootingStars: [MorningShootingStar] = []
@@ -139,7 +143,9 @@ private struct MorningStarCanvas: View {
                         screenSize = size
                         generateStars(size: size)
                         needsGeneration = false
-                        scheduleConstellations()
+                        if showConstellations {
+                            scheduleConstellations()
+                        }
                     }
                     return
                 }
