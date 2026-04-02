@@ -47,7 +47,7 @@ struct OnboardingContainerView: View {
         ZStack {
 
             // Shared night sky background — gradient is unaffected, only stars dim
-            RotatingNightSky(starOpacity: starDimmed ? 0.5 : 1.0)
+            MorningSky(starOpacity: starDimmed ? 0.5 : 1.0)
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
