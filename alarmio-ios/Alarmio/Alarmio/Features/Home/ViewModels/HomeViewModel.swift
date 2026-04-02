@@ -69,16 +69,6 @@ final class HomeViewModel {
                 snoozeCount: 5,
                 snoozeInterval: 5
             ),
-            AlarmConfiguration(
-                isEnabled: true,
-                wakeTime: cal.date(from: DateComponents(hour: 5, minute: 30)),
-                repeatDays: [0, 1, 2, 3, 4, 5, 6],
-                tone: .strict,
-                intensity: .intense,
-                voicePersona: .hardSergeant,
-                snoozeCount: 1,
-                snoozeInterval: 2
-            )
         ]
     }
 }

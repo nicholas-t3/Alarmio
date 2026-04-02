@@ -19,27 +19,35 @@ struct AlarmCardView: View {
     // MARK: - Body
 
     var body: some View {
-        Button {
-            HapticManager.shared.softTap()
-            onEdit()
-        } label: {
-            HStack(alignment: .center, spacing: 16) {
+        VStack(alignment: .leading, spacing: 6) {
 
-                // Alarm info
-                VStack(alignment: .leading, spacing: 6) {
+            // Time row — time left, toggle right
+            HStack(alignment: .center) {
+                if let time = alarm.wakeTime {
+                    Text(time, format: .dateTime.hour().minute())
+                        .font(.system(size: 42, weight: .light, design: .rounded))
+                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 1 : 0.3))
+                        .minimumScaleFactor(0.7)
+                }
 
-                    // Time
-                    if let time = alarm.wakeTime {
-                        Text(time, format: .dateTime.hour().minute())
-                            .font(.system(size: 42, weight: .light, design: .rounded))
-                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 1 : 0.3))
-                            .minimumScaleFactor(0.7)
+                Spacer()
+
+                Toggle("", isOn: $alarm.isEnabled)
+                    .labelsHidden()
+                    .tint(Color(hex: "0a1628"))
+                    .onChange(of: alarm.isEnabled) {
+                        onToggle()
                     }
+            }
+
+            // Detail row — schedule + persona left, edit button right
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
 
                     // Schedule
                     Text(scheduleSummary)
                         .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.5 : 0.2))
+                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.85 : 0.35))
 
                     // Tone + persona
                     if let tone = alarm.tone, let persona = alarm.voicePersona {
@@ -51,26 +59,30 @@ struct AlarmCardView: View {
                                 .font(AppTypography.caption)
                                 .tracking(0.3)
                         }
-                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.3 : 0.15))
+                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.5 : 0.2))
                     }
                 }
 
                 Spacer()
 
-                // Toggle
-                Toggle("", isOn: $alarm.isEnabled)
-                    .labelsHidden()
-                    .tint(Color(hex: "0a1628"))
-                    .onChange(of: alarm.isEnabled) {
-                        onToggle()
-                    }
+                // Edit
+                Button {
+                    HapticManager.shared.softTap()
+                    onEdit()
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .padding(.trailing, -6)
             }
-            .padding(.vertical, 20)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
         .opacity(alarm.isEnabled ? 1.0 : 0.7)
         .animation(.easeOut(duration: 0.3), value: alarm.isEnabled)
     }
