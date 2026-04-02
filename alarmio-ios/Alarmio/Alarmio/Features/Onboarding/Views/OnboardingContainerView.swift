@@ -41,7 +41,7 @@ struct OnboardingContainerView: View {
     @State private var buttonLabel = "Get Started"
     @State private var isTransitioning = false
     @State private var customBackground: [Color]? = nil
-    @State private var starDimmed = false
+    @State private var starOpacity: Double = 1.0
     @State private var voiceVisualizerPalette: VisualizerPalette = .blue
     @State private var voiceVisualizerPlaying = false
     @State private var voiceVisualizerVisible = false
@@ -53,7 +53,7 @@ struct OnboardingContainerView: View {
         ZStack {
 
             // Shared night sky background — gradient is unaffected, only stars dim
-            MorningSky(starOpacity: starDimmed ? 0.5 : 1.0)
+            MorningSky(starOpacity: starOpacity)
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
@@ -143,7 +143,8 @@ struct OnboardingContainerView: View {
             await manager.startOnboarding()
 
             // DEV: Skip to a specific step on launch. Comment out for production.
-            let devStartStep: OnboardingStep? = .snooze // nil = normal flow
+            // let devStartStep: OnboardingStep? = .snooze
+            let devStartStep: OnboardingStep? = nil
 
             if let step = devStartStep ?? previewStep {
                 manager.phase = .steps
@@ -151,13 +152,21 @@ struct OnboardingContainerView: View {
                 contentVisible = true
                 backVisible = manager.canGoBack
 
-                // Set up backgrounds for specific steps in preview
+                // Set up backgrounds/opacity for specific steps in preview
+                starOpacity = starOpacityForStep(step)
                 if step == .generating {
                     generatingVisible = true
                 }
                 if step == .voice {
                     voiceVisualizerPalette = .blue
                     voiceVisualizerVisible = true
+                }
+                if step == .confirmation {
+                    buttonLabel = "Schedule Alarm"
+                    Task {
+                        try? await Task.sleep(for: .seconds(3))
+                        buttonVisible = true
+                    }
                 }
             }
         }
@@ -246,6 +255,14 @@ struct OnboardingContainerView: View {
         buttonVisible = true
     }
 
+    private func starOpacityForStep(_ step: OnboardingStep) -> Double {
+        switch step {
+        case .intro: return 1.0
+        case .confirmation: return 0.35
+        default: return 0.5
+        }
+    }
+
     private func transitionToSteps() {
         HapticManager.shared.softTap()
         splashVisible = false
@@ -278,10 +295,9 @@ struct OnboardingContainerView: View {
             manager.advanceToNextStep()
             buttonLabel = "Continue"
 
-            // Dim stars from the tone screen onward
-            let shouldDim = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
+            // Star opacity per step
             withAnimation(.easeInOut(duration: 0.5)) {
-                starDimmed = shouldDim
+                starOpacity = starOpacityForStep(manager.currentStep)
             }
 
             // Show/hide special backgrounds
@@ -319,13 +335,18 @@ struct OnboardingContainerView: View {
             manager.currentStep = .confirmation
             buttonLabel = "Schedule Alarm"
 
+            // Dim stars heavily for confirmation screen
+            withAnimation(.easeInOut(duration: 0.5)) {
+                starOpacity = 0.2
+            }
+
             contentVisible = true
             backVisible = true
 
             isTransitioning = false
 
-            // Show the Schedule Alarm button after content fades in
-            try? await Task.sleep(for: .milliseconds(800))
+            // Show the Schedule Alarm button after the hero + card sequence (~3s)
+            try? await Task.sleep(for: .seconds(3))
             buttonVisible = true
         }
     }
@@ -354,9 +375,9 @@ struct OnboardingContainerView: View {
             }
             buttonLabel = manager.currentStep == .intro ? "Get Started" : "Continue"
 
-            // Restore star brightness if back before tone
+            // Restore star opacity for the new step
             withAnimation(.easeInOut(duration: 0.5)) {
-                starDimmed = manager.currentStep.rawValue >= OnboardingStep.tone.rawValue
+                starOpacity = starOpacityForStep(manager.currentStep)
             }
 
             // Show/hide special backgrounds
