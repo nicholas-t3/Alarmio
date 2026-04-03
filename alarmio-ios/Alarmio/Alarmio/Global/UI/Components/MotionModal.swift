@@ -231,7 +231,16 @@ struct MotionModal<Content: View>: View {
                 bottomTrailingRadius: 45,
                 topTrailingRadius: 20
             )
-            .fill(Color(hex: "0a1628").opacity(0.5))
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(hex: "060e1c").opacity(0.75),
+                        Color(hex: "111d35").opacity(0.7)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
 
             UnevenRoundedRectangle(
                 topLeadingRadius: 20,

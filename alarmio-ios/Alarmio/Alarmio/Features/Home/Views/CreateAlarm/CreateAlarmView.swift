@@ -224,7 +224,7 @@ struct CreateAlarmView: View {
             // Interval
             if alarm.snoozeCount > 0 {
                 HStack {
-                    Text("Interval")
+                    Text("Minutes")
                         .font(AppTypography.labelSmall)
                         .foregroundStyle(.white.opacity(0.7))
                     Spacer()
@@ -241,10 +241,10 @@ struct CreateAlarmView: View {
                                 .clipShape(Circle())
                         }
 
-                        Text("\(alarm.snoozeInterval)m")
+                        Text("\(alarm.snoozeInterval)")
                             .font(AppTypography.labelLarge)
                             .foregroundStyle(.white)
-                            .frame(width: 40)
+                            .frame(width: 32)
                             .contentTransition(.numericText())
                             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
 

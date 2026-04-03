@@ -142,7 +142,7 @@ struct EditAlarmView: View {
             // Interval
             if editSnoozeCount > 0 {
                 HStack {
-                    Text("Interval")
+                    Text("Minutes")
                         .font(AppTypography.labelSmall)
                         .foregroundStyle(.white.opacity(0.7))
                     Spacer()
@@ -160,10 +160,10 @@ struct EditAlarmView: View {
                                 .clipShape(Circle())
                         }
 
-                        Text("\(editSnoozeInterval)m")
+                        Text("\(editSnoozeInterval)")
                             .font(AppTypography.labelLarge)
                             .foregroundStyle(.white)
-                            .frame(width: 40)
+                            .frame(width: 32)
                             .contentTransition(.numericText())
                             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
 
