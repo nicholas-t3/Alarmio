@@ -21,6 +21,7 @@ struct OnboardingGeneratingView: View {
     // MARK: - Constants
     let onComplete: () -> Void
     let onSunriseProgress: (Double) -> Void
+    let onStarSpinProgress: (Double) -> Void
 
     // MARK: - Body
     var body: some View {
@@ -45,8 +46,10 @@ struct OnboardingGeneratingView: View {
                 let messageHold: Double = 3.0
                 let totalDuration = messageHold * Double(messages.count)
 
-                // Kick off sunrise immediately — fast ramp to 0.5 in 2s, then ease to 1.0
-                onSunriseProgress(0.15)
+                // Star spin ramps up fast independently
+                animateStarSpin()
+
+                // Sunrise glow ramps smoothly over the full duration
                 animateSunrise(duration: totalDuration)
 
                 // Cycle personalized messages
@@ -72,30 +75,36 @@ struct OnboardingGeneratingView: View {
 
     // MARK: - Private Methods
 
+    private func animateStarSpin() {
+        Task { @MainActor in
+            // Ramp to full spin in 2 seconds
+            let steps = 30
+            let duration = 2.0
+            let interval = duration / Double(steps)
+
+            for i in 1...steps {
+                guard !isComplete else { break }
+                try? await Task.sleep(for: .seconds(interval))
+                let p = Double(i) / Double(steps)
+                // Ease-out — fast start
+                let eased = 1.0 - (1.0 - p) * (1.0 - p)
+                onStarSpinProgress(eased)
+            }
+        }
+    }
+
     private func animateSunrise(duration: Double) {
         Task { @MainActor in
-            // Fast ramp: 0 → 0.5 in 1.5s, then slow cruise to 1.0
-            let fastPhase = 1.5
-            let fastSteps = 20
-            let fastInterval = fastPhase / Double(fastSteps)
+            let steps = 60
+            let interval = duration / Double(steps)
 
-            for i in 1...fastSteps {
+            for i in 1...steps {
                 guard !isComplete else { break }
-                try? await Task.sleep(for: .seconds(fastInterval))
-                let p = Double(i) / Double(fastSteps)
-                onSunriseProgress(0.15 + p * 0.35)
-            }
-
-            // Slow cruise from 0.5 → 1.0 over remaining time
-            let slowPhase = duration - fastPhase
-            let slowSteps = 40
-            let slowInterval = slowPhase / Double(slowSteps)
-
-            for i in 1...slowSteps {
-                guard !isComplete else { break }
-                try? await Task.sleep(for: .seconds(slowInterval))
-                let p = Double(i) / Double(slowSteps)
-                onSunriseProgress(0.5 + p * 0.5)
+                try? await Task.sleep(for: .seconds(interval))
+                let progress = Double(i) / Double(steps)
+                // Smooth ease-in-out — steady build, no jarring jumps
+                let eased = progress * progress * (3.0 - 2.0 * progress)
+                onSunriseProgress(eased)
             }
         }
     }
@@ -185,7 +194,7 @@ struct OnboardingGeneratingView: View {
 
 #Preview("Sunrise — Mid Glow") {
     ZStack {
-        MorningSky(starOpacity: 0.3, sunriseProgress: 0.6)
+        MorningSky(starOpacity: 0.3, sunriseProgress: 0.6, starSpinProgress: 1.0)
         Text("Calling the drill sergeant")
             .font(AppTypography.bodyMedium)
             .foregroundStyle(.white)
@@ -195,7 +204,7 @@ struct OnboardingGeneratingView: View {
 
 #Preview("Sunrise — Full Glow") {
     ZStack {
-        MorningSky(starOpacity: 0.15, sunriseProgress: 1.0)
+        MorningSky(starOpacity: 0.15, sunriseProgress: 0.7, starSpinProgress: 1.0)
         Text("Almost ready")
             .font(AppTypography.bodyMedium)
             .foregroundStyle(.white)

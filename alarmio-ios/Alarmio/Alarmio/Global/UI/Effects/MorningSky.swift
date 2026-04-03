@@ -39,6 +39,8 @@ struct MorningSky: View {
 
     /// 0 = default pre-dawn glow, 1 = full sunrise (brighter, warmer, stars washed out)
     var sunriseProgress: Double = 0
+    /// 0 = normal rotation, 1 = full speed spin + trails (independent of sunrise)
+    var starSpinProgress: Double = 0
 
     // MARK: - Body
     var body: some View {
@@ -65,73 +67,76 @@ struct MorningSky: View {
             )
             .ignoresSafeArea()
 
-            // Rotating star canvas — masked to fade out toward the sunrise
-            // Stars dim as sunrise intensifies
-            MorningStarCanvas(showConstellations: showConstellations, shootingStarFrequency: shootingStarFrequency)
-                .opacity(starOpacity * (1.0 - glow * 0.6))
+            // Rotating star canvas — spin and trails driven by starSpinProgress
+            MorningStarCanvas(
+                showConstellations: showConstellations,
+                shootingStarFrequency: starSpinProgress > 0.05 ? .intense : shootingStarFrequency,
+                rotationSpeedMultiplier: 1.0 + starSpinProgress * 14.0,
+                trailProgress: starSpinProgress
+            )
+                .opacity(starOpacity * (1.0 + starSpinProgress * 0.5))
                 .mask(starFadeMask)
 
             // Sunrise glow layers — intensity scales with sunriseProgress
             GeometryReader { geometry in
                 let h = geometry.size.height
-                let glowScale = 1.0 + glow * 1.2
 
                 // Core glow — deep orange/amber from the horizon
                 RadialGradient(
                     stops: [
-                        .init(color: Color(hex: "CC6A20").opacity((0.55 + glow * 0.35) * min(glowScale, 1.5)), location: 0),
-                        .init(color: Color(hex: "B0503A").opacity((0.40 + glow * 0.30) * min(glowScale, 1.3)), location: 0.25),
-                        .init(color: Color(hex: "7A3050").opacity((0.25 + glow * 0.20) * min(glowScale, 1.2)), location: 0.50),
+                        .init(color: Color(hex: "CC6A20").opacity(0.55 + glow * 0.20), location: 0),
+                        .init(color: Color(hex: "B0503A").opacity(0.40 + glow * 0.15), location: 0.25),
+                        .init(color: Color(hex: "7A3050").opacity(0.25 + glow * 0.12), location: 0.50),
                         .init(color: .clear, location: 1.0)
                     ],
-                    center: .init(x: 0.5, y: 1.05 - glow * 0.15),
+                    center: .init(x: 0.5, y: 1.05 - glow * 0.12),
                     startRadius: 0,
-                    endRadius: h * (0.55 + glow * 0.25)
+                    endRadius: h * (0.55 + glow * 0.20)
                 )
                 .ignoresSafeArea()
 
-                // Warm peach haze — broader, softer wash
+                // Warm peach haze
                 RadialGradient(
                     stops: [
-                        .init(color: Color(hex: "E8976B").opacity(0.20 + glow * 0.25), location: 0),
-                        .init(color: Color(hex: "D4755A").opacity(0.12 + glow * 0.18), location: 0.35),
+                        .init(color: Color(hex: "E8976B").opacity(0.20 + glow * 0.15), location: 0),
+                        .init(color: Color(hex: "D4755A").opacity(0.12 + glow * 0.10), location: 0.35),
                         .init(color: .clear, location: 1.0)
                     ],
-                    center: .init(x: 0.5, y: 1.15 - glow * 0.20),
+                    center: .init(x: 0.5, y: 1.15 - glow * 0.15),
                     startRadius: 0,
-                    endRadius: h * (0.70 + glow * 0.20)
+                    endRadius: h * (0.70 + glow * 0.15)
                 )
                 .ignoresSafeArea()
 
-                // Subtle amber rim right at the horizon
+                // Amber wash — subtle fill from bottom
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.80 - glow * 0.15),
-                        .init(color: Color(hex: "D4854A").opacity(0.15 + glow * 0.20), location: 0.92 - glow * 0.10),
-                        .init(color: Color(hex: "E8A060").opacity(0.25 + glow * 0.30), location: 1.0)
+                        .init(color: .clear, location: max(0.45, 0.80 - glow * 0.20)),
+                        .init(color: Color(hex: "D4854A").opacity(0.15 + glow * 0.15), location: max(0.55, 0.92 - glow * 0.15)),
+                        .init(color: Color(hex: "E8A060").opacity(0.25 + glow * 0.20), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
 
-                // Golden light wash — only visible during active sunrise
-                if glow > 0.1 {
+                // Golden light wash
+                if glow > 0.2 {
                     RadialGradient(
                         stops: [
-                            .init(color: Color(hex: "FFD4A0").opacity(glow * 0.15), location: 0),
-                            .init(color: Color(hex: "FFAA60").opacity(glow * 0.08), location: 0.4),
+                            .init(color: Color(hex: "FFD4A0").opacity(glow * 0.12), location: 0),
+                            .init(color: Color(hex: "FFAA60").opacity(glow * 0.06), location: 0.4),
                             .init(color: .clear, location: 1.0)
                         ],
-                        center: .init(x: 0.5, y: 0.85 - glow * 0.15),
+                        center: .init(x: 0.5, y: 0.90 - glow * 0.12),
                         startRadius: 0,
-                        endRadius: h * 0.50
+                        endRadius: h * (0.45 + glow * 0.15)
                     )
                     .ignoresSafeArea()
                 }
 
                 // Sunburst rays — light shafts radiating upward from horizon
-                if glow > 0.15 {
+                if glow > 0.03 {
                     SunburstRays(progress: glow)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .ignoresSafeArea()
@@ -170,45 +175,11 @@ private struct SunburstRays: View {
     @State private var startTime: Date = .now
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let elapsed = timeline.date.timeIntervalSince(startTime)
 
             Canvas { context, size in
-                let cx = size.width * 0.5
-                let originY = size.height * 1.02
-
-                var ac = context
-                ac.blendMode = .plusLighter
-
-                for ray in rays {
-                    // Slow shimmer per ray
-                    let shimmer = sin(elapsed * ray.speed + ray.phase) * 0.5 + 0.5
-                    let alpha = progress * ray.baseAlpha * (0.5 + shimmer * 0.5)
-                    guard alpha > 0.01 else { continue }
-
-                    let angle = ray.angle
-                    let length = size.height * (0.4 + progress * 0.35) * ray.lengthScale
-
-                    let tipX = cx + cos(angle) * length
-                    let tipY = originY + sin(angle) * length
-
-                    var path = Path()
-                    path.move(to: CGPoint(x: cx - ray.baseWidth * 0.5, y: originY))
-                    path.addLine(to: CGPoint(x: tipX, y: tipY))
-                    path.addLine(to: CGPoint(x: cx + ray.baseWidth * 0.5, y: originY))
-                    path.closeSubpath()
-
-                    ac.opacity = alpha
-                    ac.fill(path, with: .linearGradient(
-                        Gradient(colors: [
-                            ray.color.opacity(0.8),
-                            ray.color.opacity(0.2),
-                            .clear
-                        ]),
-                        startPoint: CGPoint(x: cx, y: originY),
-                        endPoint: CGPoint(x: tipX, y: tipY)
-                    ))
-                }
+                drawRays(context: &context, size: size, elapsed: elapsed)
             }
         }
         .onAppear {
@@ -217,31 +188,79 @@ private struct SunburstRays: View {
         }
     }
 
-    private func generateRays() {
-        let colors: [Color] = [
-            Color(hex: "FFCC80"),
-            Color(hex: "FFB860"),
-            Color(hex: "FFD4A0"),
-            Color(hex: "FFE0B0"),
-            Color(hex: "FFA050"),
-        ]
+    // MARK: - Private Methods
 
-        // Fan of rays pointing upward from bottom center
-        // Angles from -150° to -30° (upward arc)
-        let rayCount = 14
+    private func drawRays(context: inout GraphicsContext, size: CGSize, elapsed: Double) {
+        let cx = size.width * 0.5
+        let originY = size.height + 20
+        let p = progress
+
+        var ac = context
+        ac.blendMode = .plusLighter
+
+        for ray in rays {
+            drawAngledBeam(context: &ac, ray: ray, cx: cx, originY: originY, size: size, elapsed: elapsed, p: p)
+        }
+    }
+
+    private func drawAngledBeam(context: inout GraphicsContext, ray: SunburstRay, cx: CGFloat, originY: CGFloat, size: CGSize, elapsed: Double, p: Double) {
+        let wave = sin(elapsed * ray.speed + ray.phase)
+        let pulse = (wave * 0.5 + 0.5)
+        let alpha = p * ray.brightness * (0.3 + pulse * 0.7)
+        guard alpha > 0.01 else { return }
+
+        let sway = sin(elapsed * ray.swaySpeed + ray.phase) * ray.swayAmount
+        let angle = ray.angle + sway
+        let length = size.height * ray.lengthScale * (0.3 + p * 0.15)
+
+        let cosA = cos(angle)
+        let sinA = sin(angle)
+        let endX = cx + cosA * length
+        let endY = originY + sinA * length
+
+        // Wide dim glow
+        drawBeamLine(context: &context, x1: cx, y1: originY, x2: endX, y2: endY, width: ray.width * size.width * 6, color: ray.dimColor, opacity: alpha * 0.15)
+
+        // Mid glow
+        drawBeamLine(context: &context, x1: cx, y1: originY, x2: endX, y2: endY, width: ray.width * size.width * 2.5, color: ray.coreColor, opacity: alpha * 0.3)
+
+        // Bright core
+        drawBeamLine(context: &context, x1: cx, y1: originY, x2: endX, y2: endY, width: max(ray.width * size.width * 0.6, 1.5), color: ray.brightColor, opacity: alpha * 0.6)
+    }
+
+    private func drawBeamLine(context: inout GraphicsContext, x1: CGFloat, y1: CGFloat, x2: CGFloat, y2: CGFloat, width: CGFloat, color: Color, opacity: Double) {
+        var path = Path()
+        path.move(to: CGPoint(x: x1, y: y1))
+        path.addLine(to: CGPoint(x: x2, y: y2))
+
+        context.opacity = opacity
+        context.stroke(path, with: .linearGradient(
+            Gradient(colors: [color, color.opacity(0.3), .clear]),
+            startPoint: CGPoint(x: x1, y: y1),
+            endPoint: CGPoint(x: x2, y: y2)
+        ), lineWidth: width)
+    }
+
+    private func generateRays() {
+        let rayCount = 12
         rays = (0..<rayCount).map { i in
             let base = Double(i) / Double(rayCount - 1)
+            // Fan upward from bottom center: -150° to -30°
             let spreadAngle = -Double.pi * (5.0 / 6.0) + base * Double.pi * (4.0 / 6.0)
-            let jitter = Double.random(in: -0.04...0.04)
+            let jitter = Double.random(in: -0.05...0.05)
 
             return SunburstRay(
                 angle: spreadAngle + jitter,
-                baseWidth: CGFloat.random(in: 4...12),
-                lengthScale: Double.random(in: 0.7...1.0),
-                baseAlpha: Double.random(in: 0.06...0.14),
-                speed: Double.random(in: 0.3...0.8),
+                width: CGFloat.random(in: 0.003...0.015),
+                lengthScale: Double.random(in: 0.5...0.9),
+                brightness: Double.random(in: 0.15...0.5),
+                speed: Double.random(in: 0.3...1.0),
                 phase: Double.random(in: 0...(.pi * 2)),
-                color: colors.randomElement()!
+                swayAmount: Double.random(in: 0.01...0.04),
+                swaySpeed: Double.random(in: 0.15...0.5),
+                coreColor: [Color(hex: "FFCC80"), Color(hex: "FFB860"), Color(hex: "FFA050")].randomElement()!,
+                brightColor: [Color(hex: "FFE0B0"), Color(hex: "FFD4A0"), Color(hex: "FFFAF0")].randomElement()!,
+                dimColor: [Color(hex: "CC6A20"), Color(hex: "B0503A"), Color(hex: "DF9A1B")].randomElement()!
             )
         }
     }
@@ -249,12 +268,16 @@ private struct SunburstRays: View {
 
 private struct SunburstRay {
     let angle: Double
-    let baseWidth: CGFloat
+    let width: CGFloat
     let lengthScale: Double
-    let baseAlpha: Double
+    let brightness: Double
     let speed: Double
     let phase: Double
-    let color: Color
+    let swayAmount: Double
+    let swaySpeed: Double
+    let coreColor: Color
+    let brightColor: Color
+    let dimColor: Color
 }
 
 // MARK: - Morning Star Canvas
@@ -264,6 +287,9 @@ private struct MorningStarCanvas: View {
     // MARK: - Constants
     var showConstellations: Bool = true
     var shootingStarFrequency: ShootingStarFrequency = .sparse
+    var rotationSpeedMultiplier: Double = 1.0
+    /// 0 = dots only, 1 = full long-exposure trails
+    var trailProgress: Double = 0
 
     // MARK: - State
     @State private var stars: [MorningFieldStar] = []
@@ -272,9 +298,11 @@ private struct MorningStarCanvas: View {
     @State private var startTime: Date = .now
     @State private var needsGeneration = true
     @State private var screenSize: CGSize = .zero
+    @State private var accumulatedAngle: Double = 0
+    @State private var lastFrameTime: Date? = nil
 
     // MARK: - Constants
-    private let rotationPeriod: Double = 600
+    private let baseRotationPeriod: Double = 600
     private let starCount = 1800
     private let clusterRadius: CGFloat = 120
     private let constellationStarRange = 4...7
@@ -285,9 +313,24 @@ private struct MorningStarCanvas: View {
             let now = timeline.date.timeIntervalSinceReferenceDate
             let elapsed = timeline.date.timeIntervalSince(startTime)
 
-            let angle = elapsed / rotationPeriod * 2 * .pi
-            let cosA = cos(angle)
-            let sinA = sin(angle)
+            // Accumulate angle smoothly — speed changes don't cause jumps
+            let currentTime = timeline.date
+            let frameAngle: Double = {
+                let dt: Double
+                if let last = lastFrameTime {
+                    dt = min(currentTime.timeIntervalSince(last), 0.1)
+                } else {
+                    dt = 0
+                }
+                let vel = (2 * .pi / baseRotationPeriod) * rotationSpeedMultiplier
+                return accumulatedAngle + vel * dt
+            }()
+            let cosA = cos(frameAngle)
+            let sinA = sin(frameAngle)
+
+            // Trail: compute a previous angle to draw arcs from
+            let trailAngleSpan = trailProgress * 0.06
+            let trailSteps = trailProgress > 0.01 ? 6 : 0
 
             Canvas { context, size in
                 if needsGeneration {
@@ -308,12 +351,12 @@ private struct MorningStarCanvas: View {
                 let cx = w / 2
                 let cy = h / 2
 
-                // Rotating star field
+                // Rotating star field with long-exposure trails
                 for star in stars {
                     let rx = cx + star.dx * cosA - star.dy * sinA
                     let ry = cy + star.dx * sinA + star.dy * cosA
 
-                    guard rx > -5 && rx < w + 5 && ry > -5 && ry < h + 5 else { continue }
+                    guard rx > -20 && rx < w + 20 && ry > -20 && ry < h + 20 else { continue }
 
                     let slowWave = sin(now * star.speed + star.phase)
                     var brightness = star.baseOpacity + (slowWave + 1) / 2 * star.twinkleRange
@@ -326,6 +369,34 @@ private struct MorningStarCanvas: View {
                             : 1.0
                         let boost = boostIn * boostOut
                         brightness = min(1.0, brightness + 0.35 * boost)
+                    }
+
+                    // Long-exposure trail — arc behind the star's rotation path
+                    if trailSteps > 0 && brightness > 0.15 {
+                        var trail = Path()
+                        trail.move(to: CGPoint(x: rx, y: ry))
+
+                        for step in 1...trailSteps {
+                            let t = Double(step) / Double(trailSteps)
+                            let pastAngle = frameAngle - trailAngleSpan * t
+                            let pastCos = cos(pastAngle)
+                            let pastSin = sin(pastAngle)
+                            let px = cx + star.dx * pastCos - star.dy * pastSin
+                            let py = cy + star.dx * pastSin + star.dy * pastCos
+                            trail.addLine(to: CGPoint(x: px, y: py))
+                        }
+
+                        let trailAlpha = fadeIn * brightness * trailProgress * 0.5
+                        context.opacity = trailAlpha
+                        context.stroke(
+                            trail,
+                            with: .linearGradient(
+                                Gradient(colors: [star.color.opacity(0.6), .clear]),
+                                startPoint: CGPoint(x: rx, y: ry),
+                                endPoint: trail.currentPoint ?? CGPoint(x: rx, y: ry)
+                            ),
+                            lineWidth: star.radius * (1.0 + trailProgress * 1.5)
+                        )
                     }
 
                     let flareWave = sin(now * star.flareSpeed + star.flarePhase)
@@ -445,10 +516,20 @@ private struct MorningStarCanvas: View {
                     context.fill(Circle().path(in: headRect), with: .color(.white))
                 }
             }
+            .onChange(of: timeline.date) {
+                let ct = timeline.date
+                if let last = lastFrameTime {
+                    let dt = min(ct.timeIntervalSince(last), 0.1)
+                    let vel = (2 * .pi / baseRotationPeriod) * rotationSpeedMultiplier
+                    accumulatedAngle += vel * dt
+                }
+                lastFrameTime = ct
+            }
         }
         .ignoresSafeArea()
         .onAppear {
             startTime = .now
+            lastFrameTime = .now
             scheduleShootingStars()
         }
     }
@@ -625,10 +706,8 @@ private struct MorningStarCanvas: View {
                 activeConstellations.removeAll { currentElapsed - $0.appearTime > $0.lifetime + 2 }
 
                 if activeConstellations.count < 2 {
-                    let elapsed = Date.now.timeIntervalSince(startTime)
-                    let angle = elapsed / rotationPeriod * 2 * .pi
-                    let cosA = cos(angle)
-                    let sinA = sin(angle)
+                    let cosA = cos(accumulatedAngle)
+                    let sinA = sin(accumulatedAngle)
 
                     if let constellation = findConstellation(cosA: cosA, sinA: sinA) {
                         activeConstellations.append(constellation)
