@@ -100,23 +100,19 @@ struct OnboardingVoiceView: View {
                                 HapticManager.shared.buttonTap()
                                 togglePreview(for: index)
                             } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: player.isPlaying && selectedIndex == index ? "stop.fill" : "play.fill")
-                                        .font(.system(size: 14))
-                                        .contentTransition(.symbolEffect(.replace))
-
-                                    Text(player.isPlaying && selectedIndex == index ? "Stop" : "Preview")
-                                        .font(AppTypography.labelMedium)
-                                }
-                                .foregroundStyle(.white)
-                                .frame(height: 40)
-                                .frame(width: 130)
-                                .background(.white.opacity(0.15))
-                                .clipShape(Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
-                                )
+                                Text(player.isPlaying && selectedIndex == index ? "Stop" : "Preview")
+                                    .font(AppTypography.labelMedium)
+                                    .foregroundStyle(.white)
+                                    .contentTransition(.numericText())
+                                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: player.isPlaying)
+                                    .frame(height: 40)
+                                    .frame(width: 130)
+                                    .background(.white.opacity(0.15))
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+                                    )
                             }
                         }
                         .padding(.horizontal, AppSpacing.screenHorizontal)

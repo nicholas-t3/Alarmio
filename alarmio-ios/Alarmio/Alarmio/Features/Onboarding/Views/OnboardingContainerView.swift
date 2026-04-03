@@ -82,6 +82,19 @@ struct OnboardingContainerView: View {
                 .opacity(voiceVisualizerVisible ? 1 : 0)
                 .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
                 .allowsHitTesting(false)
+                .overlay(alignment: .top) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(hex: "020810"), location: 0),
+                            .init(color: Color(hex: "020810").opacity(0.8), location: 0.4),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 180)
+                    .allowsHitTesting(false)
+                }
 
             // Generating background — always in hierarchy, faded via opacity
             GeneratingBackground()
@@ -283,6 +296,21 @@ struct OnboardingContainerView: View {
         }
     }
 
+    private func transitionToHome() {
+        isTransitioning = true
+        HapticManager.shared.success()
+
+        // Blur out everything
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            showHome = true
+        }
+    }
+
     private func transitionToSteps() {
         HapticManager.shared.softTap()
         splashVisible = false
@@ -296,6 +324,12 @@ struct OnboardingContainerView: View {
     }
 
     private func navigateForward() {
+        // On confirmation step, transition to home
+        if manager.currentStep == .confirmation {
+            transitionToHome()
+            return
+        }
+
         isTransitioning = true
 
         // Blur out content + button + back + backgrounds
