@@ -75,4 +75,7 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable {
     var customPrompt: String?
     var difficulty: AlarmDifficulty?
     var whyContext: WhyContext?
+
+    /// Filename in Library/Sounds/ for this alarm's custom audio. Nil = use default.
+    var soundFileName: String?
 }

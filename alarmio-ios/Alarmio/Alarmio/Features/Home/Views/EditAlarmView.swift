@@ -6,6 +6,7 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
+import AVFoundation
 import SwiftUI
 
 struct EditAlarmView: View {
@@ -13,23 +14,31 @@ struct EditAlarmView: View {
     // MARK: - Environment
 
     @Environment(\.deviceInfo) private var deviceInfo
+    @Environment(\.alarmStore) private var alarmStore
+
+    // MARK: - Constants
+
+    let alarm: AlarmConfiguration
+    let onSave: (AlarmConfiguration) -> Void
+    var onDelete: (() -> Void)?
 
     // MARK: - State
 
-    @Binding var alarm: AlarmConfiguration
-    let onSave: () -> Void
     @State private var editDays: Set<Int> = []
     @State private var editTime: Date = Date()
     @State private var editSnoozeCount: Int = 3
     @State private var editSnoozeInterval: Int = 5
+    @State private var audioPlayer: AVAudioPlayer?
+    @State private var isPreviewPlaying = false
 
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
 
-            // Time picker
-            timeSection
+                // Time picker
+                timeSection
 
             // Day picker
             daySection
@@ -42,9 +51,26 @@ struct EditAlarmView: View {
             // Action buttons
             actionButtons
                 .padding(.bottom, 8)
+            }
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .padding(.vertical, 20)
+
+            // Delete button — floats at top-right, level with drag handle
+            if onDelete != nil {
+                Button {
+                    HapticManager.shared.warning()
+                    onDelete?()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.red.opacity(0.6))
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .padding(.top, -8)
+                .padding(.trailing, 8)
+            }
         }
-        .padding(.horizontal, AppSpacing.screenHorizontal)
-        .padding(.vertical, 20)
         .onAppear {
             editTime = alarm.wakeTime ?? Date()
             editDays = Set(alarm.repeatDays ?? [])
@@ -66,9 +92,6 @@ struct EditAlarmView: View {
                 .datePickerStyle(.wheel)
                 .labelsHidden()
                 .colorScheme(.dark)
-                .onChange(of: editTime) { _, newTime in
-                    alarm.wakeTime = newTime
-                }
         }
     }
 
@@ -80,9 +103,6 @@ struct EditAlarmView: View {
                 .foregroundStyle(.white.opacity(0.4))
 
             DayPicker(selectedDays: $editDays)
-                .onChange(of: editDays) { _, newDays in
-                    alarm.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
-                }
 
             Text(scheduleSummary)
                 .font(AppTypography.bodySmall)
@@ -107,7 +127,6 @@ struct EditAlarmView: View {
                     Button {
                         HapticManager.shared.selection()
                         editSnoozeCount = max(0, editSnoozeCount - 1)
-                        alarm.snoozeCount = editSnoozeCount
                     } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 14, weight: .medium))
@@ -127,7 +146,6 @@ struct EditAlarmView: View {
                     Button {
                         HapticManager.shared.selection()
                         editSnoozeCount = min(10, editSnoozeCount + 1)
-                        alarm.snoozeCount = editSnoozeCount
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 14, weight: .medium))
@@ -139,7 +157,7 @@ struct EditAlarmView: View {
                 }
             }
 
-            // Interval
+            // Minutes
             if editSnoozeCount > 0 {
                 HStack {
                     Text("Minutes")
@@ -150,7 +168,6 @@ struct EditAlarmView: View {
                         Button {
                             HapticManager.shared.selection()
                             editSnoozeInterval = max(1, editSnoozeInterval - 1)
-                            alarm.snoozeInterval = editSnoozeInterval
                         } label: {
                             Image(systemName: "minus")
                                 .font(.system(size: 14, weight: .medium))
@@ -170,7 +187,6 @@ struct EditAlarmView: View {
                         Button {
                             HapticManager.shared.selection()
                             editSnoozeInterval = min(15, editSnoozeInterval + 1)
-                            alarm.snoozeInterval = editSnoozeInterval
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 14, weight: .medium))
@@ -193,12 +209,13 @@ struct EditAlarmView: View {
             // Preview
             Button {
                 HapticManager.shared.softTap()
-                // TODO: Play audio preview
+                togglePreview()
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
+                    Image(systemName: isPreviewPlaying ? "stop.fill" : "play.fill")
                         .font(.system(size: 14))
-                    Text("Preview")
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(isPreviewPlaying ? "Stop" : "Preview")
                         .font(.system(size: 15, weight: .semibold))
                         .tracking(0.3)
                 }
@@ -212,7 +229,12 @@ struct EditAlarmView: View {
             // Save
             Button {
                 HapticManager.shared.success()
-                onSave()
+                var updated = alarm
+                updated.wakeTime = editTime
+                updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
+                updated.snoozeCount = editSnoozeCount
+                updated.snoozeInterval = editSnoozeInterval
+                onSave(updated)
             } label: {
                 Text("Save")
             }
@@ -221,6 +243,48 @@ struct EditAlarmView: View {
     }
 
     // MARK: - Private Methods
+
+    private func togglePreview() {
+        if isPreviewPlaying {
+            audioPlayer?.stop()
+            isPreviewPlaying = false
+            return
+        }
+
+        let audioManager = alarmStore.audioFileManager
+
+        // Only preview if this alarm has a custom sound file
+        guard audioManager.hasCustomSound(for: alarm.id) || alarm.soundFileName != nil else {
+            // No custom sound — this alarm uses the system default, nothing to preview
+            HapticManager.shared.warning()
+            return
+        }
+
+        let soundName = audioManager.soundFileName(for: alarm.id, configured: alarm.soundFileName)
+        let soundsDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Sounds")
+        let fileURL = soundsDir.appendingPathComponent(soundName)
+
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, options: .duckOthers)
+            try AVAudioSession.sharedInstance().setActive(true)
+            let player = try AVAudioPlayer(contentsOf: fileURL)
+            player.play()
+            audioPlayer = player
+            isPreviewPlaying = true
+
+            Task {
+                try? await Task.sleep(for: .seconds(player.duration + 0.1))
+                if isPreviewPlaying {
+                    isPreviewPlaying = false
+                }
+            }
+        } catch {
+            print("[EditAlarmView] Playback error: \(error)")
+        }
+    }
 
     private var scheduleSummary: String {
         if editDays.isEmpty {
@@ -242,22 +306,24 @@ struct EditAlarmView: View {
 #Preview("Edit Alarm Modal") {
     struct PreviewContainer: View {
         @State private var showEdit = true
-        @State private var alarm = AlarmConfiguration(
-            isEnabled: true,
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
-            repeatDays: [1, 2, 3, 4, 5],
-            tone: .calm,
-            voicePersona: .calmGuide,
-            snoozeCount: 3,
-            snoozeInterval: 5
-        )
 
         var body: some View {
             ZStack {
                 MorningSky(starOpacity: 0.8, showConstellations: false)
 
                 MotionModal(isPresented: $showEdit, dismissible: true) {
-                    EditAlarmView(alarm: $alarm, onSave: { showEdit = false })
+                    EditAlarmView(
+                        alarm: AlarmConfiguration(
+                            isEnabled: true,
+                            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
+                            repeatDays: [1, 2, 3, 4, 5],
+                            tone: .calm,
+                            voicePersona: .calmGuide,
+                            snoozeCount: 3,
+                            snoozeInterval: 5
+                        ),
+                        onSave: { _ in showEdit = false }
+                    )
                 }
             }
         }
@@ -269,11 +335,14 @@ struct EditAlarmView: View {
 #Preview("Edit Alarm Content") {
     ZStack {
         Color(hex: "050505").ignoresSafeArea()
-        EditAlarmView(alarm: .constant(AlarmConfiguration(
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
-            repeatDays: [1, 2, 3, 4, 5],
-            snoozeCount: 2,
-            snoozeInterval: 10
-        )), onSave: {})
+        EditAlarmView(
+            alarm: AlarmConfiguration(
+                wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
+                repeatDays: [1, 2, 3, 4, 5],
+                snoozeCount: 2,
+                snoozeInterval: 10
+            ),
+            onSave: { _ in }
+        )
     }
 }

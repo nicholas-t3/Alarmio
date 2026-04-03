@@ -10,9 +10,9 @@ import SwiftUI
 
 struct AlarmCardView: View {
 
-    // MARK: - State
+    // MARK: - Constants
 
-    @Binding var alarm: AlarmConfiguration
+    let alarm: AlarmConfiguration
     let onToggle: () -> Void
     let onEdit: () -> Void
 
@@ -32,11 +32,14 @@ struct AlarmCardView: View {
 
                 Spacer()
 
-                Toggle("", isOn: $alarm.isEnabled)
+                // Toggle — visual only, tap fires callback
+                Toggle("", isOn: .constant(alarm.isEnabled))
                     .labelsHidden()
                     .tint(Color(hex: "0a1628"))
-                    .onChange(of: alarm.isEnabled) {
-                        onToggle()
+                    .allowsHitTesting(false)
+                    .overlay {
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { onToggle() }
                     }
             }
 
@@ -67,7 +70,6 @@ struct AlarmCardView: View {
 
                 // Edit
                 Button {
-                    HapticManager.shared.softTap()
                     onEdit()
                 } label: {
                     Image(systemName: "slider.horizontal.3")
@@ -139,13 +141,13 @@ struct AlarmCardView: View {
         MorningSky(starOpacity: 0.35)
 
         AlarmCardView(
-            alarm: .constant(AlarmConfiguration(
+            alarm: AlarmConfiguration(
                 isEnabled: true,
                 wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
                 repeatDays: [1, 2, 3, 4, 5],
                 tone: .calm,
                 voicePersona: .calmGuide
-            )),
+            ),
             onToggle: {},
             onEdit: {}
         )
@@ -158,13 +160,13 @@ struct AlarmCardView: View {
         MorningSky(starOpacity: 0.35)
 
         AlarmCardView(
-            alarm: .constant(AlarmConfiguration(
+            alarm: AlarmConfiguration(
                 isEnabled: false,
                 wakeTime: Calendar.current.date(from: DateComponents(hour: 9, minute: 0)),
                 repeatDays: [0, 6],
                 tone: .fun,
                 voicePersona: .playful
-            )),
+            ),
             onToggle: {},
             onEdit: {}
         )

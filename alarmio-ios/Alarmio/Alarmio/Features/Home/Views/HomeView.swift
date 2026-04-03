@@ -14,16 +14,42 @@ struct HomeView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.deviceInfo) private var deviceInfo
+    @Environment(\.alarmStore) private var alarmStore
 
     // MARK: - State
 
-    @State private var viewModel = HomeViewModel()
     @State private var contentVisible = false
     @State private var fabVisible = false
     @State private var glowPulse = false
     @State private var showCreateAlarm = false
     @State private var showSettings = false
-    @State private var editingAlarmIndex: Int?
+    @State private var editingAlarmId: UUID?
+    @State private var showEditModal = false
+
+    // MARK: - Constants
+
+    private let demoAlarms: [AlarmConfiguration] = [
+        AlarmConfiguration(
+            isEnabled: true,
+            wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
+            repeatDays: [1, 2, 3, 4, 5],
+            tone: .calm,
+            intensity: .gentle,
+            voicePersona: .calmGuide,
+            snoozeCount: 3,
+            snoozeInterval: 5
+        ),
+        AlarmConfiguration(
+            isEnabled: false,
+            wakeTime: Calendar.current.date(from: DateComponents(hour: 9, minute: 0)),
+            repeatDays: [0, 6],
+            tone: .fun,
+            intensity: .balanced,
+            voicePersona: .playful,
+            snoozeCount: 5,
+            snoozeInterval: 5
+        )
+    ]
 
     // MARK: - Body
 
@@ -40,13 +66,8 @@ struct HomeView: View {
                 headerBar
                     .premiumBlur(isVisible: contentVisible, delay: 0, duration: 0.4)
 
-                // Alarm list or empty state
-                if viewModel.alarms.isEmpty {
-                    emptyState
-                        .premiumBlur(isVisible: contentVisible, delay: 0.1, duration: 0.4)
-                } else {
-                    alarmList
-                }
+                // Alarm list
+                alarmList
             }
 
             // Floating add button
@@ -54,7 +75,6 @@ struct HomeView: View {
                 .premiumBlur(isVisible: fabVisible, delay: 0, duration: 0.3)
         }
         .task {
-            viewModel.loadAlarms()
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
             try? await Task.sleep(for: .milliseconds(400))
@@ -62,20 +82,36 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showCreateAlarm) {
             CreateAlarmView { newAlarm in
-                viewModel.addAlarm(newAlarm)
+                Task { await alarmStore.addAlarm(newAlarm) }
             }
         }
         .motionModal(isPresented: $showSettings) {
             SettingsView()
         }
-        .motionModal(isPresented: Binding(
-            get: { editingAlarmIndex != nil },
-            set: { if !$0 { editingAlarmIndex = nil } }
-        )) {
-            if let index = editingAlarmIndex, index < viewModel.alarms.count {
-                EditAlarmView(alarm: $viewModel.alarms[index], onSave: {
-                    editingAlarmIndex = nil
-                })
+        .motionModal(isPresented: $showEditModal) {
+            if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
+                EditAlarmView(
+                    alarm: alarm,
+                    onSave: { updatedAlarm in
+                        Task { await alarmStore.updateAlarm(updatedAlarm) }
+                        showEditModal = false
+                    },
+                    onDelete: {
+                        let id = alarmId
+                        showEditModal = false
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(500))
+                            await alarmStore.deleteAlarm(id: id)
+                        }
+                    }
+                )
+            }
+        }
+        .onChange(of: showEditModal) { _, showing in
+            if !showing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    editingAlarmId = nil
+                }
             }
         }
     }
@@ -142,17 +178,39 @@ struct HomeView: View {
                 Spacer()
                     .frame(height: 4)
 
-                // Alarm cards
-                ForEach(Array(viewModel.alarms.enumerated()), id: \.element.id) { index, _ in
+                // Real alarm cards
+                if alarmStore.alarms.isEmpty {
+                    emptyState
+                        .premiumBlur(isVisible: contentVisible, delay: 0.1, duration: 0.4)
+                } else {
+                    ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
+                        AlarmCardView(
+                            alarm: alarm,
+                            onToggle: {
+                                Task { await alarmStore.toggleAlarm(id: alarm.id) }
+                            },
+                            onEdit: {
+                                HapticManager.shared.softTap()
+                                editingAlarmId = alarm.id
+                                showEditModal = true
+                            }
+                        )
+                        .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
+                    }
+                }
+
+                // Demo separator
+                demoSeparator
+                    .premiumBlur(isVisible: contentVisible, delay: 0.3, duration: 0.4)
+
+                // Demo cards
+                ForEach(Array(demoAlarms.enumerated()), id: \.element.id) { index, alarm in
                     AlarmCardView(
-                        alarm: $viewModel.alarms[index],
+                        alarm: alarm,
                         onToggle: {},
-                        onEdit: {
-                            HapticManager.shared.softTap()
-                            editingAlarmIndex = index
-                        }
+                        onEdit: {}
                     )
-                    .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
+                    .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.4, duration: 0.4)
                 }
 
                 // Bottom spacer to clear FAB
@@ -165,24 +223,36 @@ struct HomeView: View {
         .scrollBounceBehavior(.basedOnSize)
     }
 
+    private var demoSeparator: some View {
+        HStack(spacing: 12) {
+            Rectangle()
+                .fill(.white.opacity(0.1))
+                .frame(height: 1)
+            Text("DEMO")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.25))
+            Rectangle()
+                .fill(.white.opacity(0.1))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 8)
+    }
+
     private var emptyState: some View {
         VStack(spacing: AppSpacing.titleSubtitleGap) {
-
-            Spacer()
-
             Image(systemName: "alarm")
-                .font(.system(size: 44))
-                .foregroundStyle(.white.opacity(0.2))
+                .font(.system(size: 36))
+                .foregroundStyle(.white.opacity(0.15))
 
             Text("No alarms yet")
-                .font(AppTypography.bodyLarge)
-                .foregroundStyle(.white.opacity(0.4))
+                .font(AppTypography.bodySmall)
+                .foregroundStyle(.white.opacity(0.3))
 
             Text("Tap + to create your first alarm")
                 .captionStyle()
-
-            Spacer()
         }
+        .padding(.vertical, 32)
     }
 
     private var addButton: some View {
