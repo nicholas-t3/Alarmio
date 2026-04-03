@@ -164,13 +164,15 @@ struct MotionModal<Content: View>: View {
                 }
             }
             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: contentHeight)
-            .onChange(of: totalOffset) { _, _ in
+            .onChange(of: dragOffset) { _, _ in
+                // During drag, track progress directly from position
                 progress = presentationProgress
             }
             .onChange(of: isPresented) { _, newValue in
                 if newValue {
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                         offset = 0
+                        progress = 1
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         withAnimation(.easeOut(duration: 0.3)) {
@@ -183,15 +185,18 @@ struct MotionModal<Content: View>: View {
                     }
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
                         offset = geometry.size.height
+                        progress = 0
                     }
                 }
             }
             .onAppear {
                 if isPresented {
                     offset = geometry.size.height
+                    progress = 0
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                             offset = 0
+                            progress = 1
                         }
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -201,6 +206,7 @@ struct MotionModal<Content: View>: View {
                     }
                 } else {
                     offset = geometry.size.height
+                    progress = 0
                 }
             }
         }
@@ -225,7 +231,7 @@ struct MotionModal<Content: View>: View {
                 bottomTrailingRadius: 45,
                 topTrailingRadius: 20
             )
-            .fill(Color(hex: "0a1628").opacity(0.7))
+            .fill(Color(hex: "0a1628").opacity(0.5))
 
             UnevenRoundedRectangle(
                 topLeadingRadius: 20,
@@ -272,6 +278,7 @@ struct MotionModal<Content: View>: View {
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         dragOffset = 0
+                        progress = 1
                     }
                 }
             }
@@ -286,6 +293,7 @@ struct MotionModal<Content: View>: View {
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
             offset = 1000
+            progress = 0
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

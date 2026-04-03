@@ -159,29 +159,10 @@ struct CreateAlarmView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            HStack(spacing: 8) {
-                ForEach(dayOptions, id: \.index) { day in
-                    let isSelected = selectedDays.contains(day.index)
-
-                    Button {
-                        HapticManager.shared.selection()
-                        if selectedDays.contains(day.index) {
-                            selectedDays.remove(day.index)
-                        } else {
-                            selectedDays.insert(day.index)
-                        }
-                        alarm.repeatDays = selectedDays.isEmpty ? nil : Array(selectedDays).sorted()
-                    } label: {
-                        Text(day.letter)
-                            .font(AppTypography.labelSmall)
-                            .foregroundStyle(isSelected ? .black : .white.opacity(0.5))
-                            .frame(width: 36, height: 36)
-                            .background(isSelected ? .white : .white.opacity(0.08))
-                            .clipShape(Circle())
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
+            DayPicker(selectedDays: $selectedDays)
+                .onChange(of: selectedDays) { _, newDays in
+                    alarm.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
                 }
-            }
 
             Text(scheduleSummary)
                 .font(AppTypography.bodySmall)
@@ -667,23 +648,6 @@ struct CreateAlarmView: View {
             VoiceOption(persona: .hardSergeant, label: "Sergeant", icon: "shield.fill"),
             VoiceOption(persona: .evilSpaceLord, label: "Space Lord", icon: "sparkles"),
             VoiceOption(persona: .playful, label: "Playful", icon: "face.smiling.fill"),
-        ]
-    }
-
-    private struct DayOption {
-        let index: Int
-        let letter: String
-    }
-
-    private var dayOptions: [DayOption] {
-        [
-            DayOption(index: 0, letter: "S"),
-            DayOption(index: 1, letter: "M"),
-            DayOption(index: 2, letter: "T"),
-            DayOption(index: 3, letter: "W"),
-            DayOption(index: 4, letter: "T"),
-            DayOption(index: 5, letter: "F"),
-            DayOption(index: 6, letter: "S"),
         ]
     }
 

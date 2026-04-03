@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var glowPulse = false
     @State private var showCreateAlarm = false
     @State private var showSettings = false
+    @State private var editingAlarmIndex: Int?
 
     // MARK: - Body
 
@@ -66,6 +67,16 @@ struct HomeView: View {
         }
         .motionModal(isPresented: $showSettings) {
             SettingsView()
+        }
+        .motionModal(isPresented: Binding(
+            get: { editingAlarmIndex != nil },
+            set: { if !$0 { editingAlarmIndex = nil } }
+        )) {
+            if let index = editingAlarmIndex, index < viewModel.alarms.count {
+                EditAlarmView(alarm: $viewModel.alarms[index], onSave: {
+                    editingAlarmIndex = nil
+                })
+            }
         }
     }
 
@@ -136,7 +147,10 @@ struct HomeView: View {
                     AlarmCardView(
                         alarm: $viewModel.alarms[index],
                         onToggle: {},
-                        onEdit: {}
+                        onEdit: {
+                            HapticManager.shared.softTap()
+                            editingAlarmIndex = index
+                        }
                     )
                     .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
                 }
