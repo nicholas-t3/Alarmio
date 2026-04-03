@@ -105,9 +105,9 @@ final class AlarmScheduler {
 
     // MARK: - Observation (handled by AlarmStore)
 
-    // MARK: - Private Methods
+    // MARK: - Schedule Building (internal for testability)
 
-    private func buildSchedule(from config: AlarmConfiguration) -> Alarm.Schedule? {
+    func buildSchedule(from config: AlarmConfiguration, referenceDate: Date = Date()) -> Alarm.Schedule? {
         guard let wakeTime = config.wakeTime else { return nil }
 
         let calendar = Calendar.current
@@ -117,6 +117,7 @@ final class AlarmScheduler {
         // Repeating alarm
         if let repeatDays = config.repeatDays, !repeatDays.isEmpty {
             let weekdays = repeatDays.compactMap { mapDayIndexToWeekday($0) }
+            guard !weekdays.isEmpty else { return nil }
             return .relative(.init(
                 time: .init(hour: hour, minute: minute),
                 repeats: .weekly(weekdays)
@@ -126,7 +127,7 @@ final class AlarmScheduler {
         // One-time alarm — compute next occurrence
         let components = DateComponents(hour: hour, minute: minute)
         guard let nextDate = calendar.nextDate(
-            after: Date(),
+            after: referenceDate,
             matching: components,
             matchingPolicy: .nextTime
         ) else {
@@ -162,12 +163,12 @@ final class AlarmScheduler {
         )
     }
 
-    private func buildCountdownDuration(from config: AlarmConfiguration) -> Alarm.CountdownDuration {
+    func buildCountdownDuration(from config: AlarmConfiguration) -> Alarm.CountdownDuration {
         let snoozeSeconds = TimeInterval(config.snoozeInterval * 60)
         return Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeSeconds)
     }
 
-    private func buildAlarmTitle(from config: AlarmConfiguration) -> LocalizedStringResource {
+    func buildAlarmTitle(from config: AlarmConfiguration) -> LocalizedStringResource {
         if let tone = config.tone {
             let toneLabel = switch tone {
             case .calm: "Calm"
@@ -182,7 +183,7 @@ final class AlarmScheduler {
         return "Wake Up"
     }
 
-    private func mapDayIndexToWeekday(_ index: Int) -> Locale.Weekday? {
+    func mapDayIndexToWeekday(_ index: Int) -> Locale.Weekday? {
         switch index {
         case 0: return .sunday
         case 1: return .monday
