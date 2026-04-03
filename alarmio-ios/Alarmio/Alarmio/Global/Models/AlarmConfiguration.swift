@@ -77,4 +77,7 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable {
 
     /// Filename in Library/Sounds/ for this alarm's custom audio. Nil = use default.
     var soundFileName: String?
+
+    /// Whether this is a demo alarm for UI testing purposes.
+    var isDemo: Bool = false
 }

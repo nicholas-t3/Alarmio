@@ -26,29 +26,6 @@ struct HomeView: View {
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
 
-    // MARK: - Constants
-
-    private let demoAlarms: [AlarmConfiguration] = [
-        AlarmConfiguration(
-            isEnabled: true,
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
-            repeatDays: [1, 2, 3, 4, 5],
-            tone: .calm,
-            intensity: .gentle,
-            voicePersona: .calmGuide,
-            snoozeInterval: 5
-        ),
-        AlarmConfiguration(
-            isEnabled: false,
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 9, minute: 0)),
-            repeatDays: [0, 6],
-            tone: .fun,
-            intensity: .balanced,
-            voicePersona: .playful,
-            snoozeInterval: 5
-        )
-    ]
-
     // MARK: - Body
 
     var body: some View {
@@ -176,39 +153,27 @@ struct HomeView: View {
                 Spacer()
                     .frame(height: 4)
 
-                // Real alarm cards
-                if alarmStore.alarms.isEmpty {
-                    emptyState
-                        .premiumBlur(isVisible: contentVisible, delay: 0.1, duration: 0.4)
-                } else {
-                    ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
-                        AlarmCardView(
-                            alarm: alarm,
-                            onToggle: {
-                                Task { await alarmStore.toggleAlarm(id: alarm.id) }
-                            },
-                            onEdit: {
-                                HapticManager.shared.softTap()
-                                editingAlarmId = alarm.id
-                                showEditModal = true
-                            }
-                        )
-                        .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
+                // Alarm cards
+                ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
+
+                    // Demo separator before first demo alarm
+                    if alarm.isDemo && (index == 0 || !alarmStore.alarms[index - 1].isDemo) {
+                        demoSeparator
+                            .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
                     }
-                }
 
-                // Demo separator
-                demoSeparator
-                    .premiumBlur(isVisible: contentVisible, delay: 0.3, duration: 0.4)
-
-                // Demo cards
-                ForEach(Array(demoAlarms.enumerated()), id: \.element.id) { index, alarm in
                     AlarmCardView(
                         alarm: alarm,
-                        onToggle: {},
-                        onEdit: {}
+                        onToggle: {
+                            Task { await alarmStore.toggleAlarm(id: alarm.id) }
+                        },
+                        onEdit: {
+                            HapticManager.shared.softTap()
+                            editingAlarmId = alarm.id
+                            showEditModal = true
+                        }
                     )
-                    .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.4, duration: 0.4)
+                    .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
                 }
 
                 // Bottom spacer to clear FAB
@@ -235,22 +200,6 @@ struct HomeView: View {
                 .frame(height: 1)
         }
         .padding(.vertical, 8)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: AppSpacing.titleSubtitleGap) {
-            Image(systemName: "alarm")
-                .font(.system(size: 36))
-                .foregroundStyle(.white.opacity(0.15))
-
-            Text("No alarms yet")
-                .font(AppTypography.bodySmall)
-                .foregroundStyle(.white.opacity(0.3))
-
-            Text("Tap + to create your first alarm")
-                .captionStyle()
-        }
-        .padding(.vertical, 32)
     }
 
     private var addButton: some View {

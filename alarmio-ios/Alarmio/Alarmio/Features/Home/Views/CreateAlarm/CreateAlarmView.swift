@@ -181,43 +181,42 @@ struct CreateAlarmView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            // Minutes
-            HStack {
-                Text("Minutes")
-                    .font(AppTypography.labelSmall)
-                    .foregroundStyle(.white.opacity(0.7))
-                Spacer()
-                HStack(spacing: 12) {
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(.white.opacity(0.1))
-                            .clipShape(Circle())
-                    }
+            HStack(spacing: 16) {
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
 
+                HStack(spacing: 6) {
                     Text("\(alarm.snoozeInterval)")
                         .font(AppTypography.labelLarge)
                         .foregroundStyle(.white)
-                        .frame(width: 32)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
 
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(.white.opacity(0.1))
-                            .clipShape(Circle())
-                    }
+                    Text(alarm.snoozeInterval == 1 ? "minute" : "minutes")
+                        .font(AppTypography.labelSmall)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
+
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
                 }
             }
         }

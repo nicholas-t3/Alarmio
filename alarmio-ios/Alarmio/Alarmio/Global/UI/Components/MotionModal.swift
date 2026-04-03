@@ -327,6 +327,8 @@ private struct MotionModalContainer<Base: View, ModalContent: View>: View {
     @ViewBuilder let modalContent: () -> ModalContent
 
     @State private var modalProgress: CGFloat = 0
+    @State private var isInViewTree = false
+    @State private var modalBinding = false
 
     var body: some View {
         ZStack {
@@ -337,9 +339,9 @@ private struct MotionModalContainer<Base: View, ModalContent: View>: View {
                         .allowsHitTesting(false)
                 }
 
-            if isPresented {
+            if isInViewTree {
                 MotionModal(
-                    isPresented: $isPresented,
+                    isPresented: $modalBinding,
                     progress: $modalProgress,
                     dismissible: dismissible,
                     content: modalContent
@@ -347,8 +349,23 @@ private struct MotionModalContainer<Base: View, ModalContent: View>: View {
             }
         }
         .onChange(of: isPresented) { _, newValue in
+            if newValue {
+                // Show: add to tree, then present
+                isInViewTree = true
+                modalBinding = true
+            } else {
+                // Hide requested externally — trigger dismiss animation
+                modalBinding = false
+            }
+        }
+        .onChange(of: modalBinding) { _, newValue in
             if !newValue {
-                modalProgress = 0
+                // Modal dismissed (internally or externally) — remove after animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    isInViewTree = false
+                    modalProgress = 0
+                    isPresented = false
+                }
             }
         }
     }
