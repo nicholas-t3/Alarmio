@@ -37,21 +37,27 @@ struct MorningSky: View {
     var showConstellations: Bool = true
     var shootingStarFrequency: ShootingStarFrequency = .sparse
 
+    /// 0 = default pre-dawn glow, 1 = full sunrise (brighter, warmer, stars washed out)
+    var sunriseProgress: Double = 0
+
     // MARK: - Body
     var body: some View {
+        let glow = sunriseProgress
+
         ZStack {
 
             // Sky gradient — night at top, pre-dawn warmth at bottom
+            // As sunrise progresses, the warm tones push higher
             LinearGradient(
                 stops: [
                     .init(color: Color(hex: "020810"), location: 0),
-                    .init(color: Color(hex: "060e1c"), location: 0.25),
-                    .init(color: Color(hex: "0a1628"), location: 0.45),
-                    .init(color: Color(hex: "111d35"), location: 0.60),
-                    .init(color: Color(hex: "1a1a3e"), location: 0.72),
-                    .init(color: Color(hex: "2d1b3d"), location: 0.82),
-                    .init(color: Color(hex: "4a1942"), location: 0.90),
-                    .init(color: Color(hex: "6b2040"), location: 0.96),
+                    .init(color: Color(hex: "060e1c"), location: 0.25 - glow * 0.05),
+                    .init(color: Color(hex: "0a1628"), location: 0.45 - glow * 0.08),
+                    .init(color: Color(hex: "111d35"), location: 0.60 - glow * 0.10),
+                    .init(color: Color(hex: "1a1a3e"), location: 0.72 - glow * 0.10),
+                    .init(color: Color(hex: "2d1b3d"), location: 0.82 - glow * 0.08),
+                    .init(color: Color(hex: "4a1942"), location: 0.90 - glow * 0.06),
+                    .init(color: Color(hex: "6b2040"), location: 0.96 - glow * 0.04),
                     .init(color: Color(hex: "8b3a2a"), location: 1.0)
                 ],
                 startPoint: .top,
@@ -60,54 +66,79 @@ struct MorningSky: View {
             .ignoresSafeArea()
 
             // Rotating star canvas — masked to fade out toward the sunrise
+            // Stars dim as sunrise intensifies
             MorningStarCanvas(showConstellations: showConstellations, shootingStarFrequency: shootingStarFrequency)
-                .opacity(starOpacity)
+                .opacity(starOpacity * (1.0 - glow * 0.6))
                 .mask(starFadeMask)
 
-            // Sunrise glow layers
+            // Sunrise glow layers — intensity scales with sunriseProgress
             GeometryReader { geometry in
                 let h = geometry.size.height
+                let glowScale = 1.0 + glow * 1.2
 
                 // Core glow — deep orange/amber from the horizon
                 RadialGradient(
                     stops: [
-                        .init(color: Color(hex: "CC6A20").opacity(0.55), location: 0),
-                        .init(color: Color(hex: "B0503A").opacity(0.40), location: 0.25),
-                        .init(color: Color(hex: "7A3050").opacity(0.25), location: 0.50),
+                        .init(color: Color(hex: "CC6A20").opacity((0.55 + glow * 0.35) * min(glowScale, 1.5)), location: 0),
+                        .init(color: Color(hex: "B0503A").opacity((0.40 + glow * 0.30) * min(glowScale, 1.3)), location: 0.25),
+                        .init(color: Color(hex: "7A3050").opacity((0.25 + glow * 0.20) * min(glowScale, 1.2)), location: 0.50),
                         .init(color: .clear, location: 1.0)
                     ],
-                    center: .init(x: 0.5, y: 1.05),
+                    center: .init(x: 0.5, y: 1.05 - glow * 0.15),
                     startRadius: 0,
-                    endRadius: h * 0.55
+                    endRadius: h * (0.55 + glow * 0.25)
                 )
                 .ignoresSafeArea()
 
                 // Warm peach haze — broader, softer wash
                 RadialGradient(
                     stops: [
-                        .init(color: Color(hex: "E8976B").opacity(0.20), location: 0),
-                        .init(color: Color(hex: "D4755A").opacity(0.12), location: 0.35),
+                        .init(color: Color(hex: "E8976B").opacity(0.20 + glow * 0.25), location: 0),
+                        .init(color: Color(hex: "D4755A").opacity(0.12 + glow * 0.18), location: 0.35),
                         .init(color: .clear, location: 1.0)
                     ],
-                    center: .init(x: 0.5, y: 1.15),
+                    center: .init(x: 0.5, y: 1.15 - glow * 0.20),
                     startRadius: 0,
-                    endRadius: h * 0.70
+                    endRadius: h * (0.70 + glow * 0.20)
                 )
                 .ignoresSafeArea()
 
                 // Subtle amber rim right at the horizon
                 LinearGradient(
                     stops: [
-                        .init(color: .clear, location: 0.80),
-                        .init(color: Color(hex: "D4854A").opacity(0.15), location: 0.92),
-                        .init(color: Color(hex: "E8A060").opacity(0.25), location: 1.0)
+                        .init(color: .clear, location: 0.80 - glow * 0.15),
+                        .init(color: Color(hex: "D4854A").opacity(0.15 + glow * 0.20), location: 0.92 - glow * 0.10),
+                        .init(color: Color(hex: "E8A060").opacity(0.25 + glow * 0.30), location: 1.0)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
+
+                // Golden light wash — only visible during active sunrise
+                if glow > 0.1 {
+                    RadialGradient(
+                        stops: [
+                            .init(color: Color(hex: "FFD4A0").opacity(glow * 0.15), location: 0),
+                            .init(color: Color(hex: "FFAA60").opacity(glow * 0.08), location: 0.4),
+                            .init(color: .clear, location: 1.0)
+                        ],
+                        center: .init(x: 0.5, y: 0.85 - glow * 0.15),
+                        startRadius: 0,
+                        endRadius: h * 0.50
+                    )
+                    .ignoresSafeArea()
+                }
+
+                // Sunburst rays — light shafts radiating upward from horizon
+                if glow > 0.15 {
+                    SunburstRays(progress: glow)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea()
+                }
             }
         }
+        .animation(.easeInOut(duration: 0.5), value: sunriseProgress)
     }
 
     // MARK: - Subviews
@@ -127,6 +158,103 @@ struct MorningSky: View {
         )
         .ignoresSafeArea()
     }
+}
+
+// MARK: - Sunburst Rays
+
+private struct SunburstRays: View {
+
+    var progress: Double
+
+    @State private var rays: [SunburstRay] = []
+    @State private var startTime: Date = .now
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { timeline in
+            let elapsed = timeline.date.timeIntervalSince(startTime)
+
+            Canvas { context, size in
+                let cx = size.width * 0.5
+                let originY = size.height * 1.02
+
+                var ac = context
+                ac.blendMode = .plusLighter
+
+                for ray in rays {
+                    // Slow shimmer per ray
+                    let shimmer = sin(elapsed * ray.speed + ray.phase) * 0.5 + 0.5
+                    let alpha = progress * ray.baseAlpha * (0.5 + shimmer * 0.5)
+                    guard alpha > 0.01 else { continue }
+
+                    let angle = ray.angle
+                    let length = size.height * (0.4 + progress * 0.35) * ray.lengthScale
+
+                    let tipX = cx + cos(angle) * length
+                    let tipY = originY + sin(angle) * length
+
+                    var path = Path()
+                    path.move(to: CGPoint(x: cx - ray.baseWidth * 0.5, y: originY))
+                    path.addLine(to: CGPoint(x: tipX, y: tipY))
+                    path.addLine(to: CGPoint(x: cx + ray.baseWidth * 0.5, y: originY))
+                    path.closeSubpath()
+
+                    ac.opacity = alpha
+                    ac.fill(path, with: .linearGradient(
+                        Gradient(colors: [
+                            ray.color.opacity(0.8),
+                            ray.color.opacity(0.2),
+                            .clear
+                        ]),
+                        startPoint: CGPoint(x: cx, y: originY),
+                        endPoint: CGPoint(x: tipX, y: tipY)
+                    ))
+                }
+            }
+        }
+        .onAppear {
+            startTime = .now
+            generateRays()
+        }
+    }
+
+    private func generateRays() {
+        let colors: [Color] = [
+            Color(hex: "FFCC80"),
+            Color(hex: "FFB860"),
+            Color(hex: "FFD4A0"),
+            Color(hex: "FFE0B0"),
+            Color(hex: "FFA050"),
+        ]
+
+        // Fan of rays pointing upward from bottom center
+        // Angles from -150° to -30° (upward arc)
+        let rayCount = 14
+        rays = (0..<rayCount).map { i in
+            let base = Double(i) / Double(rayCount - 1)
+            let spreadAngle = -Double.pi * (5.0 / 6.0) + base * Double.pi * (4.0 / 6.0)
+            let jitter = Double.random(in: -0.04...0.04)
+
+            return SunburstRay(
+                angle: spreadAngle + jitter,
+                baseWidth: CGFloat.random(in: 4...12),
+                lengthScale: Double.random(in: 0.7...1.0),
+                baseAlpha: Double.random(in: 0.06...0.14),
+                speed: Double.random(in: 0.3...0.8),
+                phase: Double.random(in: 0...(.pi * 2)),
+                color: colors.randomElement()!
+            )
+        }
+    }
+}
+
+private struct SunburstRay {
+    let angle: Double
+    let baseWidth: CGFloat
+    let lengthScale: Double
+    let baseAlpha: Double
+    let speed: Double
+    let phase: Double
+    let color: Color
 }
 
 // MARK: - Morning Star Canvas

@@ -10,258 +10,167 @@ import SwiftUI
 
 struct OnboardingGeneratingView: View {
 
+    // MARK: - Environment
+    @Environment(OnboardingManager.self) private var manager
+
     // MARK: - State
     @State private var contentVisible = false
-    @State private var ringRotation: Angle = .zero
-    @State private var glowPulse = false
-    @State private var statusText = "Creating your alarm"
+    @State private var statusText = ""
     @State private var isComplete = false
 
     // MARK: - Constants
     let onComplete: () -> Void
+    let onSunriseProgress: (Double) -> Void
 
     // MARK: - Body
     var body: some View {
-        ZStack {
 
-            // Center element — dead center of screen, no layout influence from text
-            ZStack {
-
-                // Outer pulsing halo
-                Circle()
-                    .fill(Color(hex: "4A9EFF").opacity(glowPulse ? 0.15 : 0.04))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 40)
-
-                // Mid halo
-                Circle()
-                    .fill(Color(hex: "7EBDFF").opacity(glowPulse ? 0.1 : 0.02))
-                    .frame(width: 120, height: 120)
-                    .blur(radius: 20)
-
-                // Inner glow core
-                Circle()
-                    .fill(Color(hex: "4A9EFF").opacity(glowPulse ? 0.25 : 0.08))
-                    .frame(width: 50, height: 50)
-                    .blur(radius: 12)
-
-                // Waveform icon
-                Image(systemName: "waveform")
-                    .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .symbolEffect(.bounce.byLayer.up, options: .repeating.speed(0.3), value: glowPulse)
-                    .offset(y: 4)
-            }
+        // Status text — centered on screen
+        Text(statusText)
+            .font(AppTypography.bodyMedium)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+            .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
+            .contentTransition(.numericText())
+            .animation(.easeInOut(duration: 0.6), value: statusText)
             .premiumBlur(isVisible: contentVisible, duration: 0.5)
+            .task {
+                try? await Task.sleep(for: .milliseconds(100))
+                contentVisible = true
 
-            // Bottom status text — pinned to bottom, doesn't affect center layout
-//            VStack {
-//                Spacer()
-//
-//                Text(statusText)
-//                    .font(AppTypography.bodyMedium)
-//                    .foregroundStyle(.white)
-//                    .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 0)
-//                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 0)
-//                    .contentTransition(.numericText())
-//                    .animation(.easeInOut(duration: 0.4), value: statusText)
-//                    .premiumBlur(isVisible: contentVisible, duration: 0.5)
-//                    .padding(.bottom, AppSpacing.screenBottom + 60)
-//            }
-        }
-        .task {
-            try? await Task.sleep(for: .milliseconds(100))
-            contentVisible = true
-            glowPulse = true
+                // Build personalized messages from configuration
+                let messages = buildPersonalizedMessages()
 
-            // Start spinner — smooth continuous rotation
-            withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                ringRotation = .degrees(360)
+                // Each message holds for 3s — total duration scales with message count
+                let messageHold: Double = 3.0
+                let totalDuration = messageHold * Double(messages.count)
+
+                // Kick off sunrise immediately — fast ramp to 0.5 in 2s, then ease to 1.0
+                onSunriseProgress(0.15)
+                animateSunrise(duration: totalDuration)
+
+                // Cycle personalized messages
+                for (index, message) in messages.enumerated() {
+                    guard !isComplete else { break }
+                    statusText = message
+
+                    if index < messages.count - 1 {
+                        try? await Task.sleep(for: .seconds(messageHold))
+                    } else {
+                        // Last message — hold until done
+                        try? await Task.sleep(for: .seconds(messageHold))
+                    }
+                }
+
+                isComplete = true
+                HapticManager.shared.success()
+
+                try? await Task.sleep(for: .milliseconds(600))
+                onComplete()
             }
-
-            // Cycle status messages
-            startStatusCycle()
-
-            // Fake network call — 10 seconds
-            // TODO: Replace with real Composer API call
-            try? await Task.sleep(for: .seconds(10))
-
-            isComplete = true
-            HapticManager.shared.success()
-
-            // Brief pause to show "Done!" then transition
-            try? await Task.sleep(for: .milliseconds(600))
-            onComplete()
-        }
     }
 
     // MARK: - Private Methods
 
-    private func startStatusCycle() {
+    private func animateSunrise(duration: Double) {
         Task { @MainActor in
-            let messages = [
-                "Creating your alarm",
-                "Finding your voice",
-                "Writing your wake-up",
-                "Adding some personality",
-                "Making it sound good",
-                "Almost there",
-            ]
-            var index = 0
+            // Fast ramp: 0 → 0.5 in 1.5s, then slow cruise to 1.0
+            let fastPhase = 1.5
+            let fastSteps = 20
+            let fastInterval = fastPhase / Double(fastSteps)
 
-            while !isComplete {
-                try? await Task.sleep(for: .seconds(2.5))
+            for i in 1...fastSteps {
                 guard !isComplete else { break }
-                index = (index + 1) % messages.count
-                statusText = messages[index]
+                try? await Task.sleep(for: .seconds(fastInterval))
+                let p = Double(i) / Double(fastSteps)
+                onSunriseProgress(0.15 + p * 0.35)
+            }
+
+            // Slow cruise from 0.5 → 1.0 over remaining time
+            let slowPhase = duration - fastPhase
+            let slowSteps = 40
+            let slowInterval = slowPhase / Double(slowSteps)
+
+            for i in 1...slowSteps {
+                guard !isComplete else { break }
+                try? await Task.sleep(for: .seconds(slowInterval))
+                let p = Double(i) / Double(slowSteps)
+                onSunriseProgress(0.5 + p * 0.5)
             }
         }
     }
-}
 
-// MARK: - Generating Background (Warp Speed)
+    private func buildPersonalizedMessages() -> [String] {
+        let config = manager.configuration
+        var messages: [String] = []
 
-struct GeneratingBackground: View {
-
-    @State private var startTime: Date = .now
-    @State private var stars: [WarpStar] = []
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let elapsed = timeline.date.timeIntervalSince(startTime)
-
-            Canvas { context, size in
-                let rect = CGRect(origin: .zero, size: size)
-                let cx = size.width * 0.5
-                let cy = size.height * 0.5
-
-                // Deep black
-                context.fill(Rectangle().path(in: rect), with: .color(Color(hex: "010108")))
-
-                // Speed ramps smoothly over 3s then holds
-                let rampDuration = 3.0
-                let minSpeed = 0.05
-                let maxSpeed = 1.25
-                let t = min(elapsed, rampDuration)
-                let tNorm = t / rampDuration
-
-                // Integral for smooth accumulation
-                let rampDist = minSpeed * t + (maxSpeed - minSpeed) * (t * t * t) / (3.0 * rampDuration * rampDuration)
-                let overtime = max(0, elapsed - rampDuration)
-                let totalDist = rampDist + maxSpeed * overtime
-
-                // Visual params at current speed
-                let speedCurve = min(tNorm * tNorm + (overtime > 0 ? (1.0 - tNorm * tNorm) : 0), 1.0)
-                let streakLength = 0.002 + speedCurve * 0.1
-
-                // Center glow
-                let glowIntensity = 0.05 + speedCurve * 0.2
-                let centerGlow = RadialGradient(
-                    colors: [
-                        Color(hex: "4A9EFF").opacity(glowIntensity),
-                        Color(hex: "1B3F6F").opacity(glowIntensity * 0.4),
-                        .clear
-                    ],
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: size.height * 0.4
-                )
-                context.fill(Rectangle().path(in: rect), with: .style(centerGlow))
-
-                // Stars
-                var ac = context
-                ac.blendMode = .plusLighter
-
-                for star in stars {
-                    let totalLife = star.lifetime
-                    let age = (totalDist + star.phase).truncatingRemainder(dividingBy: totalLife)
-                    let progress = age / totalLife
-
-                    let dist = progress * progress
-                    let currentX = cx + star.dirX * dist * size.width * 0.8
-                    let currentY = cy + star.dirY * dist * size.height * 0.8
-
-                    let tailDist = max(0, dist - streakLength)
-                    let tailX = cx + star.dirX * tailDist * size.width * 0.8
-                    let tailY = cy + star.dirY * tailDist * size.height * 0.8
-
-                    let brightness = dist * star.brightness
-                    let alpha = brightness * (0.3 + speedCurve * 0.7)
-                    guard alpha > 0.01 else { continue }
-
-                    var path = Path()
-                    path.move(to: CGPoint(x: tailX, y: tailY))
-                    path.addLine(to: CGPoint(x: currentX, y: currentY))
-
-                    let lineWidth = star.thickness * (0.5 + dist * 1.5)
-                    ac.opacity = alpha
-                    ac.stroke(path, with: .color(star.color), lineWidth: lineWidth)
-
-                    if dist > 0.1 {
-                        let dotSize = lineWidth * 2
-                        let dotRect = CGRect(
-                            x: currentX - dotSize / 2,
-                            y: currentY - dotSize / 2,
-                            width: dotSize,
-                            height: dotSize
-                        )
-                        ac.opacity = alpha * 0.6
-                        ac.fill(Circle().path(in: dotRect), with: .color(.white))
-                    }
-                }
-
-                // Vignette
-                let vignette = RadialGradient(
-                    colors: [.clear, Color(hex: "010108").opacity(0.5)],
-                    center: .center,
-                    startRadius: size.width * 0.3,
-                    endRadius: size.width * 0.8
-                )
-                context.opacity = 1.0
-                context.fill(Rectangle().path(in: rect), with: .style(vignette))
-            }
+        // Tone-based message
+        if let tone = config.tone {
+            messages.append(toneMessage(tone))
         }
-        .ignoresSafeArea()
-        .onAppear {
-            startTime = .now
-            generateStars()
+
+        // Why-based message
+        if let why = config.whyContext {
+            messages.append(whyMessage(why))
+        }
+
+        // Intensity message
+        if let intensity = config.intensity {
+            messages.append(intensityMessage(intensity))
+        }
+
+        // Voice-based message
+        if let voice = config.voicePersona {
+            messages.append(voiceMessage(voice))
+        }
+
+        // Closing messages
+        messages.append("Writing your wake-up call")
+        messages.append("Almost ready")
+
+        return messages
+    }
+
+    private func toneMessage(_ tone: AlarmTone) -> String {
+        switch tone {
+        case .calm: return "Setting a calm tone"
+        case .encourage: return "Adding some encouragement"
+        case .push: return "Turning up the push"
+        case .strict: return "Making it strict"
+        case .fun: return "Making it funny"
+        case .other: return "Adding your personal touch"
         }
     }
 
-    private func generateStars() {
-        let colors: [Color] = [
-            .white,
-            Color(hex: "D4EDFF"),
-            Color(hex: "4A9EFF"),
-            Color(hex: "7EBDFF"),
-            Color(hex: "FFF4E0"),
-        ]
-
-        stars = (0..<200).map { _ in
-            let angle = Double.random(in: 0...(.pi * 2))
-            return WarpStar(
-                dirX: cos(angle),
-                dirY: sin(angle),
-                phase: Double.random(in: 0...3),
-                lifetime: Double.random(in: 1.5...3.5),
-                brightness: Double.random(in: 0.3...1.0),
-                thickness: CGFloat.random(in: 0.5...2.0),
-                color: colors.randomElement()!
-            )
+    private func whyMessage(_ why: WhyContext) -> String {
+        switch why {
+        case .work: return "Getting you ready for work"
+        case .school: return "Prepping for the school day"
+        case .gym: return "Fueling your morning workout"
+        case .family: return "Making time for family"
+        case .personalGoal: return "Aligning with your goals"
+        case .important: return "Locking in on what matters"
+        case .other: return "Personalizing your morning"
         }
     }
-}
 
-// MARK: - Models
+    private func intensityMessage(_ intensity: AlarmIntensity) -> String {
+        switch intensity {
+        case .gentle: return "Keeping it gentle"
+        case .balanced: return "Finding the right balance"
+        case .intense: return "Cranking up the intensity"
+        }
+    }
 
-private struct WarpStar {
-    let dirX: Double
-    let dirY: Double
-    let phase: Double
-    let lifetime: Double
-    let brightness: Double
-    let thickness: CGFloat
-    let color: Color
+    private func voiceMessage(_ voice: VoicePersona) -> String {
+        switch voice {
+        case .calmGuide: return "Calling the calm guide"
+        case .energeticCoach: return "Warming up the coach"
+        case .hardSergeant: return "Calling the drill sergeant"
+        case .evilSpaceLord: return "Summoning the space lord"
+        case .playful: return "Bringing the fun"
+        }
+    }
 }
 
 // MARK: - Previews
@@ -274,6 +183,22 @@ private struct WarpStar {
     OnboardingContainerView.preview(step: .generating)
 }
 
-#Preview("Background Only") {
-    GeneratingBackground()
+#Preview("Sunrise — Mid Glow") {
+    ZStack {
+        MorningSky(starOpacity: 0.3, sunriseProgress: 0.6)
+        Text("Calling the drill sergeant")
+            .font(AppTypography.bodyMedium)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+    }
+}
+
+#Preview("Sunrise — Full Glow") {
+    ZStack {
+        MorningSky(starOpacity: 0.15, sunriseProgress: 1.0)
+        Text("Almost ready")
+            .font(AppTypography.bodyMedium)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+    }
 }

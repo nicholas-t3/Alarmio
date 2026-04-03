@@ -46,7 +46,7 @@ struct OnboardingContainerView: View {
     @State private var voiceVisualizerPalette: VisualizerPalette = .blue
     @State private var voiceVisualizerPlaying = false
     @State private var voiceVisualizerVisible = false
-    @State private var generatingVisible = false
+    @State private var sunriseProgress: Double = 0
 
     // MARK: - Body
 
@@ -54,7 +54,8 @@ struct OnboardingContainerView: View {
         ZStack {
 
             // Shared night sky background — gradient is unaffected, only stars dim
-            MorningSky(starOpacity: starOpacity)
+            // Sunrise intensifies during generating step
+            MorningSky(starOpacity: starOpacity, sunriseProgress: sunriseProgress)
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
@@ -95,12 +96,6 @@ struct OnboardingContainerView: View {
                     .frame(height: 180)
                     .allowsHitTesting(false)
                 }
-
-            // Generating background — always in hierarchy, faded via opacity
-            GeneratingBackground()
-                .opacity(generatingVisible ? 1 : 0)
-                .animation(.easeInOut(duration: 0.5), value: generatingVisible)
-                .allowsHitTesting(false)
 
             // Current phase
             switch manager.phase {
@@ -188,7 +183,12 @@ struct OnboardingContainerView: View {
                 // Set up backgrounds/opacity for specific steps in preview
                 starOpacity = starOpacityForStep(step)
                 if step == .generating {
-                    generatingVisible = true
+                    sunriseProgress = 0
+                    // Seed example selections so personalized messages appear
+                    manager.configuration.tone = .fun
+                    manager.configuration.whyContext = .gym
+                    manager.configuration.intensity = .intense
+                    manager.configuration.voicePersona = .hardSergeant
                 }
                 if step == .voice {
                     voiceVisualizerPalette = .blue
@@ -248,9 +248,10 @@ struct OnboardingContainerView: View {
 //            OnboardingPermissionView(onReadyForButton: { showButton() })
 
         case .generating:
-            OnboardingGeneratingView(onComplete: {
-                autoAdvanceFromGenerating()
-            })
+            OnboardingGeneratingView(
+                onComplete: { autoAdvanceFromGenerating() },
+                onSunriseProgress: { progress in sunriseProgress = progress }
+            )
 
         case .confirmation:
             OnboardingConfirmationView()
@@ -356,8 +357,10 @@ struct OnboardingContainerView: View {
 
             // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
-            withAnimation(.easeInOut(duration: 0.5)) {
-                generatingVisible = manager.currentStep == .generating
+
+            // Reset sunrise if entering generating step (it will animate itself)
+            if manager.currentStep == .generating {
+                sunriseProgress = 0
             }
 
             // Show content — the new step's .task handles its own staggered entry
@@ -378,16 +381,17 @@ struct OnboardingContainerView: View {
         isTransitioning = true
         contentVisible = false
 
-        withAnimation(.easeOut(duration: 0.5)) {
-            generatingVisible = false
-        }
-
         Task {
             try? await Task.sleep(for: .milliseconds(500))
 
             // Set step directly — bypass canContinue which returns false for .generating
             manager.currentStep = .confirmation
             buttonLabel = "Schedule Alarm"
+
+            // Fade sunrise back down for confirmation screen
+            withAnimation(.easeOut(duration: 1.0)) {
+                sunriseProgress = 0
+            }
 
             // Dim stars heavily for confirmation screen
             withAnimation(.easeInOut(duration: 0.5)) {
@@ -436,8 +440,10 @@ struct OnboardingContainerView: View {
 
             // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
-            withAnimation(.easeInOut(duration: 0.5)) {
-                generatingVisible = manager.currentStep == .generating
+
+            // Reset sunrise when navigating away
+            withAnimation(.easeOut(duration: 0.3)) {
+                sunriseProgress = 0
             }
 
             // Show content
