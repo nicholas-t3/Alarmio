@@ -26,7 +26,6 @@ struct EditAlarmView: View {
 
     @State private var editDays: Set<Int> = []
     @State private var editTime: Date = Date()
-    @State private var editSnoozeCount: Int = 3
     @State private var editSnoozeInterval: Int = 5
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isPreviewPlaying = false
@@ -74,7 +73,6 @@ struct EditAlarmView: View {
         .onAppear {
             editTime = alarm.wakeTime ?? Date()
             editDays = Set(alarm.repeatDays ?? [])
-            editSnoozeCount = alarm.snoozeCount
             editSnoozeInterval = alarm.snoozeInterval
         }
     }
@@ -117,16 +115,16 @@ struct EditAlarmView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            // Count
+            // Minutes
             HStack {
-                Text("Times")
+                Text("Minutes")
                     .font(AppTypography.labelSmall)
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 HStack(spacing: 12) {
                     Button {
                         HapticManager.shared.selection()
-                        editSnoozeCount = max(0, editSnoozeCount - 1)
+                        editSnoozeInterval = max(1, editSnoozeInterval - 1)
                     } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 14, weight: .medium))
@@ -136,53 +134,12 @@ struct EditAlarmView: View {
                             .clipShape(Circle())
                     }
 
-                    Text(editSnoozeCount == 0 ? "Off" : "\(editSnoozeCount)")
+                    Text("\(editSnoozeInterval)")
                         .font(AppTypography.labelLarge)
                         .foregroundStyle(.white)
                         .frame(width: 32)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeCount)
-
-                    Button {
-                        HapticManager.shared.selection()
-                        editSnoozeCount = min(10, editSnoozeCount + 1)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(.white.opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                }
-            }
-
-            // Minutes
-            if editSnoozeCount > 0 {
-                HStack {
-                    Text("Minutes")
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(0.7))
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Button {
-                            HapticManager.shared.selection()
-                            editSnoozeInterval = max(1, editSnoozeInterval - 1)
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(.white.opacity(0.1))
-                                .clipShape(Circle())
-                        }
-
-                        Text("\(editSnoozeInterval)")
-                            .font(AppTypography.labelLarge)
-                            .foregroundStyle(.white)
-                            .frame(width: 32)
-                            .contentTransition(.numericText())
-                            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
 
                         Button {
                             HapticManager.shared.selection()
@@ -197,11 +154,9 @@ struct EditAlarmView: View {
                         }
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .animation(.easeOut(duration: 0.25), value: editSnoozeCount)
             }
         }
-    }
+    
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
@@ -232,7 +187,6 @@ struct EditAlarmView: View {
                 var updated = alarm
                 updated.wakeTime = editTime
                 updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
-                updated.snoozeCount = editSnoozeCount
                 updated.snoozeInterval = editSnoozeInterval
                 onSave(updated)
             } label: {
@@ -319,7 +273,6 @@ struct EditAlarmView: View {
                             repeatDays: [1, 2, 3, 4, 5],
                             tone: .calm,
                             voicePersona: .calmGuide,
-                            snoozeCount: 3,
                             snoozeInterval: 5
                         ),
                         onSave: { _ in showEdit = false }
@@ -339,7 +292,6 @@ struct EditAlarmView: View {
             alarm: AlarmConfiguration(
                 wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
                 repeatDays: [1, 2, 3, 4, 5],
-                snoozeCount: 2,
                 snoozeInterval: 10
             ),
             onSave: { _ in }

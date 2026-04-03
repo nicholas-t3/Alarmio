@@ -269,18 +269,11 @@ struct OnboardingConfirmationView: View {
                     .tracking(AppTypography.captionTracking)
                     .foregroundStyle(.white.opacity(0.4))
 
-                let count = manager.configuration.snoozeCount
                 let interval = manager.configuration.snoozeInterval
 
-                if count == 0 {
-                    Text("Disabled")
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white.opacity(0.5))
-                } else {
-                    Text("\(count) \(count == 1 ? "snooze" : "snoozes"), \(interval) min each")
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white)
-                }
+                Text("\(interval) min")
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
             }
 
             Spacer()

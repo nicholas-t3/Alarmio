@@ -36,7 +36,6 @@ struct HomeView: View {
             tone: .calm,
             intensity: .gentle,
             voicePersona: .calmGuide,
-            snoozeCount: 3,
             snoozeInterval: 5
         ),
         AlarmConfiguration(
@@ -46,7 +45,6 @@ struct HomeView: View {
             tone: .fun,
             intensity: .balanced,
             voicePersona: .playful,
-            snoozeCount: 5,
             snoozeInterval: 5
         )
     ]

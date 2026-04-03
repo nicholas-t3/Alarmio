@@ -18,10 +18,7 @@ struct OnboardingSnoozeView: View {
     // MARK: - State
 
     @State private var contentVisible = false
-    @State private var snoozeCount: Double = 0
     @State private var snoozeInterval: Double = 5
-
-    private var hasSnooze: Bool { Int(snoozeCount) > 0 }
 
     // MARK: - Constants
 
@@ -47,44 +44,21 @@ struct OnboardingSnoozeView: View {
                 Spacer()
                     .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
 
-                // Snooze count
+                // Snooze interval
                 sliderCard(
-                    label: "SNOOZE LIMIT",
-                    showLabel: hasSnooze,
-                    description: hasSnooze ? "How many times you can snooze" : "Snooze is disabled",
-                    value: $snoozeCount,
-                    range: 0...5,
+                    label: "SNOOZE DURATION",
+                    description: "Time between each snooze",
+                    value: $snoozeInterval,
+                    range: 1...15,
                     step: 1,
-                    displayValue: Int(snoozeCount) == 0 ? "Off" : "\(Int(snoozeCount))",
-                    displayUnit: Int(snoozeCount) == 0 ? "" : (Int(snoozeCount) == 1 ? "time" : "times"),
-                    index: 0
+                    displayValue: "\(Int(snoozeInterval))",
+                    displayUnit: Int(snoozeInterval) == 1 ? "minute" : "minutes"
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
 
                 Spacer()
-                    .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale) * 1.5)
-
-                // Snooze interval — only visible when count > 0
-                if hasSnooze {
-                    sliderCard(
-                        label: "SNOOZE DURATION",
-                        showLabel: true,
-                        description: "Time between each snooze",
-                        value: $snoozeInterval,
-                        range: 1...15,
-                        step: 1,
-                        displayValue: "\(Int(snoozeInterval))",
-                        displayUnit: Int(snoozeInterval) == 1 ? "minute" : "minutes",
-                        index: 1
-                    )
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
-                }
-
-                Spacer()
                     .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: hasSnooze)
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
@@ -102,14 +76,12 @@ struct OnboardingSnoozeView: View {
     @ViewBuilder
     private func sliderCard(
         label: String,
-        showLabel: Bool,
         description: String,
         value: Binding<Double>,
         range: ClosedRange<Double>,
         step: Double,
         displayValue: String,
-        displayUnit: String,
-        index: Int
+        displayUnit: String
     ) -> some View {
         VStack(spacing: 16) {
 
@@ -118,7 +90,6 @@ struct OnboardingSnoozeView: View {
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
-                .premiumBlur(isVisible: showLabel, duration: 0.3)
 
             // Value display
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -148,7 +119,6 @@ struct OnboardingSnoozeView: View {
                 .padding(.horizontal, 8)
                 .onChange(of: value.wrappedValue) {
                     HapticManager.shared.selection()
-                    manager.setSnoozeCount(Int(snoozeCount))
                     manager.setSnoozeInterval(Int(snoozeInterval))
                 }
         }
@@ -158,7 +128,7 @@ struct OnboardingSnoozeView: View {
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
         .blur(radius: contentVisible ? 0 : 8)
         .opacity(contentVisible ? 1 : 0)
-        .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.1), value: contentVisible)
+        .animation(.easeOut(duration: 0.4), value: contentVisible)
     }
 }
 

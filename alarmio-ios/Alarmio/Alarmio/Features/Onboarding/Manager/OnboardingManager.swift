@@ -100,11 +100,6 @@ final class OnboardingManager {
         configuration.leaveTime = time
     }
 
-    func setSnoozeCount(_ count: Int) {
-        HapticManager.shared.selection()
-        configuration.snoozeCount = count
-    }
-
     func setSnoozeInterval(_ interval: Int) {
         HapticManager.shared.selection()
         configuration.snoozeInterval = interval

@@ -70,7 +70,6 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable {
     var intensity: AlarmIntensity?
     var voicePersona: VoicePersona?
     var contentFlags: [ContentFlag] = []
-    var snoozeCount: Int = 3
     var snoozeInterval: Int = 5
     var customPrompt: String?
     var difficulty: AlarmDifficulty?

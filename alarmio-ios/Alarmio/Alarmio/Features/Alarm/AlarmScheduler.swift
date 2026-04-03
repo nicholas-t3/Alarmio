@@ -79,25 +79,14 @@ final class AlarmScheduler {
             sound = .default
         }
 
-        let alarmConfig: AlarmManager.AlarmConfiguration<AlarmioMetadata>
-        if config.snoozeCount > 0 {
-            alarmConfig = AlarmManager.AlarmConfiguration(
-                countdownDuration: countdownDuration,
-                schedule: schedule,
-                attributes: attributes,
-                stopIntent: StopAlarmIntent(),
-                secondaryIntent: SnoozeAlarmIntent(),
-                sound: sound
-            )
-        } else {
-            alarmConfig = AlarmManager.AlarmConfiguration(
-                countdownDuration: countdownDuration,
-                schedule: schedule,
-                attributes: attributes,
-                stopIntent: StopAlarmIntent(),
-                sound: sound
-            )
-        }
+        let alarmConfig = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
+            countdownDuration: countdownDuration,
+            schedule: schedule,
+            attributes: attributes,
+            stopIntent: StopAlarmIntent(),
+            secondaryIntent: SnoozeAlarmIntent(),
+            sound: sound
+        )
 
         _ = try await manager.schedule(id: config.id, configuration: alarmConfig)
     }
@@ -155,25 +144,17 @@ final class AlarmScheduler {
             systemImageName: "stop.circle.fill"
         )
 
-        let alert: AlarmPresentation.Alert
-        if config.snoozeCount > 0 {
-            let snoozeButton = AlarmButton(
-                text: "SNOOZE",
-                textColor: .black,
-                systemImageName: "zzz"
-            )
-            alert = AlarmPresentation.Alert(
-                title: title,
-                stopButton: stopButton,
-                secondaryButton: snoozeButton,
-                secondaryButtonBehavior: .countdown
-            )
-        } else {
-            alert = AlarmPresentation.Alert(
-                title: title,
-                stopButton: stopButton
-            )
-        }
+        let snoozeButton = AlarmButton(
+            text: "SNOOZE",
+            textColor: .black,
+            systemImageName: "zzz"
+        )
+        let alert = AlarmPresentation.Alert(
+            title: title,
+            stopButton: stopButton,
+            secondaryButton: snoozeButton,
+            secondaryButtonBehavior: .countdown
+        )
 
         return AlarmAttributes<AlarmioMetadata>(
             presentation: AlarmPresentation(alert: alert),
@@ -181,8 +162,7 @@ final class AlarmScheduler {
         )
     }
 
-    private func buildCountdownDuration(from config: AlarmConfiguration) -> Alarm.CountdownDuration? {
-        guard config.snoozeCount > 0 else { return nil }
+    private func buildCountdownDuration(from config: AlarmConfiguration) -> Alarm.CountdownDuration {
         let snoozeSeconds = TimeInterval(config.snoozeInterval * 60)
         return Alarm.CountdownDuration(preAlert: nil, postAlert: snoozeSeconds)
     }
