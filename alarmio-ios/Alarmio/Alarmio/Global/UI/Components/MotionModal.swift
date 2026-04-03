@@ -7,14 +7,80 @@
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - UIKit Blur View
+
+struct UIKitBlurView: UIViewRepresentable {
+
+    let style: UIBlurEffect.Style
+    let intensity: CGFloat
+
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        let blurEffect = UIBlurEffect(style: style)
+        let view = UIVisualEffectView(effect: nil)
+        view.backgroundColor = .clear
+        context.coordinator.blurEffect = blurEffect
+        context.coordinator.visualEffectView = view
+        return view
+    }
+
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
+        context.coordinator.setIntensity(intensity)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator {
+        var visualEffectView: UIVisualEffectView?
+        var blurEffect: UIBlurEffect?
+        private var animator: UIViewPropertyAnimator?
+
+        func setIntensity(_ intensity: CGFloat) {
+            guard let view = visualEffectView, let effect = blurEffect else { return }
+
+            // Ensure we have a paused animator to scrub
+            if animator == nil {
+                let newAnimator = UIViewPropertyAnimator(duration: 1.0, curve: .linear) {
+                    view.effect = effect
+                }
+                newAnimator.pausesOnCompletion = true
+                animator = newAnimator
+            }
+
+            animator?.fractionComplete = max(0, min(1, intensity))
+        }
+
+        deinit {
+            animator?.stopAnimation(true)
+        }
+    }
+}
+
+// MARK: - Motion Modal
 
 struct MotionModal<Content: View>: View {
 
     // MARK: - Constants
 
     @Binding var isPresented: Bool
+    @Binding var progress: CGFloat
     let dismissible: Bool
     @ViewBuilder let content: () -> Content
+
+    init(
+        isPresented: Binding<Bool>,
+        progress: Binding<CGFloat> = .constant(0),
+        dismissible: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self._isPresented = isPresented
+        self._progress = progress
+        self.dismissible = dismissible
+        self.content = content
+    }
 
     // MARK: - State
 
@@ -29,9 +95,12 @@ struct MotionModal<Content: View>: View {
         offset + dragOffset
     }
 
+    private var presentationProgress: CGFloat {
+        max(0, min(1, 1 - (totalOffset / 600)))
+    }
+
     private var backgroundOpacity: Double {
-        let progress = 1 - (totalOffset / 600)
-        return max(0, min(0.6, progress * 0.6))
+        Double(presentationProgress) * 0.45
     }
 
     // MARK: - Body
@@ -95,6 +164,9 @@ struct MotionModal<Content: View>: View {
                 }
             }
             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: contentHeight)
+            .onChange(of: totalOffset) { _, _ in
+                progress = presentationProgress
+            }
             .onChange(of: isPresented) { _, newValue in
                 if newValue {
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -153,7 +225,7 @@ struct MotionModal<Content: View>: View {
                 bottomTrailingRadius: 45,
                 topTrailingRadius: 20
             )
-            .fill(Color(hex: "0A0A0A").opacity(0.7))
+            .fill(Color(hex: "0a1628").opacity(0.7))
 
             UnevenRoundedRectangle(
                 topLeadingRadius: 20,
@@ -230,35 +302,66 @@ private struct MotionModalHeightKey: PreferenceKey {
     }
 }
 
+private struct MotionModalContainer<Base: View, ModalContent: View>: View {
+
+    let base: Base
+    @Binding var isPresented: Bool
+    let dismissible: Bool
+    @ViewBuilder let modalContent: () -> ModalContent
+
+    @State private var modalProgress: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            base
+                .overlay {
+                    UIKitBlurView(style: .systemUltraThinMaterial, intensity: modalProgress * 0.3)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+
+            if isPresented {
+                MotionModal(
+                    isPresented: $isPresented,
+                    progress: $modalProgress,
+                    dismissible: dismissible,
+                    content: modalContent
+                )
+            }
+        }
+        .onChange(of: isPresented) { _, newValue in
+            if !newValue {
+                modalProgress = 0
+            }
+        }
+    }
+}
+
 extension View {
     func motionModal<Content: View>(
         isPresented: Binding<Bool>,
         dismissible: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        ZStack {
-            self
-
-            if isPresented.wrappedValue {
-                MotionModal(
-                    isPresented: isPresented,
-                    dismissible: dismissible,
-                    content: content
-                )
-            }
-        }
+        MotionModalContainer(
+            base: self,
+            isPresented: isPresented,
+            dismissible: dismissible,
+            modalContent: content
+        )
     }
 }
 
 #Preview {
     struct PreviewContainer: View {
         @State private var showModal = true
+        @State private var progress: CGFloat = 0
 
         var body: some View {
             ZStack {
                 NightSkyBackground()
 
-                MotionModal(isPresented: $showModal, dismissible: false) {
+                MotionModal(isPresented: $showModal, progress: $progress, dismissible: false) {
                     VStack(spacing: 24) {
                         Text("PERMISSION REQUIRED")
                             .font(AppTypography.headlineLarge)

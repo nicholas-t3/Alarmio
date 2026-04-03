@@ -8,11 +8,34 @@
 
 import SwiftUI
 
+enum ShootingStarFrequency: Sendable {
+    case sparse      // Default — 8–20s between shots
+    case frequent    // 3–8s between shots
+    case intense     // 1–4s between shots
+
+    var delayRange: ClosedRange<Double> {
+        switch self {
+        case .sparse: return 8...20
+        case .frequent: return 3...8
+        case .intense: return 1...4
+        }
+    }
+
+    var initialDelay: ClosedRange<Double> {
+        switch self {
+        case .sparse: return 5...8
+        case .frequent: return 2...4
+        case .intense: return 0.5...1.5
+        }
+    }
+}
+
 struct MorningSky: View {
 
     // MARK: - State
     var starOpacity: Double = 1.0
     var showConstellations: Bool = true
+    var shootingStarFrequency: ShootingStarFrequency = .sparse
 
     // MARK: - Body
     var body: some View {
@@ -37,7 +60,7 @@ struct MorningSky: View {
             .ignoresSafeArea()
 
             // Rotating star canvas — masked to fade out toward the sunrise
-            MorningStarCanvas(showConstellations: showConstellations)
+            MorningStarCanvas(showConstellations: showConstellations, shootingStarFrequency: shootingStarFrequency)
                 .opacity(starOpacity)
                 .mask(starFadeMask)
 
@@ -112,6 +135,7 @@ private struct MorningStarCanvas: View {
 
     // MARK: - Constants
     var showConstellations: Bool = true
+    var shootingStarFrequency: ShootingStarFrequency = .sparse
 
     // MARK: - State
     @State private var stars: [MorningFieldStar] = []
@@ -490,7 +514,8 @@ private struct MorningStarCanvas: View {
 
     private func scheduleShootingStars() {
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(Double.random(in: 5...8)))
+            let freq = shootingStarFrequency
+            try? await Task.sleep(for: .seconds(Double.random(in: freq.initialDelay)))
 
             while true {
                 let startX = CGFloat.random(in: 0.05...0.7)
@@ -513,7 +538,7 @@ private struct MorningStarCanvas: View {
                 let currentElapsed = Date.now.timeIntervalSince(startTime)
                 shootingStars.removeAll { currentElapsed - $0.startTime > $0.duration + 1 }
 
-                try? await Task.sleep(for: .seconds(Double.random(in: 8...20)))
+                try? await Task.sleep(for: .seconds(Double.random(in: freq.delayRange)))
             }
         }
     }

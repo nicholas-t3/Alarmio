@@ -22,6 +22,7 @@ struct HomeView: View {
     @State private var fabVisible = false
     @State private var glowPulse = false
     @State private var showCreateAlarm = false
+    @State private var showSettings = false
 
     // MARK: - Body
 
@@ -29,7 +30,7 @@ struct HomeView: View {
         ZStack {
 
             // Background
-            MorningSky(starOpacity: 0.8, showConstellations: false)
+            MorningSky(starOpacity: 0.8, showConstellations: false, shootingStarFrequency: .frequent)
 
             // Main content
             VStack(spacing: 0) {
@@ -62,6 +63,9 @@ struct HomeView: View {
             CreateAlarmView { newAlarm in
                 viewModel.addAlarm(newAlarm)
             }
+        }
+        .motionModal(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 
@@ -101,6 +105,7 @@ struct HomeView: View {
             // Settings
             Button {
                 HapticManager.shared.buttonTap()
+                showSettings = true
             } label: {
                 Image(systemName: "gear")
                     .font(.system(size: 22, weight: .medium))
