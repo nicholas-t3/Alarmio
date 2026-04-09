@@ -77,7 +77,7 @@ final class AlarmScheduler {
         let preAlertSeconds = max(1, min(usableHeadroom, Self.preAlertLeadSeconds))
         print("[AlarmScheduler] headroom=\(Int(headroom))s preAlert=\(Int(preAlertSeconds))s")
 
-        let maxSnoozes = config.maxSnoozes ?? 3
+        let maxSnoozes = config.maxSnoozes
         let currentCount = config.currentSnoozeCount ?? 0
         let snoozesRemaining = max(0, maxSnoozes - currentCount)
         print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes))")

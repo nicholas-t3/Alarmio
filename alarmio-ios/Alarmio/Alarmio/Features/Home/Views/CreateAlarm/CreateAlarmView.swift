@@ -21,7 +21,7 @@ struct CreateAlarmView: View {
         intensity: .gentle,
         difficulty: .easy
     )
-    @State private var step = 1
+    @State private var step: Int
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -30,6 +30,13 @@ struct CreateAlarmView: View {
     // MARK: - Constants
 
     let onCreate: (AlarmConfiguration) -> Void
+
+    // MARK: - Init
+
+    init(initialStep: Int = 1, onCreate: @escaping (AlarmConfiguration) -> Void) {
+        self._step = State(initialValue: initialStep)
+        self.onCreate = onCreate
+    }
 
     // MARK: - Body
 
@@ -176,55 +183,124 @@ struct CreateAlarmView: View {
 
     private var snoozeCard: some View {
         VStack(spacing: 14) {
+
+            // Section label
             Text("SNOOZE")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            HStack(spacing: 16) {
-                Button {
-                    HapticManager.shared.selection()
-                    alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            // Snooze count stepper — always visible
+            snoozeCountRow
 
-                HStack(spacing: 6) {
-                    Text("\(alarm.snoozeInterval)")
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-
-                    Text(alarm.snoozeInterval == 1 ? "minute" : "minutes")
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .contentTransition(.numericText())
-                }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
-
-                Button {
-                    HapticManager.shared.selection()
-                    alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            // Interval stepper — only when count > 0
+            if alarm.maxSnoozes > 0 {
+                snoozeIntervalRow
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.maxSnoozes)
     }
+
+    private var snoozeCountRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                alarm.maxSnoozes = max(0, alarm.maxSnoozes - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                if alarm.maxSnoozes == 0 {
+                    Text("No snooze")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                } else {
+                    Text("\(alarm.maxSnoozes)")
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+
+                    Text(alarm.maxSnoozes == 1 ? "snooze" : "snoozes")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                }
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.maxSnoozes)
+
+            Button {
+                HapticManager.shared.selection()
+                alarm.maxSnoozes = min(3, alarm.maxSnoozes + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    private var snoozeIntervalRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                Text("\(alarm.snoozeInterval)")
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+
+                Text(alarm.snoozeInterval == 1 ? "minute" : "minutes")
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .contentTransition(.numericText())
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
+
+            Button {
+                HapticManager.shared.selection()
+                alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    /// Fixed width for the center label of both snooze stepper rows, so the
+    /// plus/minus buttons align vertically across rows regardless of which
+    /// text ("No snooze" vs "15 minutes") is currently showing.
+    private static let snoozeStepperLabelWidth: CGFloat = 110
 
     // MARK: - Step 2: Style
 
@@ -270,29 +346,10 @@ struct CreateAlarmView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
+            // Two-column grid of equal-width pills
+            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
                 ForEach(toneOptions, id: \.tone) { option in
-                    let isSelected = alarm.tone == option.tone
-
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.tone = option.tone
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 12))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                        .fixedSize()
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
+                    tonePill(for: option)
                 }
             }
         }
@@ -302,6 +359,35 @@ struct CreateAlarmView: View {
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
     }
 
+    private func tonePill(for option: ToneOption) -> some View {
+        let isSelected = alarm.tone == option.tone
+        return Button {
+            HapticManager.shared.selection()
+            alarm.tone = option.tone
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: option.icon)
+                    .font(.system(size: 12))
+                Text(option.label)
+                    .font(AppTypography.labelSmall)
+            }
+            .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(isSelected ? .white : .white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .animation(.easeOut(duration: 0.2), value: isSelected)
+    }
+
+    /// Shared grid spec for the tone / reason / voice pill cards. Two equal
+    /// columns with an 8pt gutter — makes pills rigidly aligned regardless
+    /// of label length.
+    private static let pillGridColumns: [GridItem] = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
     private var whyCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("REASON")
@@ -310,8 +396,8 @@ struct CreateAlarmView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
+            // Two-column grid of equal-width pills
+            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
                 ForEach(whyOptions, id: \.why) { option in
                     let isSelected = alarm.whyContext == option.why
 
@@ -325,12 +411,11 @@ struct CreateAlarmView: View {
                             Text(option.label)
                                 .font(AppTypography.labelSmall)
                         }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 14)
+                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(isSelected ? .white : .white.opacity(0.08))
                         .clipShape(Capsule())
-                        .fixedSize()
                     }
                     .animation(.easeOut(duration: 0.2), value: isSelected)
                 }
@@ -362,7 +447,7 @@ struct CreateAlarmView: View {
                         } label: {
                             Text(option.label)
                                 .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.6))
+                                .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(isSelected ? .white : .clear)
@@ -393,7 +478,7 @@ struct CreateAlarmView: View {
                         } label: {
                             Text(option.label)
                                 .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.6))
+                                .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(isSelected ? .white : .clear)
@@ -421,8 +506,8 @@ struct CreateAlarmView: View {
                 .foregroundStyle(.white.opacity(0.4))
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
+            // Two-column grid of equal-width pills
+            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
                 ForEach(voiceOptions, id: \.persona) { option in
                     let isSelected = alarm.voicePersona == option.persona
 
@@ -436,12 +521,11 @@ struct CreateAlarmView: View {
                             Text(option.label)
                                 .font(AppTypography.labelSmall)
                         }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 14)
+                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(isSelected ? .white : .white.opacity(0.08))
                         .clipShape(Capsule())
-                        .fixedSize()
                     }
                     .animation(.easeOut(duration: 0.2), value: isSelected)
                 }
@@ -696,5 +780,5 @@ private struct FlowLayout: Layout {
 }
 
 #Preview("Step 2") {
-    CreateAlarmView(onCreate: { _ in })
+    CreateAlarmView(initialStep: 2, onCreate: { _ in })
 }

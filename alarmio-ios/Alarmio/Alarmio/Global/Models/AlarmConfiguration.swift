@@ -71,10 +71,10 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     var voicePersona: VoicePersona?
     var contentFlags: [ContentFlag] = []
     var snoozeInterval: Int = 5
-    // Snooze cap fields — optional for Codable backwards compatibility with
-    // any alarms already persisted in UserDefaults before this branch.
-    // Read via the computed helpers below.
-    var maxSnoozes: Int? = 3
+    var maxSnoozes: Int = 3
+    // currentSnoozeCount stays optional — it's runtime state mutated by
+    // SnoozeAlarmIntent, and keeping it optional preserves Codable
+    // back-compat with any alarms persisted without this field.
     var currentSnoozeCount: Int? = 0
     var customPrompt: String?
     var difficulty: AlarmDifficulty?

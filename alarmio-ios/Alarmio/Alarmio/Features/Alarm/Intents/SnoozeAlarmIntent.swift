@@ -56,7 +56,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         }
 
         var alarm = alarms[index]
-        let maxSnoozes = alarm.maxSnoozes ?? 3
+        let maxSnoozes = alarm.maxSnoozes
         let currentCount = alarm.currentSnoozeCount ?? 0
         print("[SnoozeAlarmIntent] loaded alarm: count=\(currentCount)/\(maxSnoozes) interval=\(alarm.snoozeInterval)min")
 

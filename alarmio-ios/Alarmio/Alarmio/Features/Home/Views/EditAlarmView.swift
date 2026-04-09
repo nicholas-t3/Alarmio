@@ -27,6 +27,7 @@ struct EditAlarmView: View {
     @State private var editDays: Set<Int> = []
     @State private var editTime: Date = Date()
     @State private var editSnoozeInterval: Int = 5
+    @State private var editMaxSnoozes: Int = 3
     @State private var audioPlayer: AVAudioPlayer?
     @State private var isPreviewPlaying = false
 
@@ -74,6 +75,7 @@ struct EditAlarmView: View {
             editTime = alarm.wakeTime ?? Date()
             editDays = Set(alarm.repeatDays ?? [])
             editSnoozeInterval = alarm.snoozeInterval
+            editMaxSnoozes = alarm.maxSnoozes
         }
     }
 
@@ -110,51 +112,120 @@ struct EditAlarmView: View {
 
     private var snoozeSection: some View {
         VStack(spacing: 14) {
+
+            // Section label
             Text("SNOOZE")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            HStack(spacing: 16) {
-                Button {
-                    HapticManager.shared.selection()
-                    editSnoozeInterval = max(1, editSnoozeInterval - 1)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            // Snooze count stepper — always visible
+            snoozeCountRow
 
-                HStack(spacing: 6) {
-                    Text("\(editSnoozeInterval)")
+            // Interval stepper — only when count > 0
+            if editMaxSnoozes > 0 {
+                snoozeIntervalRow
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: editMaxSnoozes)
+    }
+
+    private var snoozeCountRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                editMaxSnoozes = max(0, editMaxSnoozes - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                if editMaxSnoozes == 0 {
+                    Text("No snooze")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                } else {
+                    Text("\(editMaxSnoozes)")
                         .font(AppTypography.labelLarge)
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
 
-                    Text(editSnoozeInterval == 1 ? "minute" : "minutes")
-                        .font(AppTypography.labelSmall)
+                    Text(editMaxSnoozes == 1 ? "snooze" : "snoozes")
+                        .font(AppTypography.labelMedium)
                         .foregroundStyle(.white.opacity(0.7))
                         .contentTransition(.numericText())
                 }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editMaxSnoozes)
 
-                Button {
-                    HapticManager.shared.selection()
-                    editSnoozeInterval = min(15, editSnoozeInterval + 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            Button {
+                HapticManager.shared.selection()
+                editMaxSnoozes = min(3, editMaxSnoozes + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
             }
         }
     }
+
+    private var snoozeIntervalRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                editSnoozeInterval = max(1, editSnoozeInterval - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                Text("\(editSnoozeInterval)")
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+
+                Text(editSnoozeInterval == 1 ? "minute" : "minutes")
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .contentTransition(.numericText())
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
+
+            Button {
+                HapticManager.shared.selection()
+                editSnoozeInterval = min(15, editSnoozeInterval + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    /// Fixed width for the center label of both snooze stepper rows, so the
+    /// plus/minus buttons align vertically across rows regardless of which
+    /// text ("No snooze" vs "15 minutes") is currently showing.
+    private static let snoozeStepperLabelWidth: CGFloat = 110
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
@@ -186,6 +257,7 @@ struct EditAlarmView: View {
                 updated.wakeTime = editTime
                 updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
                 updated.snoozeInterval = editSnoozeInterval
+                updated.maxSnoozes = editMaxSnoozes
                 onSave(updated)
             } label: {
                 Text("Save")

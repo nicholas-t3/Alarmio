@@ -65,6 +65,7 @@ final class AlarmStore {
                     intensity: .gentle,
                     voicePersona: .calmGuide,
                     snoozeInterval: 5,
+                    maxSnoozes: 3,
                     isDemo: true
                 ),
                 AlarmConfiguration(
@@ -75,6 +76,7 @@ final class AlarmStore {
                     intensity: .balanced,
                     voicePersona: .playful,
                     snoozeInterval: 5,
+                    maxSnoozes: 3,
                     isDemo: true
                 )
             ]
