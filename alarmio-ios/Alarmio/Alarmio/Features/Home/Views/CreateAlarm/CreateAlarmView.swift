@@ -332,175 +332,14 @@ struct CreateAlarmView: View {
         .mask(scrollFadeMask)
     }
 
-    private var toneCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TONE")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            // Two-column grid of equal-width pills
-            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-                ForEach(toneOptions, id: \.tone) { option in
-                    tonePill(for: option)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private func tonePill(for option: ToneOption) -> some View {
-        let isSelected = alarm.tone == option.tone
-        return Button {
-            HapticManager.shared.selection()
-            alarm.tone = option.tone
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: option.icon)
-                    .font(.system(size: 12))
-                Text(option.label)
-                    .font(AppTypography.labelSmall)
-            }
-            .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(isSelected ? .white : .white.opacity(0.08))
-            .clipShape(Capsule())
-        }
-        .animation(.easeOut(duration: 0.2), value: isSelected)
-    }
-
-    /// Shared grid spec for the tone / reason / voice pill cards. Two equal
-    /// columns with an 8pt gutter — makes pills rigidly aligned regardless
-    /// of label length.
+    /// Shared grid spec for the inline tone / reason pickers inside the
+    /// Customize card. Two equal columns with an 8pt gutter.
     private static let pillGridColumns: [GridItem] = [
         GridItem(.flexible(), spacing: 8),
         GridItem(.flexible(), spacing: 8)
     ]
 
-    private var whyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("REASON")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            // Two-column grid of equal-width pills
-            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-                ForEach(whyOptions, id: \.why) { option in
-                    let isSelected = alarm.whyContext == option.why
-
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.whyContext = option.why
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 11))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private var intensityCard: some View {
-        VStack(spacing: 16) {
-
-            // Intensity
-            VStack(spacing: 10) {
-                Text("INTENSITY")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                HStack(spacing: 0) {
-                    ForEach(intensityOptions, id: \.intensity) { option in
-                        let isSelected = alarm.intensity == option.intensity
-
-                        Button {
-                            HapticManager.shared.selection()
-                            alarm.intensity = option.intensity
-                        } label: {
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(isSelected ? .white : .clear)
-                                .clipShape(Capsule())
-                        }
-                        .animation(.easeOut(duration: 0.2), value: isSelected)
-                    }
-                }
-                .padding(3)
-                .background(.white.opacity(0.08))
-                .clipShape(Capsule())
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private var voiceCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("VOICE")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            // Two-column grid of equal-width pills
-            LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-                ForEach(voiceOptions, id: \.persona) { option in
-                    let isSelected = alarm.voicePersona == option.persona
-
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.voicePersona = option.persona
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 12))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    // MARK: - Factors Card
+    // MARK: - Customize Card
 
     private var factorsCard: some View {
         VStack(spacing: 0) {
@@ -1175,30 +1014,6 @@ struct CreateAlarmView: View {
         case intensity
 
         var id: Self { self }
-
-        var caption: String {
-            switch self {
-            case .tone: return "TONE"
-            case .reason: return "REASON"
-            case .intensity: return "INTENSITY"
-            }
-        }
-    }
-
-    private struct VoiceOption {
-        let persona: VoicePersona
-        let label: String
-        let icon: String
-    }
-
-    private var voiceOptions: [VoiceOption] {
-        [
-            VoiceOption(persona: .calmGuide, label: "Calm Guide", icon: "leaf.fill"),
-            VoiceOption(persona: .energeticCoach, label: "Coach", icon: "figure.run"),
-            VoiceOption(persona: .hardSergeant, label: "Sergeant", icon: "shield.fill"),
-            VoiceOption(persona: .evilSpaceLord, label: "Space Lord", icon: "sparkles"),
-            VoiceOption(persona: .playful, label: "Playful", icon: "face.smiling.fill"),
-        ]
     }
 
     // MARK: - Hero Voice Data
@@ -1239,74 +1054,6 @@ struct CreateAlarmView: View {
         } else {
             return "\(selectedDays.count) days per week"
         }
-    }
-}
-
-// MARK: - Flow Layout
-
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = buildRows(proposal: proposal, subviews: subviews)
-        let height = rows.reduce(CGFloat(0)) { total, row in
-            total + row.height + (total > 0 ? spacing : 0)
-        }
-        return CGSize(width: proposal.width ?? 0, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = buildRows(proposal: proposal, subviews: subviews)
-        var y: CGFloat = 0
-
-        var subviewIndex = 0
-        for row in rows {
-            let rowOffset = (bounds.width - row.width) / 2
-            var x = rowOffset
-
-            for i in 0..<row.count {
-                let size = subviews[subviewIndex].sizeThatFits(.unspecified)
-                subviews[subviewIndex].place(
-                    at: CGPoint(x: bounds.minX + x, y: bounds.minY + y),
-                    proposal: .unspecified
-                )
-                x += size.width + spacing
-                subviewIndex += 1
-            }
-            y += row.height + spacing
-        }
-    }
-
-    private struct Row {
-        var count: Int
-        var width: CGFloat
-        var height: CGFloat
-    }
-
-    private func buildRows(proposal: ProposedViewSize, subviews: Subviews) -> [Row] {
-        let maxWidth = proposal.width ?? .infinity
-        var rows: [Row] = []
-        var currentRow = Row(count: 0, width: 0, height: 0)
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            let neededWidth = currentRow.count > 0 ? currentRow.width + spacing + size.width : size.width
-
-            if neededWidth > maxWidth && currentRow.count > 0 {
-                rows.append(currentRow)
-                currentRow = Row(count: 1, width: size.width, height: size.height)
-            } else {
-                currentRow.width = neededWidth
-                currentRow.height = max(currentRow.height, size.height)
-                currentRow.count += 1
-            }
-        }
-
-        if currentRow.count > 0 {
-            rows.append(currentRow)
-        }
-
-        return rows
     }
 }
 
