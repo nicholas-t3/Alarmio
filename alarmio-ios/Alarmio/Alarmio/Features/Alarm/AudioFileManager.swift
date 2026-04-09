@@ -31,8 +31,31 @@ final class AudioFileManager {
         do {
             try ensureSoundsDirectory()
             copyDefaultSoundIfNeeded()
+            copyTestAlarmSoundsIfNeeded()
         } catch {
             print("[AudioFileManager] Setup failed: \(error)")
+        }
+    }
+
+    /// POC test: copies alarm1.mp3 / alarm2.mp3 / alarm3.mp3 from the bundle
+    /// into Library/Sounds/ so AlarmKit can reference them by filename.
+    /// Used to prove per-snooze audio swapping works end-to-end.
+    private func copyTestAlarmSoundsIfNeeded() {
+        for name in ["alarm1", "alarm2", "alarm3"] {
+            let destinationURL = soundsDirectory.appendingPathComponent("\(name).mp3")
+            // Always overwrite for the POC so rebuilds pick up any changes.
+            try? FileManager.default.removeItem(at: destinationURL)
+
+            guard let bundleURL = Bundle.main.url(forResource: name, withExtension: "mp3") else {
+                print("[AudioFileManager] \(name).mp3 not found in bundle")
+                continue
+            }
+            do {
+                try FileManager.default.copyItem(at: bundleURL, to: destinationURL)
+                print("[AudioFileManager] copied \(name).mp3 → \(destinationURL.lastPathComponent)")
+            } catch {
+                print("[AudioFileManager] failed to copy \(name).mp3: \(error)")
+            }
         }
     }
 

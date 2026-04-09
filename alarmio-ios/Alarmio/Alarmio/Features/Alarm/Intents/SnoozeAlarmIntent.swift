@@ -6,15 +6,192 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
+import AlarmKit
 import AppIntents
+import Foundation
+import SwiftUI
+import ActivityKit
 
+/// Fired when the user taps the custom Snooze button on the AlarmKit alert.
+///
+/// Runs in the main app's process (guaranteed by `LiveActivityIntent`), so
+/// iOS wakes the app from a suspended state — even with the device locked
+/// — to execute `perform()`. From here we can call AlarmManager directly.
+///
+/// The cap mechanism: this intent increments `currentSnoozeCount` on the
+/// alarm and reschedules. When count reaches maxSnoozes, the scheduler
+/// builds the final alert with no secondary button, so the next fire
+/// cannot be snoozed.
 struct SnoozeAlarmIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Snooze Alarm"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Alarm ID")
+    var alarmID: String
+
+    init() {}
+
+    init(alarmID: String) {
+        self.alarmID = alarmID
+    }
 
     func perform() async throws -> some IntentResult {
-        // Future: increment snooze count, enforce max snooze limit,
-        // analytics tracking via shared UserDefaults/persistence
+        print("[SnoozeAlarmIntent] fired for alarmID=\(alarmID)")
+
+        guard let uuid = UUID(uuidString: alarmID) else {
+            print("[SnoozeAlarmIntent] invalid UUID, bailing")
+            return .result()
+        }
+
+        // Load alarms from the App Group shared defaults. Critical: must
+        // use the shared suite, not UserDefaults.standard, because this
+        // intent runs in the widget extension's process (different sandbox
+        // from the main app). Without the App Group, standard defaults
+        // would be empty here.
+        guard let data = AppGroup.defaults.data(forKey: AppGroup.alarmConfigurationsKey),
+              var alarms = try? JSONDecoder().decode([AlarmConfiguration].self, from: data),
+              let index = alarms.firstIndex(where: { $0.id == uuid }) else {
+            print("[SnoozeAlarmIntent] alarm not found in App Group defaults")
+            return .result()
+        }
+
+        var alarm = alarms[index]
+        let maxSnoozes = alarm.maxSnoozes ?? 3
+        let currentCount = alarm.currentSnoozeCount ?? 0
+        print("[SnoozeAlarmIntent] loaded alarm: count=\(currentCount)/\(maxSnoozes) interval=\(alarm.snoozeInterval)min")
+
+        // 1. Stop the currently ringing alarm.
+        do {
+            try await AlarmManager.shared.stop(id: uuid)
+            print("[SnoozeAlarmIntent] stopped current alarm")
+        } catch {
+            print("[SnoozeAlarmIntent] stop failed: \(error)")
+        }
+
+        // 2. Increment the snooze count and persist BEFORE scheduling.
+        let newCount = currentCount + 1
+        alarm.currentSnoozeCount = newCount
+        alarms[index] = alarm
+        if let encoded = try? JSONEncoder().encode(alarms) {
+            AppGroup.defaults.set(encoded, forKey: AppGroup.alarmConfigurationsKey)
+            print("[SnoozeAlarmIntent] saved updated count=\(newCount)")
+        }
+
+        // 3. Schedule the next fire.
+        let nextFireDate = Date().addingTimeInterval(TimeInterval(alarm.snoozeInterval * 60))
+        let snoozesRemaining = max(0, maxSnoozes - newCount)
+
+        // POC: rotate audio across the chain. Initial fire plays alarm1
+        // (handled by AlarmScheduler). Snooze #1 → alarm2, #2 → alarm3,
+        // #3 → alarm1 (final, no snooze button).
+        let soundName: String
+        switch newCount {
+        case 1: soundName = "alarm2.mp3"
+        case 2: soundName = "alarm3.mp3"
+        case 3: soundName = "alarm1.mp3"
+        default: soundName = "alarm1.mp3"
+        }
+        print("[SnoozeAlarmIntent] next fire in \(alarm.snoozeInterval)min, snoozesRemaining=\(snoozesRemaining), sound=\(soundName)")
+
+        do {
+            try await scheduleNext(
+                alarmID: uuid,
+                fireDate: nextFireDate,
+                snoozesRemaining: snoozesRemaining,
+                title: buildTitle(for: alarm),
+                soundName: soundName
+            )
+            print("[SnoozeAlarmIntent] next alarm scheduled successfully with sound=\(soundName)")
+        } catch {
+            print("[SnoozeAlarmIntent] next schedule failed: \(error)")
+        }
+
         return .result()
     }
-}
 
+    // MARK: - Private
+
+    private func scheduleNext(
+        alarmID: UUID,
+        fireDate: Date,
+        snoozesRemaining: Int,
+        title: LocalizedStringResource,
+        soundName: String
+    ) async throws {
+        let stopButton = AlarmButton(
+            text: "STOP",
+            textColor: .red,
+            systemImageName: "stop.circle.fill"
+        )
+
+        let alert: AlarmPresentation.Alert
+        let secondaryIntent: (any LiveActivityIntent)?
+
+        if snoozesRemaining > 0 {
+            let snoozeButton = AlarmButton(
+                text: "SNOOZE",
+                textColor: .black,
+                systemImageName: "zzz"
+            )
+            alert = AlarmPresentation.Alert(
+                title: title,
+                stopButton: stopButton,
+                secondaryButton: snoozeButton,
+                secondaryButtonBehavior: .custom
+            )
+            secondaryIntent = SnoozeAlarmIntent(alarmID: alarmID.uuidString)
+        } else {
+            alert = AlarmPresentation.Alert(
+                title: title,
+                stopButton: stopButton
+            )
+            secondaryIntent = nil
+        }
+
+        // Include a countdown presentation so the rescheduled alarm also
+        // gets a Live Activity — keeps the intent delivery going through
+        // the widget extension process across the whole chain.
+        let countdownContent = AlarmPresentation.Countdown(
+            title: "Alarm ringing soon",
+            pauseButton: AlarmButton(
+                text: "Skip",
+                textColor: .white,
+                systemImageName: "forward.fill"
+            )
+        )
+
+        let attributes = AlarmAttributes<AlarmioMetadata>(
+            presentation: AlarmPresentation(alert: alert, countdown: countdownContent),
+            tintColor: .blue
+        )
+
+        // preAlert of 30s so the Live Activity has time to appear before
+        // each snooze fires. Snooze interval is usually 1 min in our
+        // tests, so 30s of lead time leaves 30s of "ringing soon" card.
+        let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
+            countdownDuration: .init(preAlert: 30, postAlert: nil),
+            schedule: .fixed(fireDate),
+            attributes: attributes,
+            stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
+            secondaryIntent: secondaryIntent,
+            sound: .named(soundName)
+        )
+
+        _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
+    }
+
+    private func buildTitle(for alarm: AlarmConfiguration) -> LocalizedStringResource {
+        if let tone = alarm.tone {
+            let toneLabel = switch tone {
+            case .calm: "Calm"
+            case .encourage: "Encouraging"
+            case .push: "Motivating"
+            case .strict: "Strict"
+            case .fun: "Fun"
+            case .other: "Custom"
+            }
+            return "\(toneLabel) Wake Up"
+        }
+        return "Wake Up"
+    }
+}

@@ -11,8 +11,6 @@ import ActivityKit
 import AppIntents
 import SwiftUI
 
-nonisolated struct AlarmioMetadata: AlarmMetadata {}
-
 @Observable
 @MainActor
 final class AlarmScheduler {
@@ -69,26 +67,43 @@ final class AlarmScheduler {
             return
         }
 
-        let attributes = buildAttributes(from: config)
-        let countdownDuration = buildCountdownDuration(from: config)
-        let sound: ActivityKit.AlertConfiguration.AlertSound
-        if audioFileManager.hasCustomSound(for: config.id) || config.soundFileName != nil {
-            let soundName = audioFileManager.soundFileName(for: config.id, configured: config.soundFileName)
-            sound = .named(soundName)
+        let maxSnoozes = config.maxSnoozes ?? 3
+        let currentCount = config.currentSnoozeCount ?? 0
+        let snoozesRemaining = max(0, maxSnoozes - currentCount)
+        print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes))")
+
+        let attributes = buildAttributes(from: config, snoozesRemaining: snoozesRemaining)
+
+        // POC: initial fire always plays alarm1.mp3. Snooze chain rotates
+        // through alarm2 → alarm3 → alarm1 via SnoozeAlarmIntent.
+        let soundName = "alarm1.mp3"
+        let sound: ActivityKit.AlertConfiguration.AlertSound = .named(soundName)
+        print("[AlarmScheduler] initial sound=\(soundName)")
+
+        // When snoozes are exhausted, omit the secondary intent entirely so
+        // the final alarm has only a Stop button and cannot be snoozed.
+        let secondaryIntent: (any LiveActivityIntent)?
+        if snoozesRemaining > 0 {
+            secondaryIntent = SnoozeAlarmIntent(alarmID: config.id.uuidString)
         } else {
-            sound = .default
+            secondaryIntent = nil
         }
 
+        // The Live Activity countdown card shows for `preAlertLeadSeconds`
+        // before the alarm fires. We also shifted the scheduled fire date
+        // back by the same amount in buildSchedule() so the alert rings at
+        // the user's intended wake time.
         let alarmConfig = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: countdownDuration,
+            countdownDuration: .init(preAlert: Self.preAlertLeadSeconds, postAlert: nil),
             schedule: schedule,
             attributes: attributes,
-            stopIntent: StopAlarmIntent(),
-            secondaryIntent: SnoozeAlarmIntent(),
+            stopIntent: StopAlarmIntent(alarmID: config.id.uuidString),
+            secondaryIntent: secondaryIntent,
             sound: sound
         )
 
         _ = try await manager.schedule(id: config.id, configuration: alarmConfig)
+        print("[AlarmScheduler] scheduled successfully")
     }
 
     func cancelAlarm(id: UUID) throws {
@@ -107,6 +122,11 @@ final class AlarmScheduler {
 
     // MARK: - Schedule Building (internal for testability)
 
+    /// Number of seconds before the user's wake time that the Live Activity
+    /// countdown should begin. Must match the `preAlert` value we pass into
+    /// `AlarmConfiguration.countdownDuration`.
+    static let preAlertLeadSeconds: TimeInterval = 90
+
     func buildSchedule(from config: AlarmConfiguration, referenceDate: Date = Date()) -> Alarm.Schedule? {
         guard let wakeTime = config.wakeTime else { return nil }
 
@@ -114,17 +134,33 @@ final class AlarmScheduler {
         let hour = calendar.component(.hour, from: wakeTime)
         let minute = calendar.component(.minute, from: wakeTime)
 
-        // Repeating alarm
+        // Repeating alarm — AlarmKit relative schedules don't support a
+        // sub-minute offset, so we subtract the lead time from the
+        // components directly by shifting minutes back. For the POC, we
+        // assume the user accepts that repeating alarms may ring ~1-2 min
+        // before the displayed time due to the countdown lead.
         if let repeatDays = config.repeatDays, !repeatDays.isEmpty {
             let weekdays = repeatDays.compactMap { mapDayIndexToWeekday($0) }
             guard !weekdays.isEmpty else { return nil }
+
+            // Shift back by preAlertLeadSeconds. 90s = 1 min 30s so subtract
+            // 2 whole minutes and let the system handle the 30s drift.
+            let shiftMinutes = Int(Self.preAlertLeadSeconds / 60)
+            var adjustedHour = hour
+            var adjustedMinute = minute - shiftMinutes
+            if adjustedMinute < 0 {
+                adjustedMinute += 60
+                adjustedHour = (adjustedHour - 1 + 24) % 24
+            }
             return .relative(.init(
-                time: .init(hour: hour, minute: minute),
+                time: .init(hour: adjustedHour, minute: adjustedMinute),
                 repeats: .weekly(weekdays)
             ))
         }
 
-        // One-time alarm — compute next occurrence
+        // One-time alarm — compute next occurrence, then shift back so the
+        // alert fires at the user's intended wake time after the 90s
+        // countdown elapses.
         let components = DateComponents(hour: hour, minute: minute)
         guard let nextDate = calendar.nextDate(
             after: referenceDate,
@@ -133,10 +169,11 @@ final class AlarmScheduler {
         ) else {
             return nil
         }
-        return .fixed(nextDate)
+        let countdownStart = nextDate.addingTimeInterval(-Self.preAlertLeadSeconds)
+        return .fixed(countdownStart)
     }
 
-    private func buildAttributes(from config: AlarmConfiguration) -> AlarmAttributes<AlarmioMetadata> {
+    private func buildAttributes(from config: AlarmConfiguration, snoozesRemaining: Int) -> AlarmAttributes<AlarmioMetadata> {
         let title = buildAlarmTitle(from: config)
 
         let stopButton = AlarmButton(
@@ -145,20 +182,42 @@ final class AlarmScheduler {
             systemImageName: "stop.circle.fill"
         )
 
-        let snoozeButton = AlarmButton(
-            text: "SNOOZE",
-            textColor: .black,
-            systemImageName: "zzz"
-        )
-        let alert = AlarmPresentation.Alert(
-            title: title,
-            stopButton: stopButton,
-            secondaryButton: snoozeButton,
-            secondaryButtonBehavior: .countdown
+        let alert: AlarmPresentation.Alert
+        if snoozesRemaining > 0 {
+            let snoozeButton = AlarmButton(
+                text: "SNOOZE",
+                textColor: .black,
+                systemImageName: "zzz"
+            )
+            alert = AlarmPresentation.Alert(
+                title: title,
+                stopButton: stopButton,
+                secondaryButton: snoozeButton,
+                secondaryButtonBehavior: .custom
+            )
+        } else {
+            // Final alarm — only Stop, no Snooze button. Structural cap.
+            alert = AlarmPresentation.Alert(
+                title: title,
+                stopButton: stopButton
+            )
+        }
+
+        // Countdown presentation renders the pre-alert Live Activity card
+        // ("Alarm ringing soon 1:32 / Skip"). Required whenever
+        // countdownDuration.preAlert is set on the AlarmConfiguration,
+        // otherwise AlarmManager.schedule throws at runtime.
+        let countdownContent = AlarmPresentation.Countdown(
+            title: "Alarm ringing soon",
+            pauseButton: AlarmButton(
+                text: "Skip",
+                textColor: .white,
+                systemImageName: "forward.fill"
+            )
         )
 
         return AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert),
+            presentation: AlarmPresentation(alert: alert, countdown: countdownContent),
             tintColor: Color(hex: "3A6EAA")
         )
     }
