@@ -77,8 +77,12 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             print("[SnoozeAlarmIntent] saved updated count=\(newCount)")
         }
 
-        // 3. Schedule the next fire.
-        let nextFireDate = Date().addingTimeInterval(TimeInterval(alarm.snoozeInterval * 60))
+        // 3. Schedule the next fire. The Live Activity countdown card
+        // should run for the full snooze duration, so we schedule the
+        // countdown to start at `now` and set preAlert equal to the
+        // snooze interval. AlarmKit then rings the alert at
+        // `now + snoozeInterval` automatically when the countdown ends.
+        let snoozeSeconds = TimeInterval(alarm.snoozeInterval * 60)
         let snoozesRemaining = max(0, maxSnoozes - newCount)
 
         // POC: rotate audio across the chain. Initial fire plays alarm1
@@ -96,7 +100,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         do {
             try await scheduleNext(
                 alarmID: uuid,
-                fireDate: nextFireDate,
+                snoozeDurationSeconds: snoozeSeconds,
                 snoozesRemaining: snoozesRemaining,
                 title: buildTitle(for: alarm),
                 soundName: soundName
@@ -113,7 +117,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
 
     private func scheduleNext(
         alarmID: UUID,
-        fireDate: Date,
+        snoozeDurationSeconds: TimeInterval,
         snoozesRemaining: Int,
         title: LocalizedStringResource,
         soundName: String
@@ -148,9 +152,15 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             secondaryIntent = nil
         }
 
-        // Include a countdown presentation so the rescheduled alarm also
-        // gets a Live Activity — keeps the intent delivery going through
-        // the widget extension process across the whole chain.
+        // Live Activity countdown for (almost) the FULL snooze duration.
+        // Schedule the countdown to start slightly in the future so
+        // AlarmKit doesn't drop it as past-dated, and subtract the same
+        // buffer from the preAlert so the alert still fires at
+        // `now + snoozeInterval`.
+        let schedulingBuffer: TimeInterval = 3
+        let countdownStart = Date().addingTimeInterval(schedulingBuffer)
+        let preAlertSeconds = max(1, snoozeDurationSeconds - schedulingBuffer)
+
         let countdownContent = AlarmPresentation.Countdown(
             title: "Alarm ringing soon",
             pauseButton: AlarmButton(
@@ -159,18 +169,15 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
                 systemImageName: "forward.fill"
             )
         )
-
+        let presentation = AlarmPresentation(alert: alert, countdown: countdownContent)
         let attributes = AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert, countdown: countdownContent),
+            presentation: presentation,
             tintColor: .blue
         )
 
-        // preAlert of 30s so the Live Activity has time to appear before
-        // each snooze fires. Snooze interval is usually 1 min in our
-        // tests, so 30s of lead time leaves 30s of "ringing soon" card.
         let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: .init(preAlert: 30, postAlert: nil),
-            schedule: .fixed(fireDate),
+            countdownDuration: .init(preAlert: preAlertSeconds, postAlert: nil),
+            schedule: .fixed(countdownStart),
             attributes: attributes,
             stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
             secondaryIntent: secondaryIntent,
