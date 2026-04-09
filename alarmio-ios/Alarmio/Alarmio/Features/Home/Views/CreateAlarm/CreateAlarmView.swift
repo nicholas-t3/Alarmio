@@ -29,6 +29,14 @@ struct CreateAlarmView: View {
     @State private var voicePlayer = VoicePreviewPlayer()
     @State private var waveformPulse: Bool = false
     @State private var expandedFactor: FactorKind?
+    @State private var phase: Phase = .configuring
+    @State private var sunriseProgress: Double = 0
+    @State private var starSpinProgress: Double = 0
+    @State private var generatingStatusText: String = ""
+    @State private var confirmationHeroVisible: Bool = false
+    @State private var confirmationCheckVisible: Bool = false
+    @State private var confirmationHeroExited: Bool = false
+    @State private var confirmationCardVisible: Bool = false
 
     // MARK: - Constants
 
@@ -36,8 +44,17 @@ struct CreateAlarmView: View {
 
     // MARK: - Init
 
-    init(initialStep: Int = 1, onCreate: @escaping (AlarmConfiguration) -> Void) {
+    init(
+        initialStep: Int = 1,
+        initialPhase: Phase = .configuring,
+        previewStatusText: String = "",
+        onCreate: @escaping (AlarmConfiguration) -> Void
+    ) {
         self._step = State(initialValue: initialStep)
+        self._phase = State(initialValue: initialPhase)
+        self._generatingStatusText = State(initialValue: previewStatusText)
+        self._sunriseProgress = State(initialValue: initialPhase == .configuring ? 0 : 1)
+        self._starSpinProgress = State(initialValue: initialPhase == .configuring ? 0 : 1)
         self.onCreate = onCreate
     }
 
@@ -46,19 +63,34 @@ struct CreateAlarmView: View {
     var body: some View {
         ZStack {
 
-            // Background
-            MorningSky(starOpacity: 0.6, showConstellations: false)
+            // Background — shared across all phases. Sunrise + star spin
+            // ramp up when we enter the generating phase and stay lit
+            // through the confirmation phase.
+            MorningSky(
+                starOpacity: 0.6,
+                showConstellations: false, sunriseProgress: sunriseProgress,
+                starSpinProgress: starSpinProgress
+            )
 
             VStack(spacing: 0) {
 
                 // Header
                 header
 
-                // Step content
-                if step == 1 {
-                    stepOne
-                } else {
-                    stepTwo
+                // Phase content
+                switch phase {
+                case .configuring:
+                    if step == 1 {
+                        stepOne
+                    } else {
+                        stepTwo
+                    }
+
+                case .generating:
+                    generatingPhase
+
+                case .confirming:
+                    confirmationPhase
                 }
 
                 Spacer(minLength: 0)
@@ -82,28 +114,35 @@ struct CreateAlarmView: View {
     private var header: some View {
         HStack {
 
-            // Back / Close
-            Button {
-                HapticManager.shared.buttonTap()
-                if step == 2 {
-                    transitionToStep(1)
-                } else {
-                    dismiss()
+            // Back / Close — hidden during generating and confirming
+            if phase == .configuring {
+                Button {
+                    HapticManager.shared.buttonTap()
+                    if step == 2 {
+                        transitionToStep(1)
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: step == 2 ? "chevron.left" : "xmark")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: step == 2 ? "chevron.left" : "xmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
+            } else {
+                Color.clear
                     .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
             }
 
             Spacer()
 
-            // Title
-            Text("New Alarm")
+            // Title — swaps per phase
+            Text(headerTitle)
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
+                .contentTransition(.opacity)
+                .animation(.easeInOut(duration: 0.3), value: phase)
 
             Spacer()
 
@@ -112,6 +151,14 @@ struct CreateAlarmView: View {
                 .frame(width: 44, height: 44)
         }
         .padding(.horizontal, AppSpacing.screenHorizontal - 8)
+    }
+
+    private var headerTitle: String {
+        switch phase {
+        case .configuring: return "New Alarm"
+        case .generating: return ""
+        case .confirming: return "New Alarm"
+        }
     }
 
     // MARK: - Step 1: When + Snooze
@@ -882,20 +929,332 @@ struct CreateAlarmView: View {
         }
     }
 
+    // MARK: - Generating Phase
+
+    private var generatingPhase: some View {
+        VStack {
+
+            Spacer()
+
+            Text(generatingStatusText)
+                .font(AppTypography.bodyMedium)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+                .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.6), value: generatingStatusText)
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: cardsVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Confirmation Phase
+
+    @ViewBuilder
+    private var confirmationPhase: some View {
+        ZStack {
+
+            // Substate 1: Hero
+            if !confirmationHeroExited {
+                confirmationHero
+            }
+
+            // Substate 2: Empty placeholder card
+            if confirmationHeroExited {
+                confirmationCard
+            }
+        }
+        .task {
+            await runConfirmationSequence()
+        }
+    }
+
+    private var confirmationHero: some View {
+        VStack(spacing: 20) {
+
+            Spacer()
+
+            // Checkmark + title — tight stack matching onboarding
+            VStack(spacing: 0) {
+
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "4AFF8E").opacity(0.08))
+                        .frame(width: 80, height: 80)
+                        .blur(radius: 16)
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Color(hex: "4AFF8E"))
+                        .opacity(confirmationCheckVisible ? 1 : 0)
+                        .scaleEffect(confirmationCheckVisible ? 1 : 0.5)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: confirmationCheckVisible)
+                }
+
+                Text("Your alarm is ready")
+                    .font(AppTypography.headlineLarge)
+                    .tracking(AppTypography.headlineLargeTracking)
+                    .foregroundStyle(.white)
+            }
+            .premiumBlur(isVisible: confirmationHeroVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    private var confirmationCard: some View {
+        VStack {
+
+            Spacer()
+
+            // Empty placeholder card — content TBD
+            Color.clear
+                .frame(height: 200)
+                .frame(maxWidth: .infinity)
+                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: confirmationCardVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    private func runConfirmationSequence() async {
+        // 1. Hero blurs in
+        try? await Task.sleep(for: .milliseconds(100))
+        confirmationHeroVisible = true
+
+        // 2. Checkmark pops
+        try? await Task.sleep(for: .milliseconds(250))
+        confirmationCheckVisible = true
+        HapticManager.shared.success()
+
+        // 3. Hold the hero on screen
+        try? await Task.sleep(for: .seconds(1.5))
+
+        // 4. Blur the hero out + fade the sky back to calm
+        confirmationHeroVisible = false
+        withAnimation(.easeOut(duration: 1.0)) {
+            sunriseProgress = 0
+            starSpinProgress = 0
+        }
+
+        // 5. Once the hero blur-out finishes, swap to the card substate
+        try? await Task.sleep(for: .milliseconds(500))
+        confirmationHeroExited = true
+
+        // 6. Card blurs in, button follows shortly after
+        try? await Task.sleep(for: .milliseconds(100))
+        confirmationCardVisible = true
+
+        try? await Task.sleep(for: .milliseconds(500))
+        buttonVisible = true
+    }
+
+    // MARK: - Phase Transition
+
+    private func transitionToPhase(_ newPhase: Phase) {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        cardsVisible = false
+        buttonVisible = false
+
+        Task {
+            // Wait for blur-out
+            try? await Task.sleep(for: .milliseconds(400))
+
+            // Swap phase while content is hidden
+            phase = newPhase
+
+            // Small delay so new views enter the hierarchy with cardsVisible = false
+            try? await Task.sleep(for: .milliseconds(50))
+
+            // Stagger in new content
+            cardsVisible = true
+
+            // Button visibility is phase-specific:
+            // - configuring: comes in 500ms after content
+            // - generating: never (no button)
+            // - confirming: managed by runConfirmationSequence (held until
+            //   after the hero exits)
+            if newPhase == .configuring {
+                try? await Task.sleep(for: .milliseconds(500))
+                buttonVisible = true
+            }
+            isTransitioning = false
+        }
+    }
+
+    private func startGeneration() {
+        transitionToPhase(.generating)
+
+        Task {
+            // Wait for the configuring phase to finish blurring out and the
+            // generating phase to mount before kicking off animations and
+            // status messages. transitionToPhase uses 400ms blur + 50ms
+            // re-mount delay, so 450ms aligns the generation start with the
+            // generating view first becoming visible.
+            try? await Task.sleep(for: .milliseconds(450))
+
+            // Kick off background animations. Sunrise ramps over the full
+            // 5s generation window; star spin ramps to full in 2s.
+            animateSunrise(duration: 5.0)
+            animateStarSpin()
+
+            // Cycle personalized status messages while the (stubbed) API
+            // call runs. Total cycle = 5 seconds.
+            let messages = buildStatusMessages()
+            let perMessage: Double = 5.0 / Double(max(messages.count, 1))
+
+            for message in messages {
+                generatingStatusText = message
+                try? await Task.sleep(for: .seconds(perMessage))
+            }
+
+            // Real API call will replace the loop above. For now the loop
+            // IS the 5-second stub.
+
+            transitionToPhase(.confirming)
+        }
+    }
+
+    private func animateStarSpin() {
+        Task { @MainActor in
+            let steps = 30
+            let duration = 2.0
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                let p = Double(i) / Double(steps)
+                // Ease-out
+                starSpinProgress = 1.0 - (1.0 - p) * (1.0 - p)
+            }
+        }
+    }
+
+    private func animateSunrise(duration: Double) {
+        Task { @MainActor in
+            let steps = 60
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                let progress = Double(i) / Double(steps)
+                // Smooth ease-in-out
+                sunriseProgress = progress * progress * (3.0 - 2.0 * progress)
+            }
+        }
+    }
+
+    private func buildStatusMessages() -> [String] {
+        var messages: [String] = []
+
+        if let tone = alarm.tone {
+            messages.append(toneStatusMessage(tone))
+        }
+        if let why = alarm.whyContext {
+            messages.append(whyStatusMessage(why))
+        }
+        if let intensity = alarm.intensity {
+            messages.append(intensityStatusMessage(intensity))
+        }
+        if let voice = alarm.voicePersona {
+            messages.append(voiceStatusMessage(voice))
+        }
+        messages.append("Writing your wake-up call")
+
+        // Always make sure we have at least a few messages so the phase
+        // doesn't feel empty if the user skipped optional fields.
+        if messages.count < 3 {
+            messages.append("Almost ready")
+        }
+
+        return messages
+    }
+
+    private func toneStatusMessage(_ tone: AlarmTone) -> String {
+        switch tone {
+        case .calm: return "Setting a calm tone"
+        case .encourage: return "Adding some encouragement"
+        case .push: return "Turning up the push"
+        case .strict: return "Making it strict"
+        case .fun: return "Making it fun"
+        case .other: return "Adding your personal touch"
+        }
+    }
+
+    private func whyStatusMessage(_ why: WhyContext) -> String {
+        switch why {
+        case .work: return "Getting you ready for work"
+        case .school: return "Prepping for the school day"
+        case .gym: return "Fueling your morning workout"
+        case .family: return "Making time for family"
+        case .personalGoal: return "Aligning with your goals"
+        case .important: return "Locking in on what matters"
+        case .other: return "Personalizing your morning"
+        }
+    }
+
+    private func intensityStatusMessage(_ intensity: AlarmIntensity) -> String {
+        switch intensity {
+        case .gentle: return "Keeping it gentle"
+        case .balanced: return "Finding the right balance"
+        case .intense: return "Cranking up the intensity"
+        }
+    }
+
+    private func voiceStatusMessage(_ voice: VoicePersona) -> String {
+        switch voice {
+        case .calmGuide: return "Calling the calm guide"
+        case .energeticCoach: return "Warming up the coach"
+        case .hardSergeant: return "Calling the drill sergeant"
+        case .evilSpaceLord: return "Summoning the space lord"
+        case .playful: return "Bringing the fun"
+        }
+    }
+
     // MARK: - Bottom Bar
 
+    @ViewBuilder
     private var bottomBar: some View {
+        switch phase {
+        case .configuring:
+            configuringBottomBar
+        case .generating:
+            // No button while generating — keep the layout slot empty
+            Color.clear.frame(height: 0)
+        case .confirming:
+            confirmingBottomBar
+        }
+    }
+
+    private var configuringBottomBar: some View {
         Button {
             HapticManager.shared.buttonTap()
             if step == 1 {
                 transitionToStep(2)
             } else {
-                alarm.isEnabled = true
-                onCreate(alarm)
-                dismiss()
+                startGeneration()
             }
         } label: {
             Text(step == 1 ? "Next" : "Create Alarm")
+        }
+        .primaryButton()
+        .padding(.horizontal, AppButtons.horizontalPadding)
+        .padding(.bottom, AppSpacing.screenBottom)
+        .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
+    }
+
+    private var confirmingBottomBar: some View {
+        Button {
+            HapticManager.shared.buttonTap()
+            alarm.isEnabled = true
+            onCreate(alarm)
+            dismiss()
+        } label: {
+            Text("Schedule Alarm")
         }
         .primaryButton()
         .padding(.horizontal, AppButtons.horizontalPadding)
@@ -1016,6 +1375,14 @@ struct CreateAlarmView: View {
         var id: Self { self }
     }
 
+    // MARK: - Phase
+
+    enum Phase: Equatable {
+        case configuring
+        case generating
+        case confirming
+    }
+
     // MARK: - Hero Voice Data
 
     private struct HeroVoice {
@@ -1111,4 +1478,21 @@ private struct VoiceWaveform: View {
 
 #Preview("Step 2") {
     CreateAlarmView(initialStep: 2, onCreate: { _ in })
+}
+
+#Preview("Generating") {
+    CreateAlarmView(
+        initialStep: 2,
+        initialPhase: .generating,
+        previewStatusText: "Calling the calm guide",
+        onCreate: { _ in }
+    )
+}
+
+#Preview("Confirming") {
+    CreateAlarmView(
+        initialStep: 2,
+        initialPhase: .confirming,
+        onCreate: { _ in }
+    )
 }
