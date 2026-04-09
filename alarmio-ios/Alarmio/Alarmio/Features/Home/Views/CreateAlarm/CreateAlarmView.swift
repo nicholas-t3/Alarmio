@@ -317,30 +317,10 @@ struct CreateAlarmView: View {
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Factors (tone + reason + intensity in one card)
+                // Customize (tone + reason + intensity + leave time)
                 factorsCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
-
-                // Tone (old pill grid — replaced by factorsCard above)
-                // toneCard
-                //     .padding(.horizontal, AppSpacing.screenHorizontal)
-                //     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
-
-                // Why (old pill grid — replaced by factorsCard above)
-                // whyCard
-                //     .padding(.horizontal, AppSpacing.screenHorizontal)
-                //     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
-
-                // Intensity (old card — replaced by factorsCard above)
-                // intensityCard
-                //     .padding(.horizontal, AppSpacing.screenHorizontal)
-                //     .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
-
-                // Voice (old pill grid — replaced by voiceHeroCard above)
-                // voiceCard
-                //     .padding(.horizontal, AppSpacing.screenHorizontal)
-                //     .premiumBlur(isVisible: cardsVisible, delay: 0.3, duration: 0.4)
 
                 Spacer()
                     .frame(height: 20)
@@ -580,11 +560,188 @@ struct CreateAlarmView: View {
             inlineExpandable(isOpen: expandedFactor == .intensity) {
                 intensityInlineSlider
             }
+
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+
+            // Leave time
+            leaveTimeRow
+
+            inlineExpandable(isOpen: alarm.leaveTime != nil) {
+                leaveTimeInlinePicker
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    // MARK: - Leave Time Row
+
+    private var leaveTimeRow: some View {
+        let isOn = alarm.leaveTime != nil
+
+        return HStack(spacing: 12) {
+            Image(systemName: isOn ? "arrow.up.right.circle.fill" : Self.unsetIcon)
+                .font(.system(size: isOn ? 14 : 7))
+                .foregroundStyle(.white.opacity(isOn ? 0.9 : 0.3))
+                .frame(width: 20)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+            Text("Time to Leave")
+                .font(AppTypography.labelLarge)
+                .foregroundStyle(.white)
+
+            Spacer(minLength: 0)
+
+            Toggle("", isOn: Binding(
+                get: { alarm.leaveTime != nil },
+                set: { newValue in
+                    HapticManager.shared.selection()
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        if newValue {
+                            alarm.leaveTime = defaultLeaveTime()
+                            // Close any expanded factor — leave time has its
+                            // own "always open when on" behavior and
+                            // shouldn't conflict with the mutually exclusive
+                            // expandedFactor state.
+                            expandedFactor = nil
+                        } else {
+                            alarm.leaveTime = nil
+                        }
+                    }
+                }
+            ))
+            .labelsHidden()
+            .tint(Color(hex: "0a1628"))
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var leaveTimeInlinePicker: some View {
+        VStack(spacing: 16) {
+
+            // Descriptor
+            Text("Your alarm will use this to let you know how much time you have before you need to leave.")
+                .font(AppTypography.labelSmall)
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+
+            // Time stepper (5-min increments)
+            HStack(spacing: 16) {
+                Button {
+                    HapticManager.shared.selection()
+                    adjustLeaveTime(minutes: -5)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+
+                HStack(spacing: 6) {
+                    Text(leaveTimeClockString)
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+
+                    if let period = leaveTimePeriodString {
+                        Text(period)
+                            .font(AppTypography.labelMedium)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .contentTransition(.numericText())
+                    }
+                }
+                .frame(width: 110)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.leaveTime)
+
+                Button {
+                    HapticManager.shared.selection()
+                    adjustLeaveTime(minutes: 5)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+        }
+    }
+
+    /// The numeric portion of the leave-time clock string (e.g. "8:00" or
+    /// "20:00" on 24-hour locales).
+    private var leaveTimeClockString: String {
+        let date = alarm.leaveTime ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("jm")
+        let full = formatter.string(from: date)
+
+        // Strip the AM/PM marker if present so it can render separately at
+        // a smaller size. On 24-hour locales the symbols are empty and this
+        // returns the unchanged string.
+        let am = formatter.amSymbol ?? ""
+        let pm = formatter.pmSymbol ?? ""
+        return full
+            .replacingOccurrences(of: am, with: "")
+            .replacingOccurrences(of: pm, with: "")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The AM/PM marker shown next to the numeric clock string at a
+    /// smaller weight. Nil on 24-hour locales (no period marker).
+    private var leaveTimePeriodString: String? {
+        let date = alarm.leaveTime ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("jm")
+        let full = formatter.string(from: date)
+
+        let am = formatter.amSymbol ?? ""
+        let pm = formatter.pmSymbol ?? ""
+
+        if !am.isEmpty, full.contains(am) { return am }
+        if !pm.isEmpty, full.contains(pm) { return pm }
+        return nil
+    }
+
+    /// Default leave time when the toggle is first flipped on: wake time
+    /// + 1 hour, rounded to the nearest 5 minutes.
+    private func defaultLeaveTime() -> Date {
+        let base = alarm.wakeTime ?? Date()
+        let oneHourLater = base.addingTimeInterval(60 * 60)
+        return roundToFiveMinutes(oneHourLater)
+    }
+
+    private func roundToFiveMinutes(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        let minute = calendar.component(.minute, from: date)
+        let rounded = Int((Double(minute) / 5.0).rounded()) * 5
+        let delta = rounded - minute
+        return calendar.date(byAdding: .minute, value: delta, to: date) ?? date
+    }
+
+    private func adjustLeaveTime(minutes: Int) {
+        guard let current = alarm.leaveTime else { return }
+        guard let wake = alarm.wakeTime else {
+            alarm.leaveTime = current.addingTimeInterval(TimeInterval(minutes * 60))
+            return
+        }
+
+        let proposed = current.addingTimeInterval(TimeInterval(minutes * 60))
+
+        // Clamp: can't leave before waking up, can't be more than 12 hours
+        // after wake time.
+        let minAllowed = wake
+        let maxAllowed = wake.addingTimeInterval(60 * 60 * 12)
+
+        alarm.leaveTime = min(max(proposed, minAllowed), maxAllowed)
     }
 
     /// Empty-state icon for unset factor rows. A small filled dot reads as
