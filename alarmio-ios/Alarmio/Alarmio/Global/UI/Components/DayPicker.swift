@@ -37,7 +37,7 @@ struct DayPicker: View {
                 } label: {
                     Text(day.letter)
                         .font(AppTypography.labelSmall)
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.8))
+                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
                         .frame(width: 36, height: 36)
                         .background(isSelected ? .white : .white.opacity(0.08))
                         .clipShape(Circle())

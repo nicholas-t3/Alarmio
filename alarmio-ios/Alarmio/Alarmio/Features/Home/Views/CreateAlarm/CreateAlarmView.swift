@@ -18,37 +18,79 @@ struct CreateAlarmView: View {
     // MARK: - State
 
     @State private var alarm = AlarmConfiguration(
-        intensity: .gentle,
-        difficulty: .easy
+        intensity: .gentle
     )
-    @State private var step = 1
+    @State private var step: Int
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
     @State private var selectedDays: Set<Int> = []
+    @State private var voiceIndex: Int = 0
+    @State private var voicePlayer = VoicePreviewPlayer()
+    @State private var waveformPulse: Bool = false
+    @State private var expandedFactor: FactorKind?
+    @State private var phase: Phase = .configuring
+    @State private var sunriseProgress: Double = 0
+    @State private var starSpinProgress: Double = 0
+    @State private var generatingStatusText: String = ""
+    @State private var confirmationHeroVisible: Bool = false
+    @State private var confirmationCheckVisible: Bool = false
+    @State private var confirmationHeroExited: Bool = false
+    @State private var confirmationCardVisible: Bool = false
 
     // MARK: - Constants
 
     let onCreate: (AlarmConfiguration) -> Void
+
+    // MARK: - Init
+
+    init(
+        initialStep: Int = 1,
+        initialPhase: Phase = .configuring,
+        previewStatusText: String = "",
+        onCreate: @escaping (AlarmConfiguration) -> Void
+    ) {
+        self._step = State(initialValue: initialStep)
+        self._phase = State(initialValue: initialPhase)
+        self._generatingStatusText = State(initialValue: previewStatusText)
+        self._sunriseProgress = State(initialValue: initialPhase == .configuring ? 0 : 1)
+        self._starSpinProgress = State(initialValue: initialPhase == .configuring ? 0 : 1)
+        self.onCreate = onCreate
+    }
 
     // MARK: - Body
 
     var body: some View {
         ZStack {
 
-            // Background
-            MorningSky(starOpacity: 0.6, showConstellations: false)
+            // Background — shared across all phases. Sunrise + star spin
+            // ramp up when we enter the generating phase and stay lit
+            // through the confirmation phase.
+            MorningSky(
+                starOpacity: 0.6,
+                showConstellations: false, sunriseProgress: sunriseProgress,
+                starSpinProgress: starSpinProgress
+            )
 
             VStack(spacing: 0) {
 
                 // Header
                 header
 
-                // Step content
-                if step == 1 {
-                    stepOne
-                } else {
-                    stepTwo
+                // Phase content
+                switch phase {
+                case .configuring:
+                    if step == 1 {
+                        stepOne
+                    } else {
+                        stepTwo
+                    }
+
+                case .generating:
+                    generatingPhase
+
+                case .confirming:
+                    confirmationPhase
                 }
 
                 Spacer(minLength: 0)
@@ -56,6 +98,7 @@ struct CreateAlarmView: View {
                 // Bottom button
                 bottomBar
             }
+
         }
         .task {
             alarm.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
@@ -71,28 +114,35 @@ struct CreateAlarmView: View {
     private var header: some View {
         HStack {
 
-            // Back / Close
-            Button {
-                HapticManager.shared.buttonTap()
-                if step == 2 {
-                    transitionToStep(1)
-                } else {
-                    dismiss()
+            // Back / Close — hidden during generating and confirming
+            if phase == .configuring {
+                Button {
+                    HapticManager.shared.buttonTap()
+                    if step == 2 {
+                        transitionToStep(1)
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: step == 2 ? "chevron.left" : "xmark")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Image(systemName: step == 2 ? "chevron.left" : "xmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
+            } else {
+                Color.clear
                     .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
             }
 
             Spacer()
 
-            // Title
-            Text("New Alarm")
+            // Title — swaps per phase
+            Text(headerTitle)
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
+                .contentTransition(.opacity)
+                .animation(.easeInOut(duration: 0.3), value: phase)
 
             Spacer()
 
@@ -101,6 +151,14 @@ struct CreateAlarmView: View {
                 .frame(width: 44, height: 44)
         }
         .padding(.horizontal, AppSpacing.screenHorizontal - 8)
+    }
+
+    private var headerTitle: String {
+        switch phase {
+        case .configuring: return "New Alarm"
+        case .generating: return ""
+        case .confirming: return "New Alarm"
+        }
     }
 
     // MARK: - Step 1: When + Snooze
@@ -176,55 +234,124 @@ struct CreateAlarmView: View {
 
     private var snoozeCard: some View {
         VStack(spacing: 14) {
+
+            // Section label
             Text("SNOOZE")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            HStack(spacing: 16) {
-                Button {
-                    HapticManager.shared.selection()
-                    alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            // Snooze count stepper — always visible
+            snoozeCountRow
 
-                HStack(spacing: 6) {
-                    Text("\(alarm.snoozeInterval)")
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-
-                    Text(alarm.snoozeInterval == 1 ? "minute" : "minutes")
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .contentTransition(.numericText())
-                }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
-
-                Button {
-                    HapticManager.shared.selection()
-                    alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+            // Interval stepper — only when count > 0
+            if alarm.maxSnoozes > 0 {
+                snoozeIntervalRow
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.maxSnoozes)
     }
+
+    private var snoozeCountRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                alarm.maxSnoozes = max(0, alarm.maxSnoozes - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                if alarm.maxSnoozes == 0 {
+                    Text("No snooze")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                } else {
+                    Text("\(alarm.maxSnoozes)")
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+
+                    Text(alarm.maxSnoozes == 1 ? "snooze" : "snoozes")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                }
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.maxSnoozes)
+
+            Button {
+                HapticManager.shared.selection()
+                alarm.maxSnoozes = min(3, alarm.maxSnoozes + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    private var snoozeIntervalRow: some View {
+        HStack(spacing: 16) {
+            Button {
+                HapticManager.shared.selection()
+                alarm.snoozeInterval = max(1, alarm.snoozeInterval - 1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            HStack(spacing: 6) {
+                Text("\(alarm.snoozeInterval)")
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+
+                Text(alarm.snoozeInterval == 1 ? "minute" : "minutes")
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .contentTransition(.numericText())
+            }
+            .frame(width: Self.snoozeStepperLabelWidth)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.snoozeInterval)
+
+            Button {
+                HapticManager.shared.selection()
+                alarm.snoozeInterval = min(15, alarm.snoozeInterval + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    /// Fixed width for the center label of both snooze stepper rows, so the
+    /// plus/minus buttons align vertically across rows regardless of which
+    /// text ("No snooze" vs "15 minutes") is currently showing.
+    private static let snoozeStepperLabelWidth: CGFloat = 110
 
     // MARK: - Step 2: Style
 
@@ -232,25 +359,15 @@ struct CreateAlarmView: View {
         ScrollView {
             VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-                // Tone
-                toneCard
+                // Voice (hero)
+                voiceHeroCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Why
-                whyCard
+                // Customize (tone + reason + intensity + leave time)
+                factorsCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
-
-                // Intensity + Difficulty
-                intensityCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
-
-                // Voice
-                voiceCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0.3, duration: 0.4)
 
                 Spacer()
                     .frame(height: 20)
@@ -262,149 +379,81 @@ struct CreateAlarmView: View {
         .mask(scrollFadeMask)
     }
 
-    private var toneCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TONE")
+    /// Shared grid spec for the inline tone / reason pickers inside the
+    /// Customize card. Two equal columns with an 8pt gutter.
+    private static let pillGridColumns: [GridItem] = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
+    // MARK: - Customize Card
+
+    private var factorsCard: some View {
+        VStack(spacing: 0) {
+
+            // Caption
+            Text("CUSTOMIZE")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 10)
 
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
-                ForEach(toneOptions, id: \.tone) { option in
-                    let isSelected = alarm.tone == option.tone
-
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.tone = option.tone
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 12))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                        .fixedSize()
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
-                }
+            // Tone
+            factorRow(
+                icon: selectedToneOption?.icon ?? Self.unsetIcon,
+                label: "Tone",
+                value: selectedToneOption?.label ?? "Tap to select",
+                hasSelection: selectedToneOption != nil,
+                isExpanded: expandedFactor == .tone
+            ) {
+                toggleFactor(.tone)
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
 
-    private var whyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("REASON")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
-                ForEach(whyOptions, id: \.why) { option in
-                    let isSelected = alarm.whyContext == option.why
-
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.whyContext = option.why
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 11))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                        .fixedSize()
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
-                }
+            inlineExpandable(isOpen: expandedFactor == .tone) {
+                toneInlinePicker
             }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-    }
 
-    private var intensityCard: some View {
-        VStack(spacing: 16) {
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+
+            // Reason
+            factorRow(
+                icon: selectedWhyOption?.icon ?? Self.unsetIcon,
+                label: "Reason",
+                value: selectedWhyOption?.label ?? "Tap to select",
+                hasSelection: selectedWhyOption != nil,
+                isExpanded: expandedFactor == .reason
+            ) {
+                toggleFactor(.reason)
+            }
+
+            inlineExpandable(isOpen: expandedFactor == .reason) {
+                reasonInlinePicker
+            }
+
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
             // Intensity
-            VStack(spacing: 10) {
-                Text("INTENSITY")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                HStack(spacing: 0) {
-                    ForEach(intensityOptions, id: \.intensity) { option in
-                        let isSelected = alarm.intensity == option.intensity
-
-                        Button {
-                            HapticManager.shared.selection()
-                            alarm.intensity = option.intensity
-                        } label: {
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.6))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(isSelected ? .white : .clear)
-                                .clipShape(Capsule())
-                        }
-                        .animation(.easeOut(duration: 0.2), value: isSelected)
-                    }
-                }
-                .padding(3)
-                .background(.white.opacity(0.08))
-                .clipShape(Capsule())
+            factorRow(
+                icon: alarm.intensity == nil ? Self.unsetIcon : intensityIcon(alarm.intensity),
+                label: "Intensity",
+                value: alarm.intensity == nil ? "Tap to select" : intensityLabel(alarm.intensity),
+                hasSelection: alarm.intensity != nil,
+                isExpanded: expandedFactor == .intensity
+            ) {
+                toggleFactor(.intensity)
             }
 
-            // Difficulty
-            VStack(spacing: 10) {
-                Text("DIFFICULTY")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
+            inlineExpandable(isOpen: expandedFactor == .intensity) {
+                intensityInlineSlider
+            }
 
-                HStack(spacing: 0) {
-                    ForEach(difficultyOptions, id: \.difficulty) { option in
-                        let isSelected = alarm.difficulty == option.difficulty
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
-                        Button {
-                            HapticManager.shared.selection()
-                            alarm.difficulty = option.difficulty
-                        } label: {
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.6))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(isSelected ? .white : .clear)
-                                .clipShape(Capsule())
-                        }
-                        .animation(.easeOut(duration: 0.2), value: isSelected)
-                    }
-                }
-                .padding(3)
-                .background(.white.opacity(0.08))
-                .clipShape(Capsule())
+            // Leave time
+            leaveTimeRow
+
+            inlineExpandable(isOpen: alarm.leaveTime != nil) {
+                leaveTimeInlinePicker
             }
         }
         .frame(maxWidth: .infinity)
@@ -413,37 +462,432 @@ struct CreateAlarmView: View {
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
     }
 
-    private var voiceCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    // MARK: - Leave Time Row
+
+    private var leaveTimeRow: some View {
+        let isOn = alarm.leaveTime != nil
+
+        return HStack(spacing: 12) {
+            Image(systemName: isOn ? "arrow.up.right.circle.fill" : Self.unsetIcon)
+                .font(.system(size: isOn ? 14 : 7))
+                .foregroundStyle(.white.opacity(isOn ? 0.9 : 0.3))
+                .frame(width: 20)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+            Text("Time to Leave")
+                .font(AppTypography.labelLarge)
+                .foregroundStyle(.white)
+
+            Spacer(minLength: 0)
+
+            Toggle("", isOn: Binding(
+                get: { alarm.leaveTime != nil },
+                set: { newValue in
+                    HapticManager.shared.selection()
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        if newValue {
+                            alarm.leaveTime = defaultLeaveTime()
+                            // Close any expanded factor — leave time has its
+                            // own "always open when on" behavior and
+                            // shouldn't conflict with the mutually exclusive
+                            // expandedFactor state.
+                            expandedFactor = nil
+                        } else {
+                            alarm.leaveTime = nil
+                        }
+                    }
+                }
+            ))
+            .labelsHidden()
+            .tint(Color(hex: "0a1628"))
+        }
+        .padding(.vertical, 14)
+    }
+
+    private var leaveTimeInlinePicker: some View {
+        VStack(spacing: 16) {
+
+            // Descriptor
+            Text("Your alarm will use this to let you know how much time you have before you need to leave.")
+                .font(AppTypography.labelSmall)
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+
+            // Time stepper (5-min increments)
+            HStack(spacing: 16) {
+                Button {
+                    HapticManager.shared.selection()
+                    adjustLeaveTime(minutes: -5)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+
+                HStack(spacing: 6) {
+                    Text(leaveTimeClockString)
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+
+                    if let period = leaveTimePeriodString {
+                        Text(period)
+                            .font(AppTypography.labelMedium)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .contentTransition(.numericText())
+                    }
+                }
+                .frame(width: 110)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.leaveTime)
+
+                Button {
+                    HapticManager.shared.selection()
+                    adjustLeaveTime(minutes: 5)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+        }
+    }
+
+    /// The numeric portion of the leave-time clock string (e.g. "8:00" or
+    /// "20:00" on 24-hour locales).
+    private var leaveTimeClockString: String {
+        let date = alarm.leaveTime ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("jm")
+        let full = formatter.string(from: date)
+
+        // Strip the AM/PM marker if present so it can render separately at
+        // a smaller size. On 24-hour locales the symbols are empty and this
+        // returns the unchanged string.
+        let am = formatter.amSymbol ?? ""
+        let pm = formatter.pmSymbol ?? ""
+        return full
+            .replacingOccurrences(of: am, with: "")
+            .replacingOccurrences(of: pm, with: "")
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The AM/PM marker shown next to the numeric clock string at a
+    /// smaller weight. Nil on 24-hour locales (no period marker).
+    private var leaveTimePeriodString: String? {
+        let date = alarm.leaveTime ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("jm")
+        let full = formatter.string(from: date)
+
+        let am = formatter.amSymbol ?? ""
+        let pm = formatter.pmSymbol ?? ""
+
+        if !am.isEmpty, full.contains(am) { return am }
+        if !pm.isEmpty, full.contains(pm) { return pm }
+        return nil
+    }
+
+    /// Default leave time when the toggle is first flipped on: wake time
+    /// + 1 hour, rounded to the nearest 5 minutes.
+    private func defaultLeaveTime() -> Date {
+        let base = alarm.wakeTime ?? Date()
+        let oneHourLater = base.addingTimeInterval(60 * 60)
+        return roundToFiveMinutes(oneHourLater)
+    }
+
+    private func roundToFiveMinutes(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        let minute = calendar.component(.minute, from: date)
+        let rounded = Int((Double(minute) / 5.0).rounded()) * 5
+        let delta = rounded - minute
+        return calendar.date(byAdding: .minute, value: delta, to: date) ?? date
+    }
+
+    private func adjustLeaveTime(minutes: Int) {
+        guard let current = alarm.leaveTime else { return }
+        guard let wake = alarm.wakeTime else {
+            alarm.leaveTime = current.addingTimeInterval(TimeInterval(minutes * 60))
+            return
+        }
+
+        let proposed = current.addingTimeInterval(TimeInterval(minutes * 60))
+
+        // Clamp: can't leave before waking up, can't be more than 12 hours
+        // after wake time.
+        let minAllowed = wake
+        let maxAllowed = wake.addingTimeInterval(60 * 60 * 12)
+
+        alarm.leaveTime = min(max(proposed, minAllowed), maxAllowed)
+    }
+
+    /// Empty-state icon for unset factor rows. A small filled dot reads as
+    /// neutral/placeholder, unlike a questionmark which implies the row
+    /// is tappable for help.
+    private static let unsetIcon: String = "circle.fill"
+
+    private func toggleFactor(_ kind: FactorKind) {
+        HapticManager.shared.selection()
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            expandedFactor = (expandedFactor == kind) ? nil : kind
+        }
+    }
+
+    /// Wraps an inline picker so it animates in place via premiumBlur rather
+    /// than sliding from outside the card. Always kept in the view tree so
+    /// both directions animate; layout height collapses when closed.
+    @ViewBuilder
+    private func inlineExpandable<Content: View>(
+        isOpen: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.top, 4)
+            .padding(.bottom, 14)
+            .premiumBlur(isVisible: isOpen, duration: 0.35)
+            .frame(height: isOpen ? nil : 0, alignment: .top)
+            .clipped()
+            .allowsHitTesting(isOpen)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isOpen)
+    }
+
+    private var toneInlinePicker: some View {
+        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
+            ForEach(toneOptions, id: \.tone) { option in
+                let isSelected = alarm.tone == option.tone
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.tone = option.tone
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 12))
+                        Text(option.label)
+                            .font(AppTypography.labelSmall)
+                    }
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSelected ? .white : .white.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+    }
+
+    private var reasonInlinePicker: some View {
+        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
+            ForEach(whyOptions, id: \.why) { option in
+                let isSelected = alarm.whyContext == option.why
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.whyContext = option.why
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 11))
+                        Text(option.label)
+                            .font(AppTypography.labelSmall)
+                    }
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSelected ? .white : .white.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+    }
+
+    private var intensityInlineSlider: some View {
+        HStack(spacing: 0) {
+            ForEach(intensityOptions, id: \.intensity) { option in
+                let isSelected = alarm.intensity == option.intensity
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.intensity = option.intensity
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    Text(option.label)
+                        .font(AppTypography.labelSmall)
+                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(isSelected ? .white : .clear)
+                        .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+        .padding(3)
+        .background(.white.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    private func factorRow(
+        icon: String,
+        label: String,
+        value: String,
+        hasSelection: Bool,
+        isExpanded: Bool? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        let usesExpandChevron = isExpanded != nil
+        let chevronName = usesExpandChevron ? "chevron.down" : "chevron.right"
+        let rotation: Double = (isExpanded == true) ? 180 : 0
+
+        return Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: hasSelection ? 14 : 7))
+                    .foregroundStyle(.white.opacity(hasSelection ? 0.9 : 0.3))
+                    .frame(width: 20)
+                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+                Text(label)
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
+
+                Spacer(minLength: 0)
+
+                Text(value)
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white.opacity(hasSelection ? 0.7 : 0.35))
+                    .contentTransition(.numericText())
+
+                Image(systemName: chevronName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .rotationEffect(.degrees(rotation))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: rotation)
+            }
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: value)
+    }
+
+    private var selectedToneOption: ToneOption? {
+        toneOptions.first(where: { $0.tone == alarm.tone })
+    }
+
+    private var selectedWhyOption: WhyOption? {
+        whyOptions.first(where: { $0.why == alarm.whyContext })
+    }
+
+    private func intensityLabel(_ intensity: AlarmIntensity?) -> String {
+        switch intensity {
+        case .gentle: return "Gentle"
+        case .balanced: return "Balanced"
+        case .intense: return "Intense"
+        case .none: return "None"
+        }
+    }
+
+    private func intensityIcon(_ intensity: AlarmIntensity?) -> String {
+        switch intensity {
+        case .gentle: return "leaf"
+        case .balanced: return "circle.grid.2x2"
+        case .intense: return "bolt.fill"
+        case .none: return "questionmark.circle"
+        }
+    }
+
+    // MARK: - Voice Hero Card
+
+    private var voiceHeroCard: some View {
+        let voice = heroVoices[voiceIndex]
+        let isPlayingThis = voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona
+
+        return VStack(spacing: 14) {
+
+            // Section label
             Text("VOICE")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
-                .frame(maxWidth: .infinity, alignment: .center)
 
-            // Wrapping pills
-            FlowLayout(spacing: 8) {
-                ForEach(voiceOptions, id: \.persona) { option in
-                    let isSelected = alarm.voicePersona == option.persona
+            // Waveform — subtle visual anchor, driven by VoicePreviewPlayer.
+            // Brief scale+opacity pulse on voice change gives a "new voice"
+            // cue even when audio isn't playing.
+            VoiceWaveform(bands: voicePlayer.bands, isPlaying: isPlayingThis)
+                .frame(height: 28)
+                .scaleEffect(waveformPulse ? 1.08 : 1.0)
+                .opacity(waveformPulse ? 0.4 : 1.0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: waveformPulse)
 
-                    Button {
-                        HapticManager.shared.selection()
-                        alarm.voicePersona = option.persona
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 12))
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                        }
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.7))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .white.opacity(0.08))
-                        .clipShape(Capsule())
-                        .fixedSize()
+            // Voice name — numeric-text crossfade on cycle
+            Text(voice.name)
+                .font(AppTypography.labelLarge)
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: voiceIndex)
+
+            // Control row: prev chevron | Play + Preview pill | next chevron
+            HStack(spacing: 6) {
+                Button {
+                    HapticManager.shared.selection()
+                    cycleVoice(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+
+                Button {
+                    HapticManager.shared.buttonTap()
+                    togglePreview()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isPlayingThis ? "stop.fill" : "play.fill")
+                            .font(.system(size: 14))
+                            .contentTransition(.symbolEffect(.replace))
+
+                        Text(isPlayingThis ? "Stop" : "Preview")
+                            .font(AppTypography.labelMedium)
+                            .contentTransition(.numericText())
                     }
-                    .animation(.easeOut(duration: 0.2), value: isSelected)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .frame(height: 36)
+                    .background(.white.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlayingThis)
+
+                Button {
+                    HapticManager.shared.selection()
+                    cycleVoice(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
                 }
             }
         }
@@ -451,22 +895,366 @@ struct CreateAlarmView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .onDisappear { voicePlayer.stop() }
+    }
+
+    // MARK: - Voice Hero Actions
+
+    private func cycleVoice(by delta: Int) {
+        let newIndex = (voiceIndex + delta + heroVoices.count) % heroVoices.count
+        voiceIndex = newIndex
+        alarm.voicePersona = heroVoices[newIndex].persona
+
+        // Pulse the waveform briefly so the change is visible even when
+        // audio isn't playing.
+        waveformPulse = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(180))
+            waveformPulse = false
+        }
+
+        // If a preview is in flight, hand it off to the new voice so the
+        // user keeps momentum while browsing.
+        if voicePlayer.isPlaying {
+            voicePlayer.play(persona: heroVoices[newIndex].persona)
+        }
+    }
+
+    private func togglePreview() {
+        let voice = heroVoices[voiceIndex]
+        if voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona {
+            voicePlayer.stop()
+        } else {
+            voicePlayer.play(persona: voice.persona)
+        }
+    }
+
+    // MARK: - Generating Phase
+
+    private var generatingPhase: some View {
+        VStack {
+
+            Spacer()
+
+            Text(generatingStatusText)
+                .font(AppTypography.bodyMedium)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+                .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.6), value: generatingStatusText)
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: cardsVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Confirmation Phase
+
+    @ViewBuilder
+    private var confirmationPhase: some View {
+        ZStack {
+
+            // Substate 1: Hero
+            if !confirmationHeroExited {
+                confirmationHero
+            }
+
+            // Substate 2: Empty placeholder card
+            if confirmationHeroExited {
+                confirmationCard
+            }
+        }
+        .task {
+            await runConfirmationSequence()
+        }
+    }
+
+    private var confirmationHero: some View {
+        VStack(spacing: 20) {
+
+            Spacer()
+
+            // Checkmark + title — tight stack matching onboarding
+            VStack(spacing: 0) {
+
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: "4AFF8E").opacity(0.08))
+                        .frame(width: 80, height: 80)
+                        .blur(radius: 16)
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Color(hex: "4AFF8E"))
+                        .opacity(confirmationCheckVisible ? 1 : 0)
+                        .scaleEffect(confirmationCheckVisible ? 1 : 0.5)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: confirmationCheckVisible)
+                }
+
+                Text("Your alarm is ready")
+                    .font(AppTypography.headlineLarge)
+                    .tracking(AppTypography.headlineLargeTracking)
+                    .foregroundStyle(.white)
+            }
+            .premiumBlur(isVisible: confirmationHeroVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    private var confirmationCard: some View {
+        VStack {
+
+            Spacer()
+
+            // Empty placeholder card — content TBD
+            Color.clear
+                .frame(height: 200)
+                .frame(maxWidth: .infinity)
+                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: confirmationCardVisible, duration: 0.5)
+
+            Spacer()
+        }
+    }
+
+    private func runConfirmationSequence() async {
+        // 1. Hero blurs in
+        try? await Task.sleep(for: .milliseconds(100))
+        confirmationHeroVisible = true
+
+        // 2. Checkmark pops
+        try? await Task.sleep(for: .milliseconds(250))
+        confirmationCheckVisible = true
+        HapticManager.shared.success()
+
+        // 3. Hold the hero on screen
+        try? await Task.sleep(for: .seconds(1.5))
+
+        // 4. Blur the hero out + fade the sky back to calm
+        confirmationHeroVisible = false
+        withAnimation(.easeOut(duration: 1.0)) {
+            sunriseProgress = 0
+            starSpinProgress = 0
+        }
+
+        // 5. Once the hero blur-out finishes, swap to the card substate
+        try? await Task.sleep(for: .milliseconds(500))
+        confirmationHeroExited = true
+
+        // 6. Card blurs in, button follows shortly after
+        try? await Task.sleep(for: .milliseconds(100))
+        confirmationCardVisible = true
+
+        try? await Task.sleep(for: .milliseconds(500))
+        buttonVisible = true
+    }
+
+    // MARK: - Phase Transition
+
+    private func transitionToPhase(_ newPhase: Phase) {
+        guard !isTransitioning else { return }
+        isTransitioning = true
+        cardsVisible = false
+        buttonVisible = false
+
+        Task {
+            // Wait for blur-out
+            try? await Task.sleep(for: .milliseconds(400))
+
+            // Swap phase while content is hidden
+            phase = newPhase
+
+            // Small delay so new views enter the hierarchy with cardsVisible = false
+            try? await Task.sleep(for: .milliseconds(50))
+
+            // Stagger in new content
+            cardsVisible = true
+
+            // Button visibility is phase-specific:
+            // - configuring: comes in 500ms after content
+            // - generating: never (no button)
+            // - confirming: managed by runConfirmationSequence (held until
+            //   after the hero exits)
+            if newPhase == .configuring {
+                try? await Task.sleep(for: .milliseconds(500))
+                buttonVisible = true
+            }
+            isTransitioning = false
+        }
+    }
+
+    private func startGeneration() {
+        transitionToPhase(.generating)
+
+        Task {
+            // Wait for the configuring phase to finish blurring out and the
+            // generating phase to mount before kicking off animations and
+            // status messages. transitionToPhase uses 400ms blur + 50ms
+            // re-mount delay, so 450ms aligns the generation start with the
+            // generating view first becoming visible.
+            try? await Task.sleep(for: .milliseconds(450))
+
+            // Kick off background animations. Sunrise ramps over the full
+            // 5s generation window; star spin ramps to full in 2s.
+            animateSunrise(duration: 5.0)
+            animateStarSpin()
+
+            // Cycle personalized status messages while the (stubbed) API
+            // call runs. Total cycle = 5 seconds.
+            let messages = buildStatusMessages()
+            let perMessage: Double = 5.0 / Double(max(messages.count, 1))
+
+            for message in messages {
+                generatingStatusText = message
+                try? await Task.sleep(for: .seconds(perMessage))
+            }
+
+            // Real API call will replace the loop above. For now the loop
+            // IS the 5-second stub.
+
+            transitionToPhase(.confirming)
+        }
+    }
+
+    private func animateStarSpin() {
+        Task { @MainActor in
+            let steps = 30
+            let duration = 2.0
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                let p = Double(i) / Double(steps)
+                // Ease-out
+                starSpinProgress = 1.0 - (1.0 - p) * (1.0 - p)
+            }
+        }
+    }
+
+    private func animateSunrise(duration: Double) {
+        Task { @MainActor in
+            let steps = 60
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                let progress = Double(i) / Double(steps)
+                // Smooth ease-in-out
+                sunriseProgress = progress * progress * (3.0 - 2.0 * progress)
+            }
+        }
+    }
+
+    private func buildStatusMessages() -> [String] {
+        var messages: [String] = []
+
+        if let tone = alarm.tone {
+            messages.append(toneStatusMessage(tone))
+        }
+        if let why = alarm.whyContext {
+            messages.append(whyStatusMessage(why))
+        }
+        if let intensity = alarm.intensity {
+            messages.append(intensityStatusMessage(intensity))
+        }
+        if let voice = alarm.voicePersona {
+            messages.append(voiceStatusMessage(voice))
+        }
+        messages.append("Writing your wake-up call")
+
+        // Always make sure we have at least a few messages so the phase
+        // doesn't feel empty if the user skipped optional fields.
+        if messages.count < 3 {
+            messages.append("Almost ready")
+        }
+
+        return messages
+    }
+
+    private func toneStatusMessage(_ tone: AlarmTone) -> String {
+        switch tone {
+        case .calm: return "Setting a calm tone"
+        case .encourage: return "Adding some encouragement"
+        case .push: return "Turning up the push"
+        case .strict: return "Making it strict"
+        case .fun: return "Making it fun"
+        case .other: return "Adding your personal touch"
+        }
+    }
+
+    private func whyStatusMessage(_ why: WhyContext) -> String {
+        switch why {
+        case .work: return "Getting you ready for work"
+        case .school: return "Prepping for the school day"
+        case .gym: return "Fueling your morning workout"
+        case .family: return "Making time for family"
+        case .personalGoal: return "Aligning with your goals"
+        case .important: return "Locking in on what matters"
+        case .other: return "Personalizing your morning"
+        }
+    }
+
+    private func intensityStatusMessage(_ intensity: AlarmIntensity) -> String {
+        switch intensity {
+        case .gentle: return "Keeping it gentle"
+        case .balanced: return "Finding the right balance"
+        case .intense: return "Cranking up the intensity"
+        }
+    }
+
+    private func voiceStatusMessage(_ voice: VoicePersona) -> String {
+        switch voice {
+        case .calmGuide: return "Calling the calm guide"
+        case .energeticCoach: return "Warming up the coach"
+        case .hardSergeant: return "Calling the drill sergeant"
+        case .evilSpaceLord: return "Summoning the space lord"
+        case .playful: return "Bringing the fun"
+        }
     }
 
     // MARK: - Bottom Bar
 
+    @ViewBuilder
     private var bottomBar: some View {
+        switch phase {
+        case .configuring:
+            configuringBottomBar
+        case .generating:
+            // No button while generating — keep the layout slot empty
+            Color.clear.frame(height: 0)
+        case .confirming:
+            confirmingBottomBar
+        }
+    }
+
+    private var configuringBottomBar: some View {
         Button {
             HapticManager.shared.buttonTap()
             if step == 1 {
                 transitionToStep(2)
             } else {
-                alarm.isEnabled = true
-                onCreate(alarm)
-                dismiss()
+                startGeneration()
             }
         } label: {
             Text(step == 1 ? "Next" : "Create Alarm")
+        }
+        .primaryButton()
+        .padding(.horizontal, AppButtons.horizontalPadding)
+        .padding(.bottom, AppSpacing.screenBottom)
+        .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
+    }
+
+    private var confirmingBottomBar: some View {
+        Button {
+            HapticManager.shared.buttonTap()
+            alarm.isEnabled = true
+            onCreate(alarm)
+            dismiss()
+        } label: {
+            Text("Schedule Alarm")
         }
         .primaryButton()
         .padding(.horizontal, AppButtons.horizontalPadding)
@@ -577,32 +1365,47 @@ struct CreateAlarmView: View {
         ]
     }
 
-    private struct DifficultyOption {
-        let difficulty: AlarmDifficulty
-        let label: String
+    // MARK: - Factor Kind
+
+    private enum FactorKind: Identifiable {
+        case tone
+        case reason
+        case intensity
+
+        var id: Self { self }
     }
 
-    private var difficultyOptions: [DifficultyOption] {
-        [
-            DifficultyOption(difficulty: .easy, label: "Easy"),
-            DifficultyOption(difficulty: .sometimesHard, label: "Medium"),
-            DifficultyOption(difficulty: .veryHard, label: "Hard"),
-        ]
+    // MARK: - Phase
+
+    enum Phase: Equatable {
+        case configuring
+        case generating
+        case confirming
     }
 
-    private struct VoiceOption {
+    // MARK: - Hero Voice Data
+
+    private struct HeroVoice {
         let persona: VoicePersona
-        let label: String
-        let icon: String
+        let name: String
+        let descriptor: String
     }
 
-    private var voiceOptions: [VoiceOption] {
+    /// The 8 hero voices shown in the voice card. Until we add new cases
+    /// to the `VoicePersona` enum, several entries reuse existing personas
+    /// as placeholders — swap these out when the new MP3s are in and the
+    /// enum is expanded.
+    private var heroVoices: [HeroVoice] {
         [
-            VoiceOption(persona: .calmGuide, label: "Calm Guide", icon: "leaf.fill"),
-            VoiceOption(persona: .energeticCoach, label: "Coach", icon: "figure.run"),
-            VoiceOption(persona: .hardSergeant, label: "Sergeant", icon: "shield.fill"),
-            VoiceOption(persona: .evilSpaceLord, label: "Space Lord", icon: "sparkles"),
-            VoiceOption(persona: .playful, label: "Playful", icon: "face.smiling.fill"),
+            HeroVoice(persona: .calmGuide,     name: "Calm Guide",    descriptor: "Soothing · Gentle"),
+            HeroVoice(persona: .energeticCoach, name: "Coach",        descriptor: "Upbeat · Motivating"),
+            HeroVoice(persona: .hardSergeant,  name: "Sergeant",      descriptor: "Firm · Direct"),
+            HeroVoice(persona: .evilSpaceLord, name: "Space Lord",    descriptor: "Dramatic · Commanding"),
+            HeroVoice(persona: .playful,       name: "Playful",       descriptor: "Bright · Lighthearted"),
+            // Placeholders — reuse existing personas until enum expands.
+            HeroVoice(persona: .calmGuide,     name: "Morning Sun",   descriptor: "Warm · Optimistic"),
+            HeroVoice(persona: .energeticCoach, name: "Mentor",       descriptor: "Steady · Wise"),
+            HeroVoice(persona: .playful,       name: "Zen",           descriptor: "Grounded · Peaceful"),
         ]
     }
 
@@ -621,71 +1424,49 @@ struct CreateAlarmView: View {
     }
 }
 
-// MARK: - Flow Layout
+// MARK: - Voice Waveform
 
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
+/// A centered, symmetric bar visualizer driven by `VoicePreviewPlayer.bands`.
+/// Resting state: a flat low-amplitude silhouette. Playing state: bars reflect
+/// live audio amplitude from the 24-band metering array.
+private struct VoiceWaveform: View {
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = buildRows(proposal: proposal, subviews: subviews)
-        let height = rows.reduce(CGFloat(0)) { total, row in
-            total + row.height + (total > 0 ? spacing : 0)
-        }
-        return CGSize(width: proposal.width ?? 0, height: height)
+    // MARK: - Constants
+
+    let bands: [CGFloat]
+    let isPlaying: Bool
+
+    private let barWidth: CGFloat = 3
+    private let barSpacing: CGFloat = 4
+    private let minBarHeight: CGFloat = 3
+    /// Resting silhouette: soft sine curve so the card isn't visually empty
+    /// when audio is stopped. Deterministic so the shape doesn't change
+    /// across renders.
+    private let restingHeights: [CGFloat] = (0..<24).map { i in
+        let t = CGFloat(i) / 23.0
+        // Gentle centered hump, 0.2–0.5 normalized amplitude
+        let hump = sin(t * .pi)
+        return 0.2 + hump * 0.3
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = buildRows(proposal: proposal, subviews: subviews)
-        var y: CGFloat = 0
+    // MARK: - Body
 
-        var subviewIndex = 0
-        for row in rows {
-            let rowOffset = (bounds.width - row.width) / 2
-            var x = rowOffset
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .center, spacing: barSpacing) {
+                ForEach(0..<bands.count, id: \.self) { i in
+                    let amplitude = isPlaying ? max(bands[i], 0.05) : restingHeights[i]
+                    let height = max(minBarHeight, amplitude * geo.size.height)
 
-            for i in 0..<row.count {
-                let size = subviews[subviewIndex].sizeThatFits(.unspecified)
-                subviews[subviewIndex].place(
-                    at: CGPoint(x: bounds.minX + x, y: bounds.minY + y),
-                    proposal: .unspecified
-                )
-                x += size.width + spacing
-                subviewIndex += 1
+                    Capsule()
+                        .fill(.white.opacity(isPlaying ? 0.9 : 0.35))
+                        .frame(width: barWidth, height: height)
+                        .animation(.easeOut(duration: 0.08), value: amplitude)
+                }
             }
-            y += row.height + spacing
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+            .animation(.easeInOut(duration: 0.3), value: isPlaying)
         }
-    }
-
-    private struct Row {
-        var count: Int
-        var width: CGFloat
-        var height: CGFloat
-    }
-
-    private func buildRows(proposal: ProposedViewSize, subviews: Subviews) -> [Row] {
-        let maxWidth = proposal.width ?? .infinity
-        var rows: [Row] = []
-        var currentRow = Row(count: 0, width: 0, height: 0)
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            let neededWidth = currentRow.count > 0 ? currentRow.width + spacing + size.width : size.width
-
-            if neededWidth > maxWidth && currentRow.count > 0 {
-                rows.append(currentRow)
-                currentRow = Row(count: 1, width: size.width, height: size.height)
-            } else {
-                currentRow.width = neededWidth
-                currentRow.height = max(currentRow.height, size.height)
-                currentRow.count += 1
-            }
-        }
-
-        if currentRow.count > 0 {
-            rows.append(currentRow)
-        }
-
-        return rows
     }
 }
 
@@ -696,5 +1477,22 @@ private struct FlowLayout: Layout {
 }
 
 #Preview("Step 2") {
-    CreateAlarmView(onCreate: { _ in })
+    CreateAlarmView(initialStep: 2, onCreate: { _ in })
+}
+
+#Preview("Generating") {
+    CreateAlarmView(
+        initialStep: 2,
+        initialPhase: .generating,
+        previewStatusText: "Calling the calm guide",
+        onCreate: { _ in }
+    )
+}
+
+#Preview("Confirming") {
+    CreateAlarmView(
+        initialStep: 2,
+        initialPhase: .confirming,
+        onCreate: { _ in }
+    )
 }

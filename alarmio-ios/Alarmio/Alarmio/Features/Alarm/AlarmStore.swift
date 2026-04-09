@@ -24,7 +24,7 @@ final class AlarmStore {
 
     // MARK: - Constants
 
-    private static let storageKey = "alarm_configurations"
+    private static let storageKey = AppGroup.alarmConfigurationsKey
 
     // MARK: - Factory
 
@@ -46,7 +46,7 @@ final class AlarmStore {
     func load() {
         let cal = Calendar.current
 
-        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+        if let data = AppGroup.defaults.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([AlarmConfiguration].self, from: data) {
             alarms = decoded
         } else {
@@ -65,6 +65,7 @@ final class AlarmStore {
                     intensity: .gentle,
                     voicePersona: .calmGuide,
                     snoozeInterval: 5,
+                    maxSnoozes: 3,
                     isDemo: true
                 ),
                 AlarmConfiguration(
@@ -75,6 +76,7 @@ final class AlarmStore {
                     intensity: .balanced,
                     voicePersona: .playful,
                     snoozeInterval: 5,
+                    maxSnoozes: 3,
                     isDemo: true
                 )
             ]
@@ -85,7 +87,7 @@ final class AlarmStore {
 
     func save() {
         guard let data = try? JSONEncoder().encode(alarms) else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey)
+        AppGroup.defaults.set(data, forKey: Self.storageKey)
     }
 
     // MARK: - CRUD

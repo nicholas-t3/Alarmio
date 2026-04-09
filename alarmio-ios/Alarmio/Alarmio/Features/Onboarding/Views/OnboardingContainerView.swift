@@ -47,6 +47,7 @@ struct OnboardingContainerView: View {
     @State private var voiceVisualizerPlaying = false
     @State private var voiceVisualizerVisible = false
     @State private var sunriseProgress: Double = 0
+    @State private var starSpinProgress: Double = 0
 
     // MARK: - Body
 
@@ -55,7 +56,7 @@ struct OnboardingContainerView: View {
 
             // Shared night sky background — gradient is unaffected, only stars dim
             // Sunrise intensifies during generating step
-            MorningSky(starOpacity: starOpacity, sunriseProgress: sunriseProgress)
+            MorningSky(starOpacity: starOpacity, sunriseProgress: sunriseProgress, starSpinProgress: starSpinProgress)
 
             // Dynamic voice background (covers starfield when active)
             if let colors = customBackground {
@@ -80,9 +81,6 @@ struct OnboardingContainerView: View {
 
             // Voice visualizer background — always in hierarchy, faded via opacity
             VoiceVisualizer(palette: voiceVisualizerPalette, isPlaying: voiceVisualizerPlaying)
-                .opacity(voiceVisualizerVisible ? 1 : 0)
-                .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
-                .allowsHitTesting(false)
                 .overlay(alignment: .top) {
                     LinearGradient(
                         stops: [
@@ -96,6 +94,9 @@ struct OnboardingContainerView: View {
                     .frame(height: 180)
                     .allowsHitTesting(false)
                 }
+                .opacity(voiceVisualizerVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.5), value: voiceVisualizerVisible)
+                .allowsHitTesting(false)
 
             // Current phase
             switch manager.phase {
@@ -250,7 +251,8 @@ struct OnboardingContainerView: View {
         case .generating:
             OnboardingGeneratingView(
                 onComplete: { autoAdvanceFromGenerating() },
-                onSunriseProgress: { progress in sunriseProgress = progress }
+                onSunriseProgress: { progress in sunriseProgress = progress },
+                onStarSpinProgress: { progress in starSpinProgress = progress }
             )
 
         case .confirmation:
@@ -358,9 +360,10 @@ struct OnboardingContainerView: View {
             // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
 
-            // Reset sunrise if entering generating step (it will animate itself)
+            // Reset sunrise + star spin if entering generating step (they animate themselves)
             if manager.currentStep == .generating {
                 sunriseProgress = 0
+                starSpinProgress = 0
             }
 
             // Show content — the new step's .task handles its own staggered entry
@@ -388,9 +391,10 @@ struct OnboardingContainerView: View {
             manager.currentStep = .confirmation
             buttonLabel = "Schedule Alarm"
 
-            // Fade sunrise back down for confirmation screen
+            // Fade sunrise and star spin back down for confirmation screen
             withAnimation(.easeOut(duration: 1.0)) {
                 sunriseProgress = 0
+                starSpinProgress = 0
             }
 
             // Dim stars heavily for confirmation screen
@@ -441,9 +445,10 @@ struct OnboardingContainerView: View {
             // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
 
-            // Reset sunrise when navigating away
+            // Reset sunrise + star spin when navigating away
             withAnimation(.easeOut(duration: 0.3)) {
                 sunriseProgress = 0
+                starSpinProgress = 0
             }
 
             // Show content
