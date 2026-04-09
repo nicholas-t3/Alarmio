@@ -26,6 +26,9 @@ struct CreateAlarmView: View {
     @State private var buttonVisible = false
     @State private var isTransitioning = false
     @State private var selectedDays: Set<Int> = []
+    @State private var voiceIndex: Int = 0
+    @State private var voicePlayer = VoicePreviewPlayer()
+    @State private var waveformPulse: Bool = false
 
     // MARK: - Constants
 
@@ -308,25 +311,30 @@ struct CreateAlarmView: View {
         ScrollView {
             VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-                // Tone
-                toneCard
+                // Voice (hero)
+                voiceHeroCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
+                // Tone
+                // toneCard
+                //     .padding(.horizontal, AppSpacing.screenHorizontal)
+                //     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
+
                 // Why
-                whyCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
+                // whyCard
+                //     .padding(.horizontal, AppSpacing.screenHorizontal)
+                //     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
 
                 // Intensity + Difficulty
-                intensityCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
+                // intensityCard
+                //     .padding(.horizontal, AppSpacing.screenHorizontal)
+                //     .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
 
-                // Voice
-                voiceCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0.3, duration: 0.4)
+                // Voice (old pill grid — replaced by voiceHeroCard above)
+                // voiceCard
+                //     .padding(.horizontal, AppSpacing.screenHorizontal)
+                //     .premiumBlur(isVisible: cardsVisible, delay: 0.3, duration: 0.4)
 
                 Spacer()
                     .frame(height: 20)
@@ -537,6 +545,122 @@ struct CreateAlarmView: View {
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
     }
 
+    // MARK: - Voice Hero Card
+
+    private var voiceHeroCard: some View {
+        let voice = heroVoices[voiceIndex]
+        let isPlayingThis = voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona
+
+        return VStack(spacing: 14) {
+
+            // Section label
+            Text("VOICE")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+
+            // Waveform — subtle visual anchor, driven by VoicePreviewPlayer.
+            // Brief scale+opacity pulse on voice change gives a "new voice"
+            // cue even when audio isn't playing.
+            VoiceWaveform(bands: voicePlayer.bands, isPlaying: isPlayingThis)
+                .frame(height: 28)
+                .scaleEffect(waveformPulse ? 1.08 : 1.0)
+                .opacity(waveformPulse ? 0.4 : 1.0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: waveformPulse)
+
+            // Voice name — numeric-text crossfade on cycle
+            Text(voice.name)
+                .font(AppTypography.labelLarge)
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: voiceIndex)
+
+            // Control row: prev chevron | Play + Preview pill | next chevron
+            HStack(spacing: 6) {
+                Button {
+                    HapticManager.shared.selection()
+                    cycleVoice(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+
+                Button {
+                    HapticManager.shared.buttonTap()
+                    togglePreview()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isPlayingThis ? "stop.fill" : "play.fill")
+                            .font(.system(size: 14))
+                            .contentTransition(.symbolEffect(.replace))
+
+                        Text(isPlayingThis ? "Stop" : "Preview")
+                            .font(AppTypography.labelMedium)
+                            .contentTransition(.numericText())
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .frame(height: 36)
+                    .background(.white.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlayingThis)
+
+                Button {
+                    HapticManager.shared.selection()
+                    cycleVoice(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .onDisappear { voicePlayer.stop() }
+    }
+
+    // MARK: - Voice Hero Actions
+
+    private func cycleVoice(by delta: Int) {
+        let newIndex = (voiceIndex + delta + heroVoices.count) % heroVoices.count
+        voiceIndex = newIndex
+        alarm.voicePersona = heroVoices[newIndex].persona
+
+        // Pulse the waveform briefly so the change is visible even when
+        // audio isn't playing.
+        waveformPulse = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(180))
+            waveformPulse = false
+        }
+
+        // If a preview is in flight, hand it off to the new voice so the
+        // user keeps momentum while browsing.
+        if voicePlayer.isPlaying {
+            voicePlayer.play(persona: heroVoices[newIndex].persona)
+        }
+    }
+
+    private func togglePreview() {
+        let voice = heroVoices[voiceIndex]
+        if voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona {
+            voicePlayer.stop()
+        } else {
+            voicePlayer.play(persona: voice.persona)
+        }
+    }
+
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
@@ -690,6 +814,32 @@ struct CreateAlarmView: View {
         ]
     }
 
+    // MARK: - Hero Voice Data
+
+    private struct HeroVoice {
+        let persona: VoicePersona
+        let name: String
+        let descriptor: String
+    }
+
+    /// The 8 hero voices shown in the voice card. Until we add new cases
+    /// to the `VoicePersona` enum, several entries reuse existing personas
+    /// as placeholders — swap these out when the new MP3s are in and the
+    /// enum is expanded.
+    private var heroVoices: [HeroVoice] {
+        [
+            HeroVoice(persona: .calmGuide,     name: "Calm Guide",    descriptor: "Soothing · Gentle"),
+            HeroVoice(persona: .energeticCoach, name: "Coach",        descriptor: "Upbeat · Motivating"),
+            HeroVoice(persona: .hardSergeant,  name: "Sergeant",      descriptor: "Firm · Direct"),
+            HeroVoice(persona: .evilSpaceLord, name: "Space Lord",    descriptor: "Dramatic · Commanding"),
+            HeroVoice(persona: .playful,       name: "Playful",       descriptor: "Bright · Lighthearted"),
+            // Placeholders — reuse existing personas until enum expands.
+            HeroVoice(persona: .calmGuide,     name: "Morning Sun",   descriptor: "Warm · Optimistic"),
+            HeroVoice(persona: .energeticCoach, name: "Mentor",       descriptor: "Steady · Wise"),
+            HeroVoice(persona: .playful,       name: "Zen",           descriptor: "Grounded · Peaceful"),
+        ]
+    }
+
     private var scheduleSummary: String {
         if selectedDays.isEmpty {
             return "One-time alarm"
@@ -770,6 +920,52 @@ private struct FlowLayout: Layout {
         }
 
         return rows
+    }
+}
+
+// MARK: - Voice Waveform
+
+/// A centered, symmetric bar visualizer driven by `VoicePreviewPlayer.bands`.
+/// Resting state: a flat low-amplitude silhouette. Playing state: bars reflect
+/// live audio amplitude from the 24-band metering array.
+private struct VoiceWaveform: View {
+
+    // MARK: - Constants
+
+    let bands: [CGFloat]
+    let isPlaying: Bool
+
+    private let barWidth: CGFloat = 3
+    private let barSpacing: CGFloat = 4
+    private let minBarHeight: CGFloat = 3
+    /// Resting silhouette: soft sine curve so the card isn't visually empty
+    /// when audio is stopped. Deterministic so the shape doesn't change
+    /// across renders.
+    private let restingHeights: [CGFloat] = (0..<24).map { i in
+        let t = CGFloat(i) / 23.0
+        // Gentle centered hump, 0.2–0.5 normalized amplitude
+        let hump = sin(t * .pi)
+        return 0.2 + hump * 0.3
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(alignment: .center, spacing: barSpacing) {
+                ForEach(0..<bands.count, id: \.self) { i in
+                    let amplitude = isPlaying ? max(bands[i], 0.05) : restingHeights[i]
+                    let height = max(minBarHeight, amplitude * geo.size.height)
+
+                    Capsule()
+                        .fill(.white.opacity(isPlaying ? 0.9 : 0.35))
+                        .frame(width: barWidth, height: height)
+                        .animation(.easeOut(duration: 0.08), value: amplitude)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .center)
+            .animation(.easeInOut(duration: 0.3), value: isPlaying)
+        }
     }
 }
 
