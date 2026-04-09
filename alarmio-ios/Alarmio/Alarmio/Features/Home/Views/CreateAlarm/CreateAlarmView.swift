@@ -18,8 +18,7 @@ struct CreateAlarmView: View {
     // MARK: - State
 
     @State private var alarm = AlarmConfiguration(
-        intensity: .gentle,
-        difficulty: .easy
+        intensity: .gentle
     )
     @State private var step: Int
     @State private var cardsVisible = false
@@ -29,6 +28,7 @@ struct CreateAlarmView: View {
     @State private var voiceIndex: Int = 0
     @State private var voicePlayer = VoicePreviewPlayer()
     @State private var waveformPulse: Bool = false
+    @State private var expandedFactor: FactorKind?
 
     // MARK: - Constants
 
@@ -66,6 +66,7 @@ struct CreateAlarmView: View {
                 // Bottom button
                 bottomBar
             }
+
         }
         .task {
             alarm.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
@@ -316,17 +317,22 @@ struct CreateAlarmView: View {
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Tone
+                // Factors (tone + reason + intensity in one card)
+                factorsCard
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
+
+                // Tone (old pill grid — replaced by factorsCard above)
                 // toneCard
                 //     .padding(.horizontal, AppSpacing.screenHorizontal)
                 //     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Why
+                // Why (old pill grid — replaced by factorsCard above)
                 // whyCard
                 //     .padding(.horizontal, AppSpacing.screenHorizontal)
                 //     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
 
-                // Intensity + Difficulty
+                // Intensity (old card — replaced by factorsCard above)
                 // intensityCard
                 //     .padding(.horizontal, AppSpacing.screenHorizontal)
                 //     .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
@@ -468,37 +474,6 @@ struct CreateAlarmView: View {
                 .background(.white.opacity(0.08))
                 .clipShape(Capsule())
             }
-
-            // Difficulty
-            VStack(spacing: 10) {
-                Text("DIFFICULTY")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                HStack(spacing: 0) {
-                    ForEach(difficultyOptions, id: \.difficulty) { option in
-                        let isSelected = alarm.difficulty == option.difficulty
-
-                        Button {
-                            HapticManager.shared.selection()
-                            alarm.difficulty = option.difficulty
-                        } label: {
-                            Text(option.label)
-                                .font(AppTypography.labelSmall)
-                                .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(isSelected ? .white : .clear)
-                                .clipShape(Capsule())
-                        }
-                        .animation(.easeOut(duration: 0.2), value: isSelected)
-                    }
-                }
-                .padding(3)
-                .background(.white.opacity(0.08))
-                .clipShape(Capsule())
-            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
@@ -543,6 +518,256 @@ struct CreateAlarmView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    // MARK: - Factors Card
+
+    private var factorsCard: some View {
+        VStack(spacing: 0) {
+
+            // Caption
+            Text("CUSTOMIZE")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+                .padding(.bottom, 10)
+
+            // Tone
+            factorRow(
+                icon: selectedToneOption?.icon ?? Self.unsetIcon,
+                label: "Tone",
+                value: selectedToneOption?.label ?? "Tap to select",
+                hasSelection: selectedToneOption != nil,
+                isExpanded: expandedFactor == .tone
+            ) {
+                toggleFactor(.tone)
+            }
+
+            inlineExpandable(isOpen: expandedFactor == .tone) {
+                toneInlinePicker
+            }
+
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+
+            // Reason
+            factorRow(
+                icon: selectedWhyOption?.icon ?? Self.unsetIcon,
+                label: "Reason",
+                value: selectedWhyOption?.label ?? "Tap to select",
+                hasSelection: selectedWhyOption != nil,
+                isExpanded: expandedFactor == .reason
+            ) {
+                toggleFactor(.reason)
+            }
+
+            inlineExpandable(isOpen: expandedFactor == .reason) {
+                reasonInlinePicker
+            }
+
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+
+            // Intensity
+            factorRow(
+                icon: alarm.intensity == nil ? Self.unsetIcon : intensityIcon(alarm.intensity),
+                label: "Intensity",
+                value: alarm.intensity == nil ? "Tap to select" : intensityLabel(alarm.intensity),
+                hasSelection: alarm.intensity != nil,
+                isExpanded: expandedFactor == .intensity
+            ) {
+                toggleFactor(.intensity)
+            }
+
+            inlineExpandable(isOpen: expandedFactor == .intensity) {
+                intensityInlineSlider
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    /// Empty-state icon for unset factor rows. A small filled dot reads as
+    /// neutral/placeholder, unlike a questionmark which implies the row
+    /// is tappable for help.
+    private static let unsetIcon: String = "circle.fill"
+
+    private func toggleFactor(_ kind: FactorKind) {
+        HapticManager.shared.selection()
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            expandedFactor = (expandedFactor == kind) ? nil : kind
+        }
+    }
+
+    /// Wraps an inline picker so it animates in place via premiumBlur rather
+    /// than sliding from outside the card. Always kept in the view tree so
+    /// both directions animate; layout height collapses when closed.
+    @ViewBuilder
+    private func inlineExpandable<Content: View>(
+        isOpen: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.top, 4)
+            .padding(.bottom, 14)
+            .premiumBlur(isVisible: isOpen, duration: 0.35)
+            .frame(height: isOpen ? nil : 0, alignment: .top)
+            .clipped()
+            .allowsHitTesting(isOpen)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isOpen)
+    }
+
+    private var toneInlinePicker: some View {
+        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
+            ForEach(toneOptions, id: \.tone) { option in
+                let isSelected = alarm.tone == option.tone
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.tone = option.tone
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 12))
+                        Text(option.label)
+                            .font(AppTypography.labelSmall)
+                    }
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSelected ? .white : .white.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+    }
+
+    private var reasonInlinePicker: some View {
+        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
+            ForEach(whyOptions, id: \.why) { option in
+                let isSelected = alarm.whyContext == option.why
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.whyContext = option.why
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 11))
+                        Text(option.label)
+                            .font(AppTypography.labelSmall)
+                    }
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(isSelected ? .white : .white.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+    }
+
+    private var intensityInlineSlider: some View {
+        HStack(spacing: 0) {
+            ForEach(intensityOptions, id: \.intensity) { option in
+                let isSelected = alarm.intensity == option.intensity
+                Button {
+                    HapticManager.shared.selection()
+                    alarm.intensity = option.intensity
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        expandedFactor = nil
+                    }
+                } label: {
+                    Text(option.label)
+                        .font(AppTypography.labelSmall)
+                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(isSelected ? .white : .clear)
+                        .clipShape(Capsule())
+                }
+                .animation(.easeOut(duration: 0.2), value: isSelected)
+            }
+        }
+        .padding(3)
+        .background(.white.opacity(0.08))
+        .clipShape(Capsule())
+    }
+
+    private func factorRow(
+        icon: String,
+        label: String,
+        value: String,
+        hasSelection: Bool,
+        isExpanded: Bool? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        let usesExpandChevron = isExpanded != nil
+        let chevronName = usesExpandChevron ? "chevron.down" : "chevron.right"
+        let rotation: Double = (isExpanded == true) ? 180 : 0
+
+        return Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: hasSelection ? 14 : 7))
+                    .foregroundStyle(.white.opacity(hasSelection ? 0.9 : 0.3))
+                    .frame(width: 20)
+                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+                Text(label)
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
+
+                Spacer(minLength: 0)
+
+                Text(value)
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white.opacity(hasSelection ? 0.7 : 0.35))
+                    .contentTransition(.numericText())
+
+                Image(systemName: chevronName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .rotationEffect(.degrees(rotation))
+                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: rotation)
+            }
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: value)
+    }
+
+    private var selectedToneOption: ToneOption? {
+        toneOptions.first(where: { $0.tone == alarm.tone })
+    }
+
+    private var selectedWhyOption: WhyOption? {
+        whyOptions.first(where: { $0.why == alarm.whyContext })
+    }
+
+    private func intensityLabel(_ intensity: AlarmIntensity?) -> String {
+        switch intensity {
+        case .gentle: return "Gentle"
+        case .balanced: return "Balanced"
+        case .intense: return "Intense"
+        case .none: return "None"
+        }
+    }
+
+    private func intensityIcon(_ intensity: AlarmIntensity?) -> String {
+        switch intensity {
+        case .gentle: return "leaf"
+        case .balanced: return "circle.grid.2x2"
+        case .intense: return "bolt.fill"
+        case .none: return "questionmark.circle"
+        }
     }
 
     // MARK: - Voice Hero Card
@@ -785,17 +1010,22 @@ struct CreateAlarmView: View {
         ]
     }
 
-    private struct DifficultyOption {
-        let difficulty: AlarmDifficulty
-        let label: String
-    }
+    // MARK: - Factor Kind
 
-    private var difficultyOptions: [DifficultyOption] {
-        [
-            DifficultyOption(difficulty: .easy, label: "Easy"),
-            DifficultyOption(difficulty: .sometimesHard, label: "Medium"),
-            DifficultyOption(difficulty: .veryHard, label: "Hard"),
-        ]
+    private enum FactorKind: Identifiable {
+        case tone
+        case reason
+        case intensity
+
+        var id: Self { self }
+
+        var caption: String {
+            switch self {
+            case .tone: return "TONE"
+            case .reason: return "REASON"
+            case .intensity: return "INTENSITY"
+            }
+        }
     }
 
     private struct VoiceOption {
