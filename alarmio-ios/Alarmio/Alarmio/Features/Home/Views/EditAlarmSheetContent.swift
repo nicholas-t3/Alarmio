@@ -22,6 +22,12 @@ struct EditDetailDetent: CustomPresentationDetent {
     }
 }
 
+struct EditCompactDetent: CustomPresentationDetent {
+    static func height(in context: Context) -> CGFloat? {
+        context.maxDetentValue * 0.35
+    }
+}
+
 struct EditFullDetent: CustomPresentationDetent {
     static func height(in context: Context) -> CGFloat? {
         context.maxDetentValue * 1.0
@@ -68,6 +74,7 @@ struct EditAlarmSheetContent: View {
     // MARK: - Detent Constants
 
     private static let summaryDetent: PresentationDetent = .custom(EditSummaryDetent.self)
+    private static let compactDetent: PresentationDetent = .custom(EditCompactDetent.self)
     private static let detailDetent: PresentationDetent = .custom(EditDetailDetent.self)
     private static let fullDetent: PresentationDetent = .custom(EditFullDetent.self)
 
@@ -145,7 +152,7 @@ struct EditAlarmSheetContent: View {
         switch page {
         case .summary: return Self.summaryDetent
         case .schedule: return Self.detailDetent
-        case .snooze: return Self.summaryDetent
+        case .snooze: return Self.compactDetent
         case .style: return Self.fullDetent
         }
     }
@@ -190,11 +197,11 @@ struct EditAlarmSheetContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .presentationDetents(
-            [Self.summaryDetent, Self.detailDetent, Self.fullDetent],
+            [Self.compactDetent, Self.summaryDetent, Self.detailDetent, Self.fullDetent],
             selection: $selectedDetent
         )
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color(hex: "111d35"))
+        .presentationBackground(Color(hex: "0f1a2e"))
         .interactiveDismissDisabled(showDetail)
         .onAppear {
             editTime = alarm.wakeTime ?? Date()
@@ -361,22 +368,7 @@ struct EditAlarmSheetContent: View {
             .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
 
             // Day picker
-            VStack(spacing: 14) {
-                Text("REPEAT")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                DayPicker(selectedDays: $editDays)
-
-                Text(scheduleSummary)
-                    .font(AppTypography.bodySmall)
-                    .foregroundStyle(.white.opacity(0.4))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
-            .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+            RepeatCard(selectedDays: $editDays, mode: .edit)
 
             Spacer(minLength: 0)
         }
@@ -434,34 +426,30 @@ struct EditAlarmSheetContent: View {
                 factorsCard
 
                 // Regenerate button
-                if hasStyleChanges {
-                    Button {
-                        HapticManager.shared.buttonTap()
-                        regenerateAlarm()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isRegenerating {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-
-                            Text(isRegenerating ? "Generating..." : "Regenerate")
-                                .font(AppTypography.labelMedium)
+                Button {
+                    HapticManager.shared.buttonTap()
+                    regenerateAlarm()
+                } label: {
+                    HStack(spacing: 8) {
+                        if isRegenerating {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .medium))
                         }
-                        .foregroundStyle(.white.opacity(isRegenerating ? 0.5 : 1))
-                        .frame(height: 44)
-                        .frame(maxWidth: .infinity)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Capsule())
+
+                        Text(isRegenerating ? "Generating..." : "Regenerate")
+                            .font(AppTypography.labelMedium)
                     }
-                    .disabled(isRegenerating)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: hasStyleChanges)
+                    .foregroundStyle(.white.opacity(hasStyleChanges && !isRegenerating ? 1 : 0.35))
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
+                    .background(.white.opacity(hasStyleChanges ? 0.1 : 0.04))
+                    .clipShape(Capsule())
                 }
+                .disabled(!hasStyleChanges || isRegenerating)
 
                 Spacer(minLength: 0)
                     .frame(height: 20)

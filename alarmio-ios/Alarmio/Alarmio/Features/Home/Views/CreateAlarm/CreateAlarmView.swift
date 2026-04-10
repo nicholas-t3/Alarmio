@@ -223,25 +223,10 @@ struct CreateAlarmView: View {
     }
 
     private var scheduleCard: some View {
-        VStack(spacing: 14) {
-            Text("REPEAT")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-
-            DayPicker(selectedDays: $selectedDays)
-                .onChange(of: selectedDays) { _, newDays in
-                    alarm.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
-                }
-
-            Text(scheduleSummary)
-                .font(AppTypography.bodySmall)
-                .foregroundStyle(.white.opacity(0.4))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        RepeatCard(selectedDays: $selectedDays)
+            .onChange(of: selectedDays) { _, newDays in
+                alarm.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
+            }
     }
 
     private var snoozeCard: some View {
