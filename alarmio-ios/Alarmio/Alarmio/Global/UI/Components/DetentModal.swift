@@ -132,11 +132,18 @@ struct DetentModal<Content: View>: View {
             .animation(.spring(response: 0.5, dampingFraction: 0.8), value: displayedHeight)
             .onChange(of: isPresented) { _, newValue in
                 if newValue {
+                    // Reset all state for a clean presentation
+                    contentOpacity = 0
+                    dragOffset = 0
+                    offset = geometry.size.height
                     displayedHeight = currentStep.height
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                        offset = 0
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            offset = 0
+                        }
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeOut(duration: 0.3)) {
                             contentOpacity = 1
                         }
@@ -284,9 +291,9 @@ private struct DetentModalContainer<Base: View, ModalContent: View>: View {
     let dismissible: Bool
     @ViewBuilder let modalContent: () -> ModalContent
 
-    @State private var modalProgress: CGFloat = 0
     @State private var isInViewTree = false
     @State private var modalBinding = false
+    @State private var removalWorkItem: DispatchWorkItem?
 
     var body: some View {
         ZStack {
@@ -309,6 +316,10 @@ private struct DetentModalContainer<Base: View, ModalContent: View>: View {
         }
         .onChange(of: isPresented) { _, newValue in
             if newValue {
+                // Cancel any pending removal from a previous dismiss
+                removalWorkItem?.cancel()
+                removalWorkItem = nil
+
                 isInViewTree = true
                 modalBinding = true
             } else {
@@ -317,10 +328,12 @@ private struct DetentModalContainer<Base: View, ModalContent: View>: View {
         }
         .onChange(of: modalBinding) { _, newValue in
             if !newValue {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let workItem = DispatchWorkItem {
                     isInViewTree = false
                     isPresented = false
                 }
+                removalWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
             }
         }
     }
