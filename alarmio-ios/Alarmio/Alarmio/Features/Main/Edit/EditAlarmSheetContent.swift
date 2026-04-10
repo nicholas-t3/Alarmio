@@ -67,7 +67,6 @@ struct EditAlarmSheetContent: View {
     @State private var showDetail = false
     @State private var contentVisible = true
     @State private var voicePlayer = VoicePreviewPlayer()
-    @State private var expandedFactor: FactorKind?
     @State private var voiceIndex: Int = 0
     @State private var isRegenerating = false
 
@@ -250,7 +249,6 @@ struct EditAlarmSheetContent: View {
 
     private func navigateBack() {
         voicePlayer.stop()
-        expandedFactor = nil
 
         // Phase 1: blur out current content
         contentVisible = false
@@ -352,20 +350,7 @@ struct EditAlarmSheetContent: View {
             backButton
 
             // Time picker
-            VStack(spacing: 4) {
-                Text("WAKE TIME")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                DatePicker("", selection: $editTime, displayedComponents: .hourAndMinute)
-                    .datePickerStyle(.wheel)
-                    .labelsHidden()
-                    .colorScheme(.dark)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+            WakeTimeCard(wakeTime: $editTime, mode: .edit)
 
             // Day picker
             RepeatCard(selectedDays: $editDays, mode: .edit)
@@ -385,21 +370,11 @@ struct EditAlarmSheetContent: View {
             backButton
 
             // Snooze controls
-            VStack(spacing: 14) {
-                Text("SNOOZE")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-
-                snoozeCountRow
-
-                snoozeIntervalRow
-                    .premiumBlur(isVisible: editMaxSnoozes > 0, duration: 0.3)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
-            .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+            SnoozeCard(
+                maxSnoozes: $editMaxSnoozes,
+                snoozeInterval: $editSnoozeInterval,
+                mode: .edit
+            )
 
             Spacer(minLength: 0)
         }
@@ -423,7 +398,12 @@ struct EditAlarmSheetContent: View {
                 compactVoiceCard
 
                 // Customize card
-                factorsCard
+                CustomizeCard(
+                    tone: $editTone,
+                    whyContext: $editWhyContext,
+                    intensity: $editIntensity,
+                    mode: .edit
+                )
 
                 // Regenerate button
                 Button {
@@ -562,230 +542,6 @@ struct EditAlarmSheetContent: View {
         .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
     }
 
-    // MARK: - Factors Card
-
-    private var factorsCard: some View {
-        VStack(spacing: 0) {
-
-            Text("CUSTOMIZE")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.bottom, 10)
-
-            // Tone
-            factorRow(
-                icon: selectedToneOption?.icon ?? Self.unsetIcon,
-                label: "Tone",
-                value: selectedToneOption?.label ?? "Tap to select",
-                hasSelection: selectedToneOption != nil,
-                isExpanded: expandedFactor == .tone
-            ) {
-                toggleFactor(.tone)
-            }
-
-            inlineExpandable(isOpen: expandedFactor == .tone) {
-                toneInlinePicker
-            }
-
-            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
-
-            // Reason
-            factorRow(
-                icon: selectedWhyOption?.icon ?? Self.unsetIcon,
-                label: "Reason",
-                value: selectedWhyOption?.label ?? "Tap to select",
-                hasSelection: selectedWhyOption != nil,
-                isExpanded: expandedFactor == .reason
-            ) {
-                toggleFactor(.reason)
-            }
-
-            inlineExpandable(isOpen: expandedFactor == .reason) {
-                reasonInlinePicker
-            }
-
-            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
-
-            // Intensity
-            factorRow(
-                icon: editIntensity == nil ? Self.unsetIcon : intensityIcon(editIntensity),
-                label: "Intensity",
-                value: editIntensity == nil ? "Tap to select" : intensityLabel(editIntensity),
-                hasSelection: editIntensity != nil,
-                isExpanded: expandedFactor == .intensity
-            ) {
-                toggleFactor(.intensity)
-            }
-
-            inlineExpandable(isOpen: expandedFactor == .intensity) {
-                intensityInlineSlider
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    // MARK: - Factor Rows & Pickers
-
-    private static let unsetIcon = "circle.fill"
-
-    private static let pillGridColumns: [GridItem] = [
-        GridItem(.flexible(), spacing: 8),
-        GridItem(.flexible(), spacing: 8)
-    ]
-
-    private func toggleFactor(_ kind: FactorKind) {
-        HapticManager.shared.selection()
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            expandedFactor = (expandedFactor == kind) ? nil : kind
-        }
-    }
-
-    @ViewBuilder
-    private func inlineExpandable<Content: View>(
-        isOpen: Bool,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .padding(.top, 4)
-            .padding(.bottom, 14)
-            .premiumBlur(isVisible: isOpen, duration: 0.35)
-            .frame(height: isOpen ? nil : 0, alignment: .top)
-            .clipped()
-            .allowsHitTesting(isOpen)
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isOpen)
-    }
-
-    private func factorRow(
-        icon: String,
-        label: String,
-        value: String,
-        hasSelection: Bool,
-        isExpanded: Bool? = nil,
-        action: @escaping () -> Void
-    ) -> some View {
-        let usesExpandChevron = isExpanded != nil
-        let chevronName = usesExpandChevron ? "chevron.down" : "chevron.right"
-        let rotation: Double = (isExpanded == true) ? 180 : 0
-
-        return Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: hasSelection ? 14 : 7))
-                    .foregroundStyle(.white.opacity(hasSelection ? 0.9 : 0.3))
-                    .frame(width: 20)
-                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-
-                Text(label)
-                    .font(AppTypography.labelLarge)
-                    .foregroundStyle(.white)
-
-                Spacer(minLength: 0)
-
-                Text(value)
-                    .font(AppTypography.labelMedium)
-                    .foregroundStyle(.white.opacity(hasSelection ? 0.7 : 0.35))
-                    .contentTransition(.numericText())
-
-                Image(systemName: chevronName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .rotationEffect(.degrees(rotation))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.85), value: rotation)
-            }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: value)
-    }
-
-    private var toneInlinePicker: some View {
-        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-            ForEach(toneOptions, id: \.tone) { option in
-                let isSelected = editTone == option.tone
-                Button {
-                    HapticManager.shared.selection()
-                    editTone = option.tone
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        expandedFactor = nil
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: option.icon)
-                            .font(.system(size: 12))
-                        Text(option.label)
-                            .font(AppTypography.labelSmall)
-                    }
-                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(isSelected ? .white : .white.opacity(0.08))
-                    .clipShape(Capsule())
-                }
-                .animation(.easeOut(duration: 0.2), value: isSelected)
-            }
-        }
-    }
-
-    private var reasonInlinePicker: some View {
-        LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-            ForEach(whyOptions, id: \.why) { option in
-                let isSelected = editWhyContext == option.why
-                Button {
-                    HapticManager.shared.selection()
-                    editWhyContext = option.why
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        expandedFactor = nil
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: option.icon)
-                            .font(.system(size: 11))
-                        Text(option.label)
-                            .font(AppTypography.labelSmall)
-                    }
-                    .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(isSelected ? .white : .white.opacity(0.08))
-                    .clipShape(Capsule())
-                }
-                .animation(.easeOut(duration: 0.2), value: isSelected)
-            }
-        }
-    }
-
-    private var intensityInlineSlider: some View {
-        HStack(spacing: 0) {
-            ForEach(intensityOptions, id: \.intensity) { option in
-                let isSelected = editIntensity == option.intensity
-                Button {
-                    HapticManager.shared.selection()
-                    editIntensity = option.intensity
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        expandedFactor = nil
-                    }
-                } label: {
-                    Text(option.label)
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isSelected ? .white : .clear)
-                        .clipShape(Capsule())
-                }
-                .animation(.easeOut(duration: 0.2), value: isSelected)
-            }
-        }
-        .padding(3)
-        .background(.white.opacity(0.08))
-        .clipShape(Capsule())
-    }
-
     // MARK: - Subviews
 
     private var backButton: some View {
@@ -847,99 +603,6 @@ struct EditAlarmSheetContent: View {
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    // MARK: - Snooze Steppers
-
-    private var snoozeCountRow: some View {
-        HStack(spacing: 16) {
-            Button {
-                HapticManager.shared.selection()
-                editMaxSnoozes = max(0, editMaxSnoozes - 1)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-
-            HStack(spacing: 6) {
-                if editMaxSnoozes == 0 {
-                    Text("No snooze")
-                        .font(AppTypography.labelMedium)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .contentTransition(.numericText())
-                } else {
-                    Text("\(editMaxSnoozes)")
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-
-                    Text(editMaxSnoozes == 1 ? "snooze" : "snoozes")
-                        .font(AppTypography.labelMedium)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .contentTransition(.numericText())
-                }
-            }
-            .frame(width: 110)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editMaxSnoozes)
-
-            Button {
-                HapticManager.shared.selection()
-                editMaxSnoozes = min(3, editMaxSnoozes + 1)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-        }
-    }
-
-    private var snoozeIntervalRow: some View {
-        HStack(spacing: 16) {
-            Button {
-                HapticManager.shared.selection()
-                editSnoozeInterval = max(1, editSnoozeInterval - 1)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-
-            HStack(spacing: 6) {
-                Text("\(editSnoozeInterval)")
-                    .font(AppTypography.labelLarge)
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-
-                Text(editSnoozeInterval == 1 ? "minute" : "minutes")
-                    .font(AppTypography.labelMedium)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .contentTransition(.numericText())
-            }
-            .frame(width: 110)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editSnoozeInterval)
-
-            Button {
-                HapticManager.shared.selection()
-                editSnoozeInterval = min(15, editSnoozeInterval + 1)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-        }
     }
 
     // MARK: - Voice Actions
@@ -1005,67 +668,6 @@ struct EditAlarmSheetContent: View {
         case style
     }
 
-    private enum FactorKind: Identifiable {
-        case tone
-        case reason
-        case intensity
-        var id: Self { self }
-    }
-
-    private struct ToneOption {
-        let tone: AlarmTone
-        let label: String
-        let icon: String
-    }
-
-    private var toneOptions: [ToneOption] {
-        [
-            ToneOption(tone: .calm, label: "Calm", icon: "leaf.fill"),
-            ToneOption(tone: .encourage, label: "Encourage", icon: "hand.thumbsup.fill"),
-            ToneOption(tone: .push, label: "Push", icon: "bolt.fill"),
-            ToneOption(tone: .strict, label: "Strict", icon: "exclamationmark.triangle.fill"),
-            ToneOption(tone: .fun, label: "Fun", icon: "face.smiling.fill"),
-        ]
-    }
-
-    private struct WhyOption {
-        let why: WhyContext
-        let label: String
-        let icon: String
-    }
-
-    private var whyOptions: [WhyOption] {
-        [
-            WhyOption(why: .work, label: "Work", icon: "briefcase.fill"),
-            WhyOption(why: .school, label: "School", icon: "book.fill"),
-            WhyOption(why: .gym, label: "Gym", icon: "dumbbell.fill"),
-            WhyOption(why: .family, label: "Family", icon: "house.fill"),
-            WhyOption(why: .personalGoal, label: "Goal", icon: "star.fill"),
-            WhyOption(why: .important, label: "Important", icon: "exclamationmark.circle.fill"),
-            WhyOption(why: .other, label: "Other", icon: "ellipsis.circle.fill"),
-        ]
-    }
-
-    private struct IntensityOption {
-        let intensity: AlarmIntensity
-        let label: String
-    }
-
-    private var intensityOptions: [IntensityOption] {
-        [
-            IntensityOption(intensity: .gentle, label: "Gentle"),
-            IntensityOption(intensity: .balanced, label: "Balanced"),
-            IntensityOption(intensity: .intense, label: "Intense"),
-        ]
-    }
-
-    private var selectedToneOption: ToneOption? {
-        toneOptions.first(where: { $0.tone == editTone })
-    }
-
-    private var selectedWhyOption: WhyOption? {
-        whyOptions.first(where: { $0.why == editWhyContext })
-    }
 
     // MARK: - Helpers
 
@@ -1106,23 +708,6 @@ struct EditAlarmSheetContent: View {
         }
     }
 
-    private func intensityLabel(_ intensity: AlarmIntensity?) -> String {
-        switch intensity {
-        case .gentle: return "Gentle"
-        case .balanced: return "Balanced"
-        case .intense: return "Intense"
-        case .none: return "None"
-        }
-    }
-
-    private func intensityIcon(_ intensity: AlarmIntensity?) -> String {
-        switch intensity {
-        case .gentle: return "leaf"
-        case .balanced: return "circle.grid.2x2"
-        case .intense: return "bolt.fill"
-        case .none: return "questionmark.circle"
-        }
-    }
 }
 
 // MARK: - Alarm Waveform

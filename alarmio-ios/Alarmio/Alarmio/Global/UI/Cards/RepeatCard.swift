@@ -8,13 +8,6 @@
 
 import SwiftUI
 
-// MARK: - Card Mode
-
-enum CardMode {
-    case standard
-    case edit
-}
-
 struct RepeatCard: View {
 
     // MARK: - Bindings
@@ -77,23 +70,6 @@ struct RepeatCard: View {
         .padding(.vertical, 20)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: mode))
-    }
-}
-
-// MARK: - Glass Modifier
-
-private struct CardGlassModifier: ViewModifier {
-    let mode: CardMode
-
-    func body(content: Content) -> some View {
-        switch mode {
-        case .standard:
-            content
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-        case .edit:
-            content
-                .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
-        }
     }
 }
 
