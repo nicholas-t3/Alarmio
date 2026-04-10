@@ -206,9 +206,6 @@ struct EditAlarmView: View {
         }
     }
 
-    /// Fixed width for the center label of both snooze stepper rows, so the
-    /// plus/minus buttons align vertically across rows regardless of which
-    /// text ("No snooze" vs "15 minutes") is currently showing.
     private static let snoozeStepperLabelWidth: CGFloat = 110
 
     private var bottomActions: some View {
@@ -257,9 +254,7 @@ struct EditAlarmView: View {
 
         let audioManager = alarmStore.audioFileManager
 
-        // Only preview if this alarm has a custom sound file
         guard audioManager.hasCustomSound(for: alarm.id) || alarm.soundFileName != nil else {
-            // No custom sound — this alarm uses the system default, nothing to preview
             HapticManager.shared.warning()
             return
         }

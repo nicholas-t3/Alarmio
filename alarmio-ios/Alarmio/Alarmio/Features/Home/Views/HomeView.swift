@@ -66,7 +66,7 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showEditModal) {
             if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
-                EditAlarmView(
+                NewEditAlarmView(
                     alarm: alarm,
                     onSave: { updatedAlarm in
                         Task { await alarmStore.updateAlarm(updatedAlarm) }
@@ -96,23 +96,6 @@ struct HomeView: View {
                         }
                     }
                 )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground {
-                    ZStack {
-                        Color(hex: "060e1c")
-
-                        LinearGradient(
-                            colors: [
-                                Color(hex: "060e1c"),
-                                Color(hex: "111d35").opacity(0.8)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                    .ignoresSafeArea()
-                }
             }
         }
         .onChange(of: showEditModal) { _, showing in
