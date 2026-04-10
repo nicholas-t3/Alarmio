@@ -25,6 +25,7 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
+    @State private var editModalStep = DetentStep(480, id: "edit-summary")
     @State private var deletingAlarmIds: Set<UUID> = []
 
     // MARK: - Body
@@ -64,42 +65,34 @@ struct HomeView: View {
         .motionModal(isPresented: $showSettings) {
             SettingsView()
         }
-        .sheet(isPresented: $showEditModal) {
+        .detentModal(isPresented: $showEditModal, currentStep: $editModalStep) {
             if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
-                NewEditAlarmView(
+                EditAlarmDetentContent(
                     alarm: alarm,
                     onSave: { updatedAlarm in
                         Task { await alarmStore.updateAlarm(updatedAlarm) }
                         showEditModal = false
-                    },
-                    onDelete: {
+                    }, onDelete: {
                         let id = alarmId
                         showEditModal = false
                         Task {
-                            // Wait for the sheet to dismiss
                             try? await Task.sleep(for: .milliseconds(500))
-
-                            // Trigger blur-out on the card
                             deletingAlarmIds.insert(id)
-
-                            // Wait for blur animation to complete
                             try? await Task.sleep(for: .milliseconds(400))
-
-                            // Remove from store with layout animation
                             _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 Task { await alarmStore.deleteAlarm(id: id) }
                             }
-
-                            // Clean up tracking set
                             try? await Task.sleep(for: .milliseconds(400))
                             deletingAlarmIds.remove(id)
                         }
-                    }
+                    }, currentStep: $editModalStep
                 )
             }
         }
         .onChange(of: showEditModal) { _, showing in
             if !showing {
+                // Reset state after dismiss
+                editModalStep = DetentStep(480, id: "edit-summary")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     editingAlarmId = nil
                 }
