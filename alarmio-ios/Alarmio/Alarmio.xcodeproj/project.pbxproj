@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1898E912F880F5400CEEB21 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E902F880F5400CEEB21 /* Auth */; };
+		E1898E932F880F5400CEEB21 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E922F880F5400CEEB21 /* Functions */; };
+		E1898E952F880F5400CEEB21 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E942F880F5400CEEB21 /* PostgREST */; };
+		E1898E972F880F5400CEEB21 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E962F880F5400CEEB21 /* Storage */; };
+		E1898E992F8811C800CEEB21 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E982F8811C800CEEB21 /* Supabase */; };
 		E1B488602F87B7960038F812 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1B4885F2F87B7960038F812 /* WidgetKit.framework */; };
 		E1B488622F87B7960038F812 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1B488612F87B7960038F812 /* SwiftUI.framework */; };
 		E1B4886F2F87B7970038F812 /* AlarmioWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1B4885D2F87B7960038F812 /* AlarmioWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -117,6 +122,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E1898E992F8811C800CEEB21 /* Supabase in Frameworks */,
+				E1898E972F880F5400CEEB21 /* Storage in Frameworks */,
+				E1898E952F880F5400CEEB21 /* PostgREST in Frameworks */,
+				E1898E932F880F5400CEEB21 /* Functions in Frameworks */,
+				E1898E912F880F5400CEEB21 /* Auth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -208,6 +218,11 @@
 			);
 			name = Alarmio;
 			packageProductDependencies = (
+				E1898E902F880F5400CEEB21 /* Auth */,
+				E1898E922F880F5400CEEB21 /* Functions */,
+				E1898E942F880F5400CEEB21 /* PostgREST */,
+				E1898E962F880F5400CEEB21 /* Storage */,
+				E1898E982F8811C800CEEB21 /* Supabase */,
 			);
 			productName = Alarmio;
 			productReference = E18F8EBD2F7D125700907484 /* Alarmio.app */;
@@ -267,6 +282,9 @@
 			);
 			mainGroup = E18F8EB42F7D125700907484;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E18F8EBE2F7D125700907484 /* Products */;
 			projectDirPath = "";
@@ -684,6 +702,45 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E1898E902F880F5400CEEB21 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		E1898E922F880F5400CEEB21 /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		E1898E942F880F5400CEEB21 /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		E1898E962F880F5400CEEB21 /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		E1898E982F8811C800CEEB21 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E18F8EB52F7D125700907484 /* Project object */;
 }

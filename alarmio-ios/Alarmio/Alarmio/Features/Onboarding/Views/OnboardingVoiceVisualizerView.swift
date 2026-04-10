@@ -39,6 +39,18 @@ private let voiceEntries: [VoiceEntry] = [
         description: "A fun, lighthearted voice that makes mornings bright",
         palette: .gold
     ),
+    VoiceEntry(
+        persona: .bro,
+        name: "The Bro",
+        description: "A casual, easygoing voice that keeps it chill",
+        palette: .gold
+    ),
+    VoiceEntry(
+        persona: .digitalAssistant,
+        name: "Digital",
+        description: "A robotic, helpful voice for the pragmatic wake-up",
+        palette: .blue
+    ),
 ]
 
 // MARK: - Onboarding Voice View

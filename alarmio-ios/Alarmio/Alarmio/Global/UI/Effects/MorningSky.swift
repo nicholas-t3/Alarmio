@@ -803,6 +803,22 @@ private struct MorningShootingStar {
     }
 }
 
+#Preview("Morning Sky — Loading") {
+    ZStack {
+        MorningSky(
+            starOpacity: 0.3,
+            showConstellations: false,
+            sunriseProgress: 0.5,
+            starSpinProgress: 1.0
+        )
+
+//        Text("Generating")
+//            .font(.system(size: 28, weight: .light, design: .rounded))
+//            .foregroundStyle(.white)
+//            .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
+    }
+}
+
 #Preview("Side by Side") {
     HStack(spacing: 0) {
         RotatingNightSky()

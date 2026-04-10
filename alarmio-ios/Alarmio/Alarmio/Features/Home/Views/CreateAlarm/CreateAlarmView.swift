@@ -14,6 +14,8 @@ struct CreateAlarmView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.deviceInfo) private var deviceInfo
+    @Environment(\.composerService) private var composerService
+    @Environment(\.alertManager) private var alertManager
 
     // MARK: - State
 
@@ -244,8 +246,8 @@ struct CreateAlarmView: View {
             // Snooze count stepper — always visible
             snoozeCountRow
 
-            // Interval stepper — only when count > 0
-            if alarm.maxSnoozes > 0 {
+            // Interval stepper — only when snooze is enabled (count > 0 or unlimited)
+            if alarm.maxSnoozes > 0 || alarm.unlimitedSnooze {
                 snoozeIntervalRow
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -255,13 +257,20 @@ struct CreateAlarmView: View {
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.maxSnoozes)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.unlimitedSnooze)
     }
 
     private var snoozeCountRow: some View {
         HStack(spacing: 16) {
             Button {
                 HapticManager.shared.selection()
-                alarm.maxSnoozes = max(0, alarm.maxSnoozes - 1)
+                // Unlimited → back to 3, otherwise decrement.
+                if alarm.unlimitedSnooze {
+                    alarm.unlimitedSnooze = false
+                    alarm.maxSnoozes = 3
+                } else {
+                    alarm.maxSnoozes = max(0, alarm.maxSnoozes - 1)
+                }
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 14, weight: .medium))
@@ -272,7 +281,12 @@ struct CreateAlarmView: View {
             }
 
             HStack(spacing: 6) {
-                if alarm.maxSnoozes == 0 {
+                if alarm.unlimitedSnooze {
+                    Text("Unlimited")
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                } else if alarm.maxSnoozes == 0 {
                     Text("No snooze")
                         .font(AppTypography.labelMedium)
                         .foregroundStyle(.white.opacity(0.7))
@@ -291,10 +305,19 @@ struct CreateAlarmView: View {
             }
             .frame(width: Self.snoozeStepperLabelWidth)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.maxSnoozes)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: alarm.unlimitedSnooze)
 
             Button {
                 HapticManager.shared.selection()
-                alarm.maxSnoozes = min(3, alarm.maxSnoozes + 1)
+                // Past 3 → unlimited. maxSnoozes stays at 3 (unused in
+                // unlimited mode but harmless for Codable back-compat).
+                if alarm.unlimitedSnooze {
+                    // Already unlimited, no-op.
+                } else if alarm.maxSnoozes >= 3 {
+                    alarm.unlimitedSnooze = true
+                } else {
+                    alarm.maxSnoozes = min(3, alarm.maxSnoozes + 1)
+                }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
@@ -1091,7 +1114,7 @@ struct CreateAlarmView: View {
     private func startGeneration() {
         transitionToPhase(.generating)
 
-        Task {
+        Task { @MainActor in
             // Wait for the configuring phase to finish blurring out and the
             // generating phase to mount before kicking off animations and
             // status messages. transitionToPhase uses 400ms blur + 50ms
@@ -1099,25 +1122,65 @@ struct CreateAlarmView: View {
             // generating view first becoming visible.
             try? await Task.sleep(for: .milliseconds(450))
 
-            // Kick off background animations. Sunrise ramps over the full
-            // 5s generation window; star spin ramps to full in 2s.
-            animateSunrise(duration: 5.0)
+            // Kick off background animations. Sunrise ramps over a longer
+            // window than the old stub because the real Composer call is
+            // variable-length; star spin ramps to full in 2s as before.
+            animateSunrise(duration: 8.0)
             animateStarSpin()
 
-            // Cycle personalized status messages while the (stubbed) API
-            // call runs. Total cycle = 5 seconds.
+            // Cycle personalized status messages in a background task so
+            // they keep rolling while the real API call is in flight. The
+            // cycler stops once generation completes (success or failure).
             let messages = buildStatusMessages()
-            let perMessage: Double = 5.0 / Double(max(messages.count, 1))
-
-            for message in messages {
-                generatingStatusText = message
-                try? await Task.sleep(for: .seconds(perMessage))
+            let statusTask = Task { @MainActor in
+                var i = 0
+                while !Task.isCancelled {
+                    generatingStatusText = messages[i % messages.count]
+                    i += 1
+                    try? await Task.sleep(for: .seconds(1.2))
+                }
             }
 
-            // Real API call will replace the loop above. For now the loop
-            // IS the 5-second stub.
+            // Real Composer call.
+            do {
+                guard let composerService else {
+                    throw NSError(
+                        domain: "ComposerService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
+                    )
+                }
+                let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
+                statusTask.cancel()
+                alarm.soundFileName = initialFileName
+                generatingStatusText = "Almost ready..."
+                transitionToPhase(.confirming)
+            } catch {
+                statusTask.cancel()
+                print("[CreateAlarmView] Composer failed: \(error)")
+                generatingStatusText = ""
 
-            transitionToPhase(.confirming)
+                // 1. Stop the sky (sunrise + star spin) — fade back to calm.
+                withAnimation(.easeOut(duration: 0.6)) {
+                    sunriseProgress = 0
+                    starSpinProgress = 0
+                }
+
+                // 2. Present the modal. The "Try Again" primary action
+                //    transitions back to the configuring phase, so the user
+                //    sees the modal *over* the generating screen and only
+                //    leaves it after explicitly acknowledging the error.
+                alertManager.showModal(
+                    title: "Something went wrong",
+                    message: "We'll investigate this issue. Please try again later.",
+                    primaryAction: AlertAction(label: "Try Again") { [self] in
+                        // GlobalAlertOverlay's ModalAlertContent already
+                        // calls alertManager.dismiss() after this closure
+                        // returns — don't double-dismiss.
+                        transitionToPhase(.configuring)
+                    }
+                )
+            }
         }
     }
 
@@ -1212,6 +1275,8 @@ struct CreateAlarmView: View {
         case .hardSergeant: return "Calling the drill sergeant"
         case .evilSpaceLord: return "Summoning the space lord"
         case .playful: return "Bringing the fun"
+        case .bro: return "Grabbing the bro"
+        case .digitalAssistant: return "Booting the assistant"
         }
     }
 
@@ -1391,21 +1456,20 @@ struct CreateAlarmView: View {
         let descriptor: String
     }
 
-    /// The 8 hero voices shown in the voice card. Until we add new cases
-    /// to the `VoicePersona` enum, several entries reuse existing personas
-    /// as placeholders — swap these out when the new MP3s are in and the
-    /// enum is expanded.
+    /// The 8 hero voices shown in the voice card. Seven are real personas
+    /// backed by distinct ElevenLabs voices; one ("Morning Sun") remains a
+    /// placeholder reusing `calmGuide` until an eighth voice is chosen.
     private var heroVoices: [HeroVoice] {
         [
-            HeroVoice(persona: .calmGuide,     name: "Calm Guide",    descriptor: "Soothing · Gentle"),
-            HeroVoice(persona: .energeticCoach, name: "Coach",        descriptor: "Upbeat · Motivating"),
-            HeroVoice(persona: .hardSergeant,  name: "Sergeant",      descriptor: "Firm · Direct"),
-            HeroVoice(persona: .evilSpaceLord, name: "Space Lord",    descriptor: "Dramatic · Commanding"),
-            HeroVoice(persona: .playful,       name: "Playful",       descriptor: "Bright · Lighthearted"),
-            // Placeholders — reuse existing personas until enum expands.
-            HeroVoice(persona: .calmGuide,     name: "Morning Sun",   descriptor: "Warm · Optimistic"),
-            HeroVoice(persona: .energeticCoach, name: "Mentor",       descriptor: "Steady · Wise"),
-            HeroVoice(persona: .playful,       name: "Zen",           descriptor: "Grounded · Peaceful"),
+            HeroVoice(persona: .calmGuide,        name: "Calm Guide",    descriptor: "Soothing · Gentle"),
+            HeroVoice(persona: .energeticCoach,   name: "Coach",         descriptor: "Upbeat · Motivating"),
+            HeroVoice(persona: .hardSergeant,     name: "Sergeant",      descriptor: "Firm · Direct"),
+            HeroVoice(persona: .evilSpaceLord,    name: "Space Lord",    descriptor: "Dramatic · Commanding"),
+            HeroVoice(persona: .playful,          name: "Playful",       descriptor: "Bright · Lighthearted"),
+            HeroVoice(persona: .bro,              name: "The Bro",       descriptor: "Casual · Vibes"),
+            HeroVoice(persona: .digitalAssistant, name: "Digital",       descriptor: "Robotic · Helpful"),
+            // Placeholder — reuses calmGuide until an eighth voice is chosen.
+            HeroVoice(persona: .calmGuide,        name: "Morning Sun",   descriptor: "Warm · Optimistic"),
         ]
     }
 

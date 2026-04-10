@@ -178,6 +178,8 @@ struct OnboardingGeneratingView: View {
         case .hardSergeant: return "Calling the drill sergeant"
         case .evilSpaceLord: return "Summoning the space lord"
         case .playful: return "Bringing the fun"
+        case .bro: return "Grabbing the bro"
+        case .digitalAssistant: return "Booting the assistant"
         }
     }
 }

@@ -47,6 +47,8 @@ enum VoicePersona: String, CaseIterable, Codable, Sendable {
     case hardSergeant = "hard_sergeant"
     case evilSpaceLord = "evil_space_lord"
     case playful
+    case bro
+    case digitalAssistant = "digital_assistant"
 }
 
 enum ContentFlag: String, CaseIterable, Codable, Sendable {
@@ -72,6 +74,10 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     var contentFlags: [ContentFlag] = []
     var snoozeInterval: Int = 5
     var maxSnoozes: Int = 3
+    /// Unlimited snooze — when true, `maxSnoozes` is ignored and every
+    /// snooze plays the single loop audio file (`_1`) forever. Default
+    /// false preserves Codable back-compat for previously persisted alarms.
+    var unlimitedSnooze: Bool = false
     // currentSnoozeCount stays optional — it's runtime state mutated by
     // SnoozeAlarmIntent, and keeping it optional preserves Codable
     // back-compat with any alarms persisted without this field.

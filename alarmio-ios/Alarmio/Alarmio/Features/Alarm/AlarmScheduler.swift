@@ -79,14 +79,24 @@ final class AlarmScheduler {
 
         let maxSnoozes = config.maxSnoozes
         let currentCount = config.currentSnoozeCount ?? 0
-        let snoozesRemaining = max(0, maxSnoozes - currentCount)
-        print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes))")
+        // In unlimited mode, snoozesRemaining is effectively infinite — we
+        // pass a sentinel large value so the snooze button is always shown.
+        // SnoozeAlarmIntent skips the cap math when unlimitedSnooze is true.
+        let snoozesRemaining = config.unlimitedSnooze
+            ? Int.max
+            : max(0, maxSnoozes - currentCount)
+        print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes), unlimited=\(config.unlimitedSnooze))")
 
         let attributes = buildAttributes(from: config, snoozesRemaining: snoozesRemaining)
 
-        // POC: initial fire always plays alarm1.mp3. Snooze chain rotates
-        // through alarm2 → alarm3 → alarm1 via SnoozeAlarmIntent.
-        let soundName = "alarm1.mp3"
+        // Resolve the initial-fire sound from AudioFileManager. For
+        // Composer-generated alarms this picks up the indexed `_0` file.
+        // For demo alarms or alarms missing audio it falls back to
+        // default_alarm.mp3.
+        let soundName = audioFileManager.soundFileName(
+            for: config.id,
+            configured: config.soundFileName
+        )
         let sound: ActivityKit.AlertConfiguration.AlertSound = .named(soundName)
         print("[AlarmScheduler] initial sound=\(soundName)")
 

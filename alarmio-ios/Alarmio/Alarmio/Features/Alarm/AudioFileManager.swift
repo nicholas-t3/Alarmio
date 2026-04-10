@@ -67,13 +67,19 @@ final class AudioFileManager {
             return configured
         }
 
-        // Priority 2: Custom generated file for this alarm
+        // Priority 2: Custom generated file for this alarm (legacy single-file scheme)
         let customName = "alarm_\(alarmId.uuidString).mp3"
         if fileExists(named: customName) {
             return customName
         }
 
-        // Priority 3: Default fallback
+        // Priority 3: Indexed initial-fire file (new multi-file scheme)
+        let indexedInitial = "alarm_\(alarmId.uuidString)_0.mp3"
+        if fileExists(named: indexedInitial) {
+            return indexedInitial
+        }
+
+        // Priority 4: Default fallback
         return Self.defaultSoundFileName
     }
 
@@ -91,6 +97,33 @@ final class AudioFileManager {
         let fileURL = soundsDirectory.appendingPathComponent(fileName)
         try data.write(to: fileURL)
         return fileName
+    }
+
+    /// Indexed filename for a per-snooze-fire audio file.
+    /// Index 0 = initial fire, 1+ = snooze chain.
+    func indexedFileName(for alarmId: UUID, index: Int) -> String {
+        "alarm_\(alarmId.uuidString)_\(index).mp3"
+    }
+
+    /// Saves a per-index sound file. Used by ComposerService to lay down
+    /// the N files returned for one composition.
+    @discardableResult
+    func saveSound(data: Data, for alarmId: UUID, index: Int, extension ext: String = "mp3") throws -> String {
+        try ensureSoundsDirectory()
+        let fileName = "alarm_\(alarmId.uuidString)_\(index).\(ext)"
+        let fileURL = soundsDirectory.appendingPathComponent(fileName)
+        try data.write(to: fileURL)
+        return fileName
+    }
+
+    /// Deletes a set of indexed files for one alarm. Used when an alarm
+    /// is removed or its audio is regenerated.
+    func deleteSounds(for alarmId: UUID, indices: [Int]) {
+        for index in indices {
+            let fileName = "alarm_\(alarmId.uuidString)_\(index).mp3"
+            let fileURL = soundsDirectory.appendingPathComponent(fileName)
+            try? FileManager.default.removeItem(at: fileURL)
+        }
     }
 
     func deleteSound(for alarmId: UUID) {

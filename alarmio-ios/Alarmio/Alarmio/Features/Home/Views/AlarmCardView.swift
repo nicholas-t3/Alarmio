@@ -130,6 +130,8 @@ struct AlarmCardView: View {
         case .hardSergeant: return "Hard Sergeant"
         case .evilSpaceLord: return "Evil Space Lord"
         case .playful: return "Playful"
+        case .bro: return "The Bro"
+        case .digitalAssistant: return "Digital"
         }
     }
 }
