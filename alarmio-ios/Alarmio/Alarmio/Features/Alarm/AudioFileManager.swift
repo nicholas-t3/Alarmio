@@ -160,6 +160,10 @@ final class AudioFileManager {
         }
     }
 
+    func soundFileURL(named fileName: String) -> URL {
+        soundsDirectory.appendingPathComponent(fileName)
+    }
+
     func fileExists(named fileName: String) -> Bool {
         let fileURL = soundsDirectory.appendingPathComponent(fileName)
         return FileManager.default.fileExists(atPath: fileURL.path)

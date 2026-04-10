@@ -44,44 +44,11 @@ final class AlarmStore {
     // MARK: - Persistence
 
     func load() {
-        let cal = Calendar.current
-
         if let data = AppGroup.defaults.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([AlarmConfiguration].self, from: data) {
-            alarms = decoded
+            alarms = decoded.filter { !$0.isDemo }
         } else {
             alarms = []
-        }
-
-        // Ensure demo alarms are always present at the bottom
-        let hasDemos = alarms.contains(where: { $0.isDemo })
-        if !hasDemos {
-            let demos: [AlarmConfiguration] = [
-                AlarmConfiguration(
-                    isEnabled: true,
-                    wakeTime: cal.date(from: DateComponents(hour: 6, minute: 30)),
-                    repeatDays: [1, 2, 3, 4, 5],
-                    tone: .calm,
-                    intensity: .gentle,
-                    voicePersona: .calmGuide,
-                    snoozeInterval: 5,
-                    maxSnoozes: 3,
-                    isDemo: true
-                ),
-                AlarmConfiguration(
-                    isEnabled: false,
-                    wakeTime: cal.date(from: DateComponents(hour: 9, minute: 0)),
-                    repeatDays: [0, 6],
-                    tone: .fun,
-                    intensity: .balanced,
-                    voicePersona: .playful,
-                    snoozeInterval: 5,
-                    maxSnoozes: 3,
-                    isDemo: true
-                )
-            ]
-            alarms.append(contentsOf: demos)
-            save()
         }
     }
 

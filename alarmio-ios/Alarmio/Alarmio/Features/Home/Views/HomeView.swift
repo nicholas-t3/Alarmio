@@ -25,6 +25,7 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
+    @State private var deletingAlarmIds: Set<UUID> = []
 
     // MARK: - Body
 
@@ -63,7 +64,7 @@ struct HomeView: View {
         .motionModal(isPresented: $showSettings) {
             SettingsView()
         }
-        .motionModal(isPresented: $showEditModal) {
+        .sheet(isPresented: $showEditModal) {
             if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
                 EditAlarmView(
                     alarm: alarm,
@@ -75,11 +76,43 @@ struct HomeView: View {
                         let id = alarmId
                         showEditModal = false
                         Task {
+                            // Wait for the sheet to dismiss
                             try? await Task.sleep(for: .milliseconds(500))
-                            await alarmStore.deleteAlarm(id: id)
+
+                            // Trigger blur-out on the card
+                            deletingAlarmIds.insert(id)
+
+                            // Wait for blur animation to complete
+                            try? await Task.sleep(for: .milliseconds(400))
+
+                            // Remove from store with layout animation
+                            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                Task { await alarmStore.deleteAlarm(id: id) }
+                            }
+
+                            // Clean up tracking set
+                            try? await Task.sleep(for: .milliseconds(400))
+                            deletingAlarmIds.remove(id)
                         }
                     }
                 )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground {
+                    ZStack {
+                        Color(hex: "060e1c")
+
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "060e1c"),
+                                Color(hex: "111d35").opacity(0.8)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                    .ignoresSafeArea()
+                }
             }
         }
         .onChange(of: showEditModal) { _, showing in
@@ -145,61 +178,85 @@ struct HomeView: View {
         .padding(.top, 8)
     }
 
+    @ViewBuilder
     private var alarmList: some View {
-        ScrollView {
-            VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
+        if alarmStore.alarms.isEmpty {
+            emptyState
+        } else {
+            ScrollView {
+                VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-                // Top spacer
-                Spacer()
-                    .frame(height: 4)
+                    // Top spacer
+                    Spacer()
+                        .frame(height: 4)
 
-                // Alarm cards
-                ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
-
-                    // Demo separator before first demo alarm
-                    if alarm.isDemo && (index == 0 || !alarmStore.alarms[index - 1].isDemo) {
-                        demoSeparator
-                            .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
+                    // Alarm cards
+                    ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
+                        AlarmCardView(
+                            alarm: alarm,
+                            onToggle: {
+                                Task { await alarmStore.toggleAlarm(id: alarm.id) }
+                            },
+                            onEdit: {
+                                HapticManager.shared.softTap()
+                                editingAlarmId = alarm.id
+                                showEditModal = true
+                            }
+                        )
+                        .premiumBlur(
+                        isVisible: contentVisible && !deletingAlarmIds.contains(alarm.id),
+                        delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(index) * 0.08 + 0.1,
+                        duration: 0.4
+                    )
+                    .transition(.opacity)
                     }
 
-                    AlarmCardView(
-                        alarm: alarm,
-                        onToggle: {
-                            Task { await alarmStore.toggleAlarm(id: alarm.id) }
-                        },
-                        onEdit: {
-                            HapticManager.shared.softTap()
-                            editingAlarmId = alarm.id
-                            showEditModal = true
-                        }
-                    )
-                    .premiumBlur(isVisible: contentVisible, delay: Double(index) * 0.08 + 0.1, duration: 0.4)
+                    // Bottom spacer to clear FAB
+                    Spacer()
+                        .frame(height: 100)
                 }
-
-                // Bottom spacer to clear FAB
-                Spacer()
-                    .frame(height: 100)
+                .padding(.horizontal, AppSpacing.screenHorizontal)
             }
-            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
     }
 
-    private var demoSeparator: some View {
-        HStack(spacing: 12) {
-            Rectangle()
-                .fill(.white.opacity(0.1))
-                .frame(height: 1)
-            Text("DEMO")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.25))
-            Rectangle()
-                .fill(.white.opacity(0.1))
-                .frame(height: 1)
+    private var emptyState: some View {
+        VStack(spacing: 24) {
+
+            Spacer()
+
+            // Icon
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.04))
+                        .frame(width: 96, height: 96)
+
+                    Image(systemName: "alarm.fill")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(.white.opacity(0.25))
+                }
+
+                // Headline
+                Text("No alarms yet")
+                    .font(AppTypography.headlineLarge)
+                    .tracking(AppTypography.headlineLargeTracking)
+                    .foregroundStyle(.white.opacity(0.7))
+
+                // Subtitle
+                Text("Tap + to create your first\npersonalized wake-up call")
+                    .font(AppTypography.bodyMedium)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .multilineTextAlignment(.center)
+            }
+            .premiumBlur(isVisible: contentVisible, delay: 0.15, duration: 0.5)
+
+            Spacer()
+            Spacer()
         }
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
     }
 
     private var addButton: some View {

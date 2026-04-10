@@ -34,42 +34,29 @@ struct EditAlarmView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ScrollView {
             VStack(spacing: 0) {
+
+                // Top padding to clear drag indicator
+                Spacer()
+                    .frame(height: 32)
 
                 // Time picker
                 timeSection
 
-            // Day picker
-            daySection
-                .padding(.bottom, 24)
+                // Day picker
+                daySection
+                    .padding(.bottom, 24)
 
-            // Snooze
-            snoozeSection
-                .padding(.bottom, 28)
-
-            // Action buttons
-            actionButtons
-                .padding(.bottom, 8)
+                // Snooze
+                snoozeSection
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.vertical, 20)
-
-            // Delete button — floats at top-right, level with drag handle
-            if onDelete != nil {
-                Button {
-                    HapticManager.shared.warning()
-                    onDelete?()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.red.opacity(0.6))
-                        .frame(width: 40, height: 40)
-                        .contentShape(Rectangle())
-                }
-                .padding(.top, -8)
-                .padding(.trailing, 8)
-            }
+        }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        .safeAreaInset(edge: .bottom) {
+            bottomActions
         }
         .onAppear {
             editTime = alarm.wakeTime ?? Date()
@@ -122,13 +109,10 @@ struct EditAlarmView: View {
             // Snooze count stepper — always visible
             snoozeCountRow
 
-            // Interval stepper — only when count > 0
-            if editMaxSnoozes > 0 {
-                snoozeIntervalRow
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            // Interval stepper — premium blur in/out
+            snoozeIntervalRow
+                .premiumBlur(isVisible: editMaxSnoozes > 0, duration: 0.3)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: editMaxSnoozes)
     }
 
     private var snoozeCountRow: some View {
@@ -227,28 +211,8 @@ struct EditAlarmView: View {
     /// text ("No snooze" vs "15 minutes") is currently showing.
     private static let snoozeStepperLabelWidth: CGFloat = 110
 
-    private var actionButtons: some View {
-        VStack(spacing: 10) {
-
-            // Preview
-            Button {
-                HapticManager.shared.softTap()
-                togglePreview()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isPreviewPlaying ? "stop.fill" : "play.fill")
-                        .font(.system(size: 14))
-                        .contentTransition(.symbolEffect(.replace))
-                    Text(isPreviewPlaying ? "Stop" : "Preview")
-                        .font(.system(size: 15, weight: .semibold))
-                        .tracking(0.3)
-                }
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(.white.opacity(0.08))
-                .clipShape(Capsule())
-            }
+    private var bottomActions: some View {
+        VStack(spacing: 16) {
 
             // Save
             Button {
@@ -263,7 +227,23 @@ struct EditAlarmView: View {
                 Text("Save")
             }
             .primaryButton()
+            .padding(.horizontal, AppButtons.horizontalPadding)
+
+            // Delete
+            if onDelete != nil {
+                Button {
+                    HapticManager.shared.warning()
+                    onDelete?()
+                } label: {
+                    Text("Delete")
+                        .font(AppTypography.button)
+                        .tracking(AppTypography.buttonTracking)
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .padding(.bottom, 4)
+            }
         }
+        .padding(.bottom, AppSpacing.screenBottom)
     }
 
     // MARK: - Private Methods
@@ -327,26 +307,31 @@ struct EditAlarmView: View {
 
 // MARK: - Previews
 
-#Preview("Edit Alarm Modal") {
+#Preview("Edit Alarm Sheet") {
     struct PreviewContainer: View {
         @State private var showEdit = true
 
         var body: some View {
             ZStack {
                 MorningSky(starOpacity: 0.8, showConstellations: false)
-
-                MotionModal(isPresented: $showEdit, dismissible: true) {
-                    EditAlarmView(
-                        alarm: AlarmConfiguration(
-                            isEnabled: true,
-                            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
-                            repeatDays: [1, 2, 3, 4, 5],
-                            tone: .calm,
-                            voicePersona: .calmGuide,
-                            snoozeInterval: 5
-                        ),
-                        onSave: { _ in showEdit = false }
-                    )
+            }
+            .sheet(isPresented: $showEdit) {
+                EditAlarmView(
+                    alarm: AlarmConfiguration(
+                        isEnabled: true,
+                        wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
+                        repeatDays: [1, 2, 3, 4, 5],
+                        tone: .calm,
+                        voicePersona: .calmGuide,
+                        snoozeInterval: 5
+                    ),
+                    onSave: { _ in showEdit = false },
+                    onDelete: { showEdit = false }
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground {
+                    Color(hex: "060e1c").ignoresSafeArea()
                 }
             }
         }

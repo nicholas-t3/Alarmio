@@ -17,6 +17,7 @@ struct CreateAlarmView: View {
     @Environment(\.deviceInfo) private var deviceInfo
     @Environment(\.composerService) private var composerService
     @Environment(\.alertManager) private var alertManager
+    @Environment(\.alarmStore) private var alarmStore
 
     // MARK: - State
 
@@ -41,6 +42,7 @@ struct CreateAlarmView: View {
     @State private var confirmationHeroExited: Bool = false
     @State private var confirmationCardVisible: Bool = false
     @State private var statusTextVisible: Bool = false
+    @State private var isRegenerating: Bool = false
 
     // MARK: - Constants
 
@@ -254,18 +256,14 @@ struct CreateAlarmView: View {
             // Snooze count stepper — always visible
             snoozeCountRow
 
-            // Interval stepper — only when snooze is enabled (count > 0 or unlimited)
-            if alarm.maxSnoozes > 0 || alarm.unlimitedSnooze {
-                snoozeIntervalRow
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            // Interval stepper — premium blur in/out
+            snoozeIntervalRow
+                .premiumBlur(isVisible: alarm.maxSnoozes > 0 || alarm.unlimitedSnooze, duration: 0.3)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.maxSnoozes)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: alarm.unlimitedSnooze)
     }
 
     private var snoozeCountRow: some View {
@@ -1039,15 +1037,118 @@ struct CreateAlarmView: View {
 
             Spacer()
 
-            // Empty placeholder card — content TBD
-            Color.clear
-                .frame(height: 200)
-                .frame(maxWidth: .infinity)
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-                .padding(.horizontal, AppSpacing.screenHorizontal)
-                .premiumBlur(isVisible: confirmationCardVisible, duration: 0.5)
+            // Audio preview card
+            VStack(spacing: 16) {
+
+                // Label
+                Text("PREVIEW")
+                    .font(AppTypography.caption)
+                    .tracking(AppTypography.captionTracking)
+                    .foregroundStyle(.white.opacity(0.4))
+
+                // Waveform visualizer
+                VoiceWaveform(bands: voicePlayer.bands, isPlaying: voicePlayer.isPlaying)
+                    .frame(height: 48)
+                    .padding(.horizontal, 8)
+
+                // Play + Regenerate buttons
+                HStack(spacing: 12) {
+
+                    // Play / Stop
+                    Button {
+                        HapticManager.shared.buttonTap()
+                        toggleAlarmPreview()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: voicePlayer.isPlaying ? "stop.fill" : "play.fill")
+                                .font(.system(size: 14))
+                                .contentTransition(.symbolEffect(.replace))
+
+                            Text(voicePlayer.isPlaying ? "Stop" : "Preview")
+                                .font(AppTypography.labelMedium)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(height: 40)
+                        .frame(maxWidth: .infinity)
+                        .background(.white.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .disabled(isRegenerating)
+
+                    // Regenerate
+                    Button {
+                        HapticManager.shared.buttonTap()
+                        regenerateAlarm()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isRegenerating {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 14))
+                            }
+
+                            Text(isRegenerating ? "Generating" : "Regenerate")
+                                .font(AppTypography.labelMedium)
+                        }
+                        .foregroundStyle(.white.opacity(isRegenerating ? 0.5 : 1))
+                        .frame(height: 40)
+                        .frame(maxWidth: .infinity)
+                        .background(.white.opacity(0.08))
+                        .clipShape(Capsule())
+                    }
+                    .disabled(isRegenerating)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .padding(.horizontal, 16)
+            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .premiumBlur(isVisible: confirmationCardVisible, duration: 0.5)
 
             Spacer()
+        }
+    }
+
+    private func toggleAlarmPreview() {
+        if voicePlayer.isPlaying {
+            voicePlayer.stop()
+        } else {
+            guard let fileName = alarm.soundFileName else { return }
+            let url = alarmStore.audioFileManager.soundFileURL(named: fileName)
+            voicePlayer.playFromFile(url: url, persona: alarm.voicePersona)
+        }
+    }
+
+    private func regenerateAlarm() {
+        voicePlayer.stop()
+        isRegenerating = true
+
+        Task { @MainActor in
+            do {
+                guard let composerService else {
+                    throw NSError(
+                        domain: "ComposerService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
+                    )
+                }
+                let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
+                alarm.soundFileName = initialFileName
+                isRegenerating = false
+                HapticManager.shared.success()
+            } catch {
+                isRegenerating = false
+                print("[CreateAlarmView] Regenerate failed: \(error)")
+                alertManager.showModal(
+                    title: "Regeneration failed",
+                    message: "Please try again.",
+                    primaryAction: AlertAction(label: "OK") {}
+                )
+            }
         }
     }
 
@@ -1332,6 +1433,7 @@ struct CreateAlarmView: View {
     private var confirmingBottomBar: some View {
         Button {
             HapticManager.shared.buttonTap()
+            voicePlayer.stop()
             alarm.isEnabled = true
             onCreate(alarm)
             dismiss()

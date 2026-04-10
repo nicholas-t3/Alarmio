@@ -41,6 +41,22 @@ final class VoicePreviewPlayer {
             return
         }
 
+        startPlayback(url: url, persona: persona)
+    }
+
+    /// Play a generated audio file from disk (e.g. Library/Sounds/).
+    func playFromFile(url: URL, persona: VoicePersona? = nil) {
+        stop()
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print("[VoicePreviewPlayer] File not found: \(url.path)")
+            return
+        }
+
+        startPlayback(url: url, persona: persona)
+    }
+
+    private func startPlayback(url: URL, persona: VoicePersona?) {
         do {
             // Duck other audio (pauses user's music), resume on deactivation
             try AVAudioSession.sharedInstance().setCategory(.playback, options: .duckOthers)
@@ -55,8 +71,8 @@ final class VoicePreviewPlayer {
             currentPersona = persona
             isPlaying = true
 
-            // Generate unique band character for this persona
-            generateBandProfile(for: persona)
+            // Generate unique band character
+            generateBandProfile(for: persona ?? .calmGuide)
             startMetering()
         } catch {
             print("[VoicePreviewPlayer] Playback error: \(error.localizedDescription)")
