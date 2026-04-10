@@ -41,9 +41,17 @@ final class ComposerService {
     func generateAndDownloadAudio(for alarm: AlarmConfiguration) async throws -> String {
         let request = ComposeRequest.from(alarm: alarm, timezone: TimeZone.current)
 
+        // Log the session state so we can debug 401s.
+        if let session = try? await supabase.client.auth.session {
+            print("[ComposerService] user_id=\(session.user.id)")
+            print("[ComposerService] JWT=\(session.accessToken.prefix(50))...")
+            print("[ComposerService] expired=\(session.isExpired)")
+        } else {
+            print("[ComposerService] WARNING: no auth session!")
+        }
+
         // The SDK automatically attaches the user's JWT (Authorization header)
-        // and the anon key (Apikey header) to function invocations. No manual
-        // header management needed — just invoke.
+        // and the anon key (Apikey header) to function invocations.
         let response: ComposeResponse = try await supabase.client.functions.invoke(
             "compose-alarm",
             options: FunctionInvokeOptions(body: request)

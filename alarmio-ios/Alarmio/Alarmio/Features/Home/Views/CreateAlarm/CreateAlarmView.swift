@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Functions
 
 struct CreateAlarmView: View {
 
@@ -39,6 +40,7 @@ struct CreateAlarmView: View {
     @State private var confirmationCheckVisible: Bool = false
     @State private var confirmationHeroExited: Bool = false
     @State private var confirmationCardVisible: Bool = false
+    @State private var statusTextVisible: Bool = false
 
     // MARK: - Constants
 
@@ -100,6 +102,12 @@ struct CreateAlarmView: View {
                 // Bottom button
                 bottomBar
             }
+
+            // Alert overlay — must live inside this ZStack because
+            // CreateAlarmView is presented as a .fullScreenCover, which
+            // creates a separate presentation context. The GlobalAlertOverlay
+            // in RootView is behind the cover and invisible from here.
+            GlobalAlertOverlay()
 
         }
         .task {
@@ -965,10 +973,8 @@ struct CreateAlarmView: View {
                 .multilineTextAlignment(.center)
                 .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
-                .contentTransition(.numericText())
-                .animation(.easeInOut(duration: 0.6), value: generatingStatusText)
                 .padding(.horizontal, AppSpacing.screenHorizontal)
-                .premiumBlur(isVisible: cardsVisible, duration: 0.5)
+                .premiumBlur(isVisible: statusTextVisible, duration: 0.4, disableScale: true, disableOffset: true)
 
             Spacer()
         }
@@ -1128,16 +1134,21 @@ struct CreateAlarmView: View {
             animateSunrise(duration: 8.0)
             animateStarSpin()
 
-            // Cycle personalized status messages in a background task so
-            // they keep rolling while the real API call is in flight. The
-            // cycler stops once generation completes (success or failure).
+            // Cycle personalized status messages with premium blur transitions.
+            // Each message blurs out, swaps, then blurs back in.
             let messages = buildStatusMessages()
             let statusTask = Task { @MainActor in
                 var i = 0
                 while !Task.isCancelled {
                     generatingStatusText = messages[i % messages.count]
+                    statusTextVisible = true
+                    // Hold visible
+                    try? await Task.sleep(for: .seconds(2.0))
+                    guard !Task.isCancelled else { break }
+                    // Blur out
+                    statusTextVisible = false
+                    try? await Task.sleep(for: .milliseconds(400))
                     i += 1
-                    try? await Task.sleep(for: .seconds(1.2))
                 }
             }
 
@@ -1152,31 +1163,37 @@ struct CreateAlarmView: View {
                 }
                 let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
                 statusTask.cancel()
+                statusTextVisible = false
                 alarm.soundFileName = initialFileName
+                try? await Task.sleep(for: .milliseconds(300))
                 generatingStatusText = "Almost ready..."
+                statusTextVisible = true
+                try? await Task.sleep(for: .milliseconds(600))
                 transitionToPhase(.confirming)
             } catch {
                 statusTask.cancel()
-                print("[CreateAlarmView] Composer failed: \(error)")
+                statusTextVisible = false
+                // Log the full error including response body for 401/4xx debugging.
+                if case FunctionsError.httpError(let code, let data) = error {
+                    let body = String(data: data, encoding: .utf8) ?? "non-utf8"
+                    print("[CreateAlarmView] Composer failed: HTTP \(code) — \(body)")
+                } else {
+                    print("[CreateAlarmView] Composer failed: \(error)")
+                }
                 generatingStatusText = ""
 
-                // 1. Stop the sky (sunrise + star spin) — fade back to calm.
-                withAnimation(.easeOut(duration: 0.6)) {
-                    sunriseProgress = 0
-                    starSpinProgress = 0
-                }
-
-                // 2. Present the modal. The "Try Again" primary action
-                //    transitions back to the configuring phase, so the user
-                //    sees the modal *over* the generating screen and only
-                //    leaves it after explicitly acknowledging the error.
+                // Present the modal over the generating screen. When the
+                // user taps "Continue", fade the sky back and transition
+                // to the configuring phase. Doing both in the action
+                // closure avoids the sky reset racing with transitionToPhase.
                 alertManager.showModal(
                     title: "Something went wrong",
                     message: "We'll investigate this issue. Please try again later.",
-                    primaryAction: AlertAction(label: "Try Again") { [self] in
-                        // GlobalAlertOverlay's ModalAlertContent already
-                        // calls alertManager.dismiss() after this closure
-                        // returns — don't double-dismiss.
+                    primaryAction: AlertAction(label: "Continue") { [self] in
+                        withAnimation(.easeOut(duration: 0.6)) {
+                            sunriseProgress = 0
+                            starSpinProgress = 0
+                        }
                         transitionToPhase(.configuring)
                     }
                 )

@@ -28,12 +28,11 @@ final class SupabaseClient {
     // MARK: - Init
 
     private init() {
-        // Legacy anon key (JWT format) — safe to ship in the client.
-        // The new sb_publishable_* format isn't yet supported by the Edge
-        // Function gateway, so we use the legacy key which works everywhere.
-        // Permissions are scoped by RLS; the dangerous service-role key
-        // never leaves Supabase Edge Function secrets.
-        let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhlcnl2cGFxaHdxc29tY2xjZXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTY1ODUsImV4cCI6MjA5MDQ3MjU4NX0.LXfcjpDIgbuCnpUhp7tfGxCDUBjQ3q4Ml-QBxtjvDKI"
+        // Publishable key — safe to ship in the client. This is the
+        // modern Supabase key format for projects using asymmetric JWT
+        // signing. Permissions are scoped by RLS; the dangerous secret
+        // key never leaves Supabase Edge Function secrets.
+        let anonKey = "sb_publishable_hu7jY-pE_7j7bTP39aAE5w_UZu8qU6R"
 
         self.client = Supabase.SupabaseClient(
             supabaseURL: URL(string: "https://heryvpaqhwqsomclcevf.supabase.co")!,
