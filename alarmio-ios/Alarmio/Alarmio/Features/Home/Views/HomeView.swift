@@ -25,7 +25,6 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
-    @State private var editModalStep = DetentStep(480, id: "edit-summary")
     @State private var deletingAlarmIds: Set<UUID> = []
 
     // MARK: - Body
@@ -65,14 +64,15 @@ struct HomeView: View {
         .motionModal(isPresented: $showSettings) {
             SettingsView()
         }
-        .detentModal(isPresented: $showEditModal, currentStep: $editModalStep) {
+        .sheet(isPresented: $showEditModal) {
             if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
-                EditAlarmDetentContent(
+                EditAlarmSheetContent(
                     alarm: alarm,
                     onSave: { updatedAlarm in
                         Task { await alarmStore.updateAlarm(updatedAlarm) }
                         showEditModal = false
-                    }, onDelete: {
+                    },
+                    onDelete: {
                         let id = alarmId
                         showEditModal = false
                         Task {
@@ -85,14 +85,12 @@ struct HomeView: View {
                             try? await Task.sleep(for: .milliseconds(400))
                             deletingAlarmIds.remove(id)
                         }
-                    }, currentStep: $editModalStep
+                    }
                 )
             }
         }
         .onChange(of: showEditModal) { _, showing in
             if !showing {
-                // Reset state after dismiss
-                editModalStep = DetentStep(480, id: "edit-summary")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     editingAlarmId = nil
                 }
