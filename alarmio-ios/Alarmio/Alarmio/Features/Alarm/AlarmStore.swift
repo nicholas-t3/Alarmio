@@ -130,17 +130,33 @@ final class AlarmStore {
 
     func rescheduleAllEnabled() async {
         // Check which alarms AlarmKit still knows about
-        let systemAlarmIds: Set<UUID>
-        if let systemAlarms = try? scheduler.manager.alarms {
-            systemAlarmIds = Set(systemAlarms.map(\.id))
-        } else {
-            systemAlarmIds = []
+        let systemAlarms = (try? scheduler.manager.alarms) ?? []
+        let systemAlarmIds = Set(systemAlarms.map(\.id))
+        let localAlarmIds = Set(alarms.map(\.id))
+
+        logReconciliation(systemAlarms: systemAlarms, systemAlarmIds: systemAlarmIds, localAlarmIds: localAlarmIds)
+
+        // Cancel orphans: AlarmKit has them scheduled but we don't know
+        // about them locally. Without this, a stale schedule from a prior
+        // install/dev session fires forever with no UI to turn it off.
+        let orphans = systemAlarmIds.subtracting(localAlarmIds)
+        for orphanId in orphans {
+            print("[AlarmStore] Cancelling orphan id=\(orphanId)")
+            try? scheduler.cancelAlarm(id: orphanId)
         }
 
         var didChange = false
 
         for index in alarms.indices {
-            guard alarms[index].isEnabled else { continue }
+            // If an alarm is disabled locally but still scheduled in AlarmKit,
+            // cancel it — otherwise it rings with no visible toggle to stop it.
+            guard alarms[index].isEnabled else {
+                if systemAlarmIds.contains(alarms[index].id) {
+                    print("[AlarmStore] Cancelling disabled-but-scheduled id=\(alarms[index].id)")
+                    try? scheduler.cancelAlarm(id: alarms[index].id)
+                }
+                continue
+            }
 
             let isOneTime = alarms[index].repeatDays == nil || alarms[index].repeatDays?.isEmpty == true
 
@@ -156,6 +172,56 @@ final class AlarmStore {
 
         if didChange { save() }
     }
+
+    // MARK: - Reconciliation Logging
+
+    /// Log-only reconciliation: dumps what AlarmKit has scheduled vs what
+    /// we have locally so we can identify phantom/orphan alarms. Cancel
+    /// logic is intentionally NOT here yet — we want evidence first.
+    private func logReconciliation(
+        systemAlarms: [Alarm],
+        systemAlarmIds: Set<UUID>,
+        localAlarmIds: Set<UUID>
+    ) {
+        print("[AlarmStore] === Launch reconciliation ===")
+        print("[AlarmStore] Local alarms: \(alarms.count)")
+        for a in alarms {
+            let wake = a.wakeTime.map { Self.timeFormatter.string(from: $0) } ?? "—"
+            print("[AlarmStore]   local id=\(a.id) enabled=\(a.isEnabled) wake=\(wake) repeat=\(a.repeatDays ?? [])")
+        }
+        print("[AlarmStore] AlarmKit system alarms: \(systemAlarms.count)")
+        for a in systemAlarms {
+            print("[AlarmStore]   system id=\(a.id) state=\(a.state) schedule=\(String(describing: a.schedule))")
+        }
+
+        let orphans = systemAlarmIds.subtracting(localAlarmIds)
+        if orphans.isEmpty {
+            print("[AlarmStore] No orphans detected")
+        } else {
+            print("[AlarmStore] ⚠️ Orphan alarms (scheduled in AlarmKit, missing locally): \(orphans.count)")
+            for id in orphans {
+                if let match = systemAlarms.first(where: { $0.id == id }) {
+                    print("[AlarmStore]   ⚠️ orphan id=\(id) schedule=\(String(describing: match.schedule))")
+                } else {
+                    print("[AlarmStore]   ⚠️ orphan id=\(id)")
+                }
+            }
+        }
+
+        let disabledButScheduled = alarms
+            .filter { !$0.isEnabled && systemAlarmIds.contains($0.id) }
+            .map(\.id)
+        if !disabledButScheduled.isEmpty {
+            print("[AlarmStore] ⚠️ Disabled locally but still scheduled in AlarmKit: \(disabledButScheduled)")
+        }
+        print("[AlarmStore] === End reconciliation ===")
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     func startObserving() async {
         // Observation reserved for future use.

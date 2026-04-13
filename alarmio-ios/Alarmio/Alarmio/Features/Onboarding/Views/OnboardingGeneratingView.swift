@@ -14,8 +14,8 @@ struct OnboardingGeneratingView: View {
     @Environment(OnboardingManager.self) private var manager
 
     // MARK: - State
-    @State private var contentVisible = false
     @State private var statusText = ""
+    @State private var statusTextVisible = false
     @State private var isComplete = false
 
     // MARK: - Constants
@@ -32,19 +32,16 @@ struct OnboardingGeneratingView: View {
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
             .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
-            .contentTransition(.numericText())
-            .animation(.easeInOut(duration: 0.6), value: statusText)
-            .premiumBlur(isVisible: contentVisible, duration: 0.5)
+            .premiumBlur(isVisible: statusTextVisible, duration: 0.4, disableScale: true, disableOffset: true)
             .task {
-                try? await Task.sleep(for: .milliseconds(100))
-                contentVisible = true
-
                 // Build personalized messages from configuration
                 let messages = buildPersonalizedMessages()
 
-                // Each message holds for 3s — total duration scales with message count
-                let messageHold: Double = 3.0
-                let totalDuration = messageHold * Double(messages.count)
+                // Per-message timing: ~2s visible + 0.4s blur out + 0.4s blur in
+                let messageHold: Double = 2.0
+                let blurDuration: Double = 0.4
+                let perMessageTotal = messageHold + (blurDuration * 2)
+                let totalDuration = perMessageTotal * Double(messages.count)
 
                 // Star spin ramps up fast independently
                 animateStarSpin()
@@ -52,23 +49,26 @@ struct OnboardingGeneratingView: View {
                 // Sunrise glow ramps smoothly over the full duration
                 animateSunrise(duration: totalDuration)
 
-                // Cycle personalized messages
-                for (index, message) in messages.enumerated() {
+                // Cycle personalized messages with premium blur transitions
+                for message in messages {
                     guard !isComplete else { break }
-                    statusText = message
 
-                    if index < messages.count - 1 {
-                        try? await Task.sleep(for: .seconds(messageHold))
-                    } else {
-                        // Last message — hold until done
-                        try? await Task.sleep(for: .seconds(messageHold))
-                    }
+                    statusText = message
+                    statusTextVisible = true
+
+                    // Hold visible
+                    try? await Task.sleep(for: .seconds(messageHold))
+                    guard !isComplete else { break }
+
+                    // Blur out before swapping to next
+                    statusTextVisible = false
+                    try? await Task.sleep(for: .seconds(blurDuration))
                 }
 
                 isComplete = true
                 HapticManager.shared.success()
 
-                try? await Task.sleep(for: .milliseconds(600))
+                try? await Task.sleep(for: .milliseconds(200))
                 onComplete()
             }
     }

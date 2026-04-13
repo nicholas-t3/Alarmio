@@ -44,6 +44,42 @@ struct EditAlarmSheetContent: View {
     let onSave: (AlarmConfiguration) -> Void
     var onDelete: (() -> Void)?
 
+    // MARK: - Init
+
+    init(
+        alarm: AlarmConfiguration,
+        onSave: @escaping (AlarmConfiguration) -> Void,
+        onDelete: (() -> Void)? = nil
+    ) {
+        self.alarm = alarm
+        self.onSave = onSave
+        self.onDelete = onDelete
+
+        // Initialize state from the alarm at construction time so the first
+        // render already reflects the alarm — otherwise hasChanges briefly
+        // evaluates to true (defaults differ from alarm), which flashes the
+        // Save button as enabled before snapping back.
+        _editTime = State(initialValue: alarm.wakeTime ?? Date())
+        _editDays = State(initialValue: Set(alarm.repeatDays ?? []))
+        _editSnoozeInterval = State(initialValue: alarm.snoozeInterval)
+        _editMaxSnoozes = State(initialValue: alarm.maxSnoozes)
+        _editVoicePersona = State(initialValue: alarm.voicePersona)
+        _editTone = State(initialValue: alarm.tone)
+        _editIntensity = State(initialValue: alarm.intensity)
+        _editWhyContext = State(initialValue: alarm.whyContext)
+        _editLeaveTime = State(initialValue: alarm.leaveTime)
+        _editSoundFileName = State(initialValue: alarm.soundFileName)
+
+        let initialIndex: Int
+        if let persona = alarm.voicePersona,
+           let idx = VoicePersona.allCases.firstIndex(of: persona) {
+            initialIndex = idx
+        } else {
+            initialIndex = 0
+        }
+        _voiceIndex = State(initialValue: initialIndex)
+    }
+
     // MARK: - Environment
 
     @Environment(\.alarmStore) private var alarmStore
@@ -53,10 +89,10 @@ struct EditAlarmSheetContent: View {
     // MARK: - State
 
     @State private var selectedDetent: PresentationDetent = .custom(EditSummaryDetent.self)
-    @State private var editTime: Date = Date()
-    @State private var editDays: Set<Int> = []
-    @State private var editSnoozeInterval: Int = 5
-    @State private var editMaxSnoozes: Int = 3
+    @State private var editTime: Date
+    @State private var editDays: Set<Int>
+    @State private var editSnoozeInterval: Int
+    @State private var editMaxSnoozes: Int
     @State private var editVoicePersona: VoicePersona?
     @State private var editTone: AlarmTone?
     @State private var editIntensity: AlarmIntensity?
@@ -67,7 +103,7 @@ struct EditAlarmSheetContent: View {
     @State private var showDetail = false
     @State private var contentVisible = true
     @State private var voicePlayer = VoicePreviewPlayer()
-    @State private var voiceIndex: Int = 0
+    @State private var voiceIndex: Int
     @State private var isRegenerating = false
 
     // MARK: - Detent Constants
@@ -115,11 +151,7 @@ struct EditAlarmSheetContent: View {
     }
 
     private var styleSummary: String {
-        var parts: [String] = []
-        if let tone = editTone { parts.append(toneLabel(tone)) }
-        if let persona = editVoicePersona { parts.append(voiceLabel(persona)) }
-        if parts.isEmpty { return "Not configured" }
-        return parts.joined(separator: " · ")
+        editVoicePersona?.descriptor ?? "Not configured"
     }
 
     private var hasChanges: Bool {
@@ -202,23 +234,6 @@ struct EditAlarmSheetContent: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(hex: "0f1a2e"))
         .interactiveDismissDisabled(showDetail)
-        .onAppear {
-            editTime = alarm.wakeTime ?? Date()
-            editDays = Set(alarm.repeatDays ?? [])
-            editSnoozeInterval = alarm.snoozeInterval
-            editMaxSnoozes = alarm.maxSnoozes
-            editVoicePersona = alarm.voicePersona
-            editTone = alarm.tone
-            editIntensity = alarm.intensity
-            editWhyContext = alarm.whyContext
-            editLeaveTime = alarm.leaveTime
-            editSoundFileName = alarm.soundFileName
-
-            if let persona = alarm.voicePersona,
-               let idx = VoicePersona.allCases.firstIndex(of: persona) {
-                voiceIndex = idx
-            }
-        }
         .onDisappear {
             voicePlayer.stop()
         }
@@ -296,7 +311,7 @@ struct EditAlarmSheetContent: View {
             summaryRow(
                 icon: "waveform",
                 label: "Voice & Style",
-                value: voiceLabel(editVoicePersona),
+                value: editVoicePersona?.displayName ?? "Not set",
                 detail: styleSummary
             )
             .contentShape(Rectangle())
@@ -510,12 +525,12 @@ struct EditAlarmSheetContent: View {
 
             // Voice info
             VStack(spacing: 2) {
-                Text(voiceLabel(voice))
+                Text(voice.displayName)
                     .font(AppTypography.labelMedium)
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
 
-                Text(voiceDescriptor(voice))
+                Text(voice.descriptor)
                     .font(AppTypography.caption)
                     .foregroundStyle(.white.opacity(0.35))
                     .contentTransition(.numericText())
@@ -630,11 +645,11 @@ struct EditAlarmSheetContent: View {
         Task { @MainActor in
             do {
                 guard let composerService else {
-                    throw NSError(
+                    throw APIError.unknown(NSError(
                         domain: "ComposerService",
                         code: -1,
                         userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
-                    )
+                    ))
                 }
 
                 var config = alarm
@@ -647,6 +662,14 @@ struct EditAlarmSheetContent: View {
                 editSoundFileName = newFileName
                 isRegenerating = false
                 HapticManager.shared.success()
+            } catch let error as APIError {
+                isRegenerating = false
+                print("[EditAlarmSheetContent] Regenerate failed: \(error)")
+                alertManager.showModal(
+                    title: "Regeneration failed",
+                    message: error.errorDescription ?? "Please try again.",
+                    primaryAction: AlertAction(label: "OK") {}
+                )
             } catch {
                 isRegenerating = false
                 print("[EditAlarmSheetContent] Regenerate failed: \(error)")
@@ -667,47 +690,6 @@ struct EditAlarmSheetContent: View {
         case snooze
         case style
     }
-
-
-    // MARK: - Helpers
-
-    private func toneLabel(_ tone: AlarmTone) -> String {
-        switch tone {
-        case .calm: return "Calm"
-        case .encourage: return "Encourage"
-        case .push: return "Push"
-        case .strict: return "Strict"
-        case .fun: return "Fun"
-        case .other: return "Other"
-        }
-    }
-
-    private func voiceLabel(_ persona: VoicePersona?) -> String {
-        guard let persona else { return "Not set" }
-        switch persona {
-        case .calmGuide: return "Calm Guide"
-        case .energeticCoach: return "Coach"
-        case .hardSergeant: return "Sergeant"
-        case .evilSpaceLord: return "Space Lord"
-        case .playful: return "Playful"
-        case .bro: return "The Bro"
-        case .digitalAssistant: return "Digital"
-        }
-    }
-
-    private func voiceDescriptor(_ persona: VoicePersona?) -> String {
-        guard let persona else { return "" }
-        switch persona {
-        case .calmGuide: return "Soothing · Gentle"
-        case .energeticCoach: return "Upbeat · Motivating"
-        case .hardSergeant: return "Firm · Direct"
-        case .evilSpaceLord: return "Dramatic · Commanding"
-        case .playful: return "Bright · Lighthearted"
-        case .bro: return "Casual · Vibes"
-        case .digitalAssistant: return "Robotic · Helpful"
-        }
-    }
-
 }
 
 // MARK: - Alarm Waveform

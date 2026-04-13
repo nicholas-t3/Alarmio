@@ -52,19 +52,21 @@ struct RootView: View {
             deviceInfo.updateScreenSize(width: size.width, height: size.height)
         }
         .task {
-            // Anonymous Supabase auth — runs before anything else so the
-            // rest of the app boots into an authenticated state. If it
-            // fails we continue anyway; the Composer call will surface a
-            // clearer error to the user later.
-            do {
-                try await SupabaseClient.shared.ensureAuthenticated()
-            } catch {
-                print("[RootView] Supabase auth failed: \(error)")
-            }
+            // Local-first boot: alarms live in the App Group defaults and
+            // must render even with no network. Auth and reschedule run in
+            // the background so a dead connection can never block the UI.
             alarmStore.audioFileManager.ensureSetup()
             alarmStore.load()
             await appState.checkOnboardingStatus()
-            await alarmStore.rescheduleAllEnabled()
+
+            Task {
+                do {
+                    try await APIClient.shared.ensureSession()
+                } catch {
+                    print("[RootView] Auth failed: \(error)")
+                }
+            }
+            Task { await alarmStore.rescheduleAllEnabled() }
             Task { await alarmStore.startObserving() }
         }
     }

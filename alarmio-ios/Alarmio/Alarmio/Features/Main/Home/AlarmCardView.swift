@@ -55,10 +55,10 @@ struct AlarmCardView: View {
                     // Tone + persona
                     if let tone = alarm.tone, let persona = alarm.voicePersona {
                         HStack(spacing: 6) {
-                            Image(systemName: toneIcon(tone))
+                            Image(systemName: tone.icon)
                                 .font(.system(size: 11))
 
-                            Text(personaLabel(persona))
+                            Text(persona.displayName)
                                 .font(AppTypography.caption)
                                 .tracking(0.3)
                         }
@@ -112,28 +112,6 @@ struct AlarmCardView: View {
         }
     }
 
-    private func toneIcon(_ tone: AlarmTone) -> String {
-        switch tone {
-        case .calm: return "leaf.fill"
-        case .encourage: return "hand.thumbsup.fill"
-        case .push: return "flame.fill"
-        case .strict: return "bolt.fill"
-        case .fun: return "face.smiling.fill"
-        case .other: return "sparkles"
-        }
-    }
-
-    private func personaLabel(_ persona: VoicePersona) -> String {
-        switch persona {
-        case .calmGuide: return "Calm Guide"
-        case .energeticCoach: return "Energetic Coach"
-        case .hardSergeant: return "Hard Sergeant"
-        case .evilSpaceLord: return "Evil Space Lord"
-        case .playful: return "Playful"
-        case .bro: return "The Bro"
-        case .digitalAssistant: return "Digital"
-        }
-    }
 }
 
 // MARK: - Previews

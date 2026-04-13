@@ -61,10 +61,10 @@ struct CustomizeCard: View {
 
             // Tone
             factorRow(
-                icon: selectedToneOption?.icon ?? Self.unsetIcon,
+                icon: tone?.icon ?? Self.unsetIcon,
                 label: "Tone",
-                value: selectedToneOption?.label ?? "Tap to select",
-                hasSelection: selectedToneOption != nil,
+                value: tone?.displayName ?? "Tap to select",
+                hasSelection: tone != nil,
                 isExpanded: expandedFactor == .tone
             ) {
                 toggleFactor(.tone)
@@ -78,10 +78,10 @@ struct CustomizeCard: View {
 
             // Reason
             factorRow(
-                icon: selectedWhyOption?.icon ?? Self.unsetIcon,
+                icon: whyContext?.icon ?? Self.unsetIcon,
                 label: "Reason",
-                value: selectedWhyOption?.label ?? "Tap to select",
-                hasSelection: selectedWhyOption != nil,
+                value: whyContext?.displayName ?? "Tap to select",
+                hasSelection: whyContext != nil,
                 isExpanded: expandedFactor == .reason
             ) {
                 toggleFactor(.reason)
@@ -95,9 +95,9 @@ struct CustomizeCard: View {
 
             // Intensity
             factorRow(
-                icon: intensity == nil ? Self.unsetIcon : intensityIcon(intensity),
+                icon: intensity?.icon ?? Self.unsetIcon,
                 label: "Intensity",
-                value: intensity == nil ? "Tap to select" : intensityLabel(intensity),
+                value: intensity?.displayName ?? "Tap to select",
                 hasSelection: intensity != nil,
                 isExpanded: expandedFactor == .intensity
             ) {
@@ -206,11 +206,11 @@ struct CustomizeCard: View {
 
     private var toneInlinePicker: some View {
         LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-            ForEach(toneOptions, id: \.tone) { option in
-                let isSelected = tone == option.tone
+            ForEach(Self.toneCases, id: \.self) { option in
+                let isSelected = tone == option
                 Button {
                     HapticManager.shared.selection()
-                    tone = option.tone
+                    tone = option
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                         expandedFactor = nil
                     }
@@ -218,7 +218,7 @@ struct CustomizeCard: View {
                     HStack(spacing: 6) {
                         Image(systemName: option.icon)
                             .font(.system(size: 12))
-                        Text(option.label)
+                        Text(option.displayName)
                             .font(AppTypography.labelSmall)
                     }
                     .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
@@ -234,11 +234,11 @@ struct CustomizeCard: View {
 
     private var reasonInlinePicker: some View {
         LazyVGrid(columns: Self.pillGridColumns, spacing: 8) {
-            ForEach(whyOptions, id: \.why) { option in
-                let isSelected = whyContext == option.why
+            ForEach(WhyContext.allCases, id: \.self) { option in
+                let isSelected = whyContext == option
                 Button {
                     HapticManager.shared.selection()
-                    whyContext = option.why
+                    whyContext = option
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                         expandedFactor = nil
                     }
@@ -246,7 +246,7 @@ struct CustomizeCard: View {
                     HStack(spacing: 5) {
                         Image(systemName: option.icon)
                             .font(.system(size: 11))
-                        Text(option.label)
+                        Text(option.displayName)
                             .font(AppTypography.labelSmall)
                     }
                     .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
@@ -262,16 +262,16 @@ struct CustomizeCard: View {
 
     private var intensityInlineSlider: some View {
         HStack(spacing: 0) {
-            ForEach(intensityOptions, id: \.intensity) { option in
-                let isSelected = intensity == option.intensity
+            ForEach(AlarmIntensity.allCases, id: \.self) { option in
+                let isSelected = intensity == option
                 Button {
                     HapticManager.shared.selection()
-                    intensity = option.intensity
+                    intensity = option
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                         expandedFactor = nil
                     }
                 } label: {
-                    Text(option.label)
+                    Text(option.displayName)
                         .font(AppTypography.labelSmall)
                         .foregroundStyle(isSelected ? .black : .white.opacity(0.9))
                         .frame(maxWidth: .infinity)
@@ -441,78 +441,9 @@ struct CustomizeCard: View {
         var id: Self { self }
     }
 
-    private struct ToneOption {
-        let tone: AlarmTone
-        let label: String
-        let icon: String
-    }
-
-    private var toneOptions: [ToneOption] {
-        [
-            ToneOption(tone: .calm, label: "Calm", icon: "leaf.fill"),
-            ToneOption(tone: .encourage, label: "Encourage", icon: "hand.thumbsup.fill"),
-            ToneOption(tone: .push, label: "Push", icon: "bolt.fill"),
-            ToneOption(tone: .strict, label: "Strict", icon: "exclamationmark.triangle.fill"),
-            ToneOption(tone: .fun, label: "Fun", icon: "face.smiling.fill"),
-        ]
-    }
-
-    private struct WhyOption {
-        let why: WhyContext
-        let label: String
-        let icon: String
-    }
-
-    private var whyOptions: [WhyOption] {
-        [
-            WhyOption(why: .work, label: "Work", icon: "briefcase.fill"),
-            WhyOption(why: .school, label: "School", icon: "book.fill"),
-            WhyOption(why: .gym, label: "Gym", icon: "dumbbell.fill"),
-            WhyOption(why: .family, label: "Family", icon: "house.fill"),
-            WhyOption(why: .personalGoal, label: "Goal", icon: "star.fill"),
-            WhyOption(why: .important, label: "Important", icon: "exclamationmark.circle.fill"),
-            WhyOption(why: .other, label: "Other", icon: "ellipsis.circle.fill"),
-        ]
-    }
-
-    private struct IntensityOption {
-        let intensity: AlarmIntensity
-        let label: String
-    }
-
-    private var intensityOptions: [IntensityOption] {
-        [
-            IntensityOption(intensity: .gentle, label: "Gentle"),
-            IntensityOption(intensity: .balanced, label: "Balanced"),
-            IntensityOption(intensity: .intense, label: "Intense"),
-        ]
-    }
-
-    private var selectedToneOption: ToneOption? {
-        toneOptions.first(where: { $0.tone == tone })
-    }
-
-    private var selectedWhyOption: WhyOption? {
-        whyOptions.first(where: { $0.why == whyContext })
-    }
-
-    private func intensityLabel(_ intensity: AlarmIntensity?) -> String {
-        switch intensity {
-        case .gentle: return "Gentle"
-        case .balanced: return "Balanced"
-        case .intense: return "Intense"
-        case .none: return "None"
-        }
-    }
-
-    private func intensityIcon(_ intensity: AlarmIntensity?) -> String {
-        switch intensity {
-        case .gentle: return "leaf"
-        case .balanced: return "circle.grid.2x2"
-        case .intense: return "bolt.fill"
-        case .none: return "questionmark.circle"
-        }
-    }
+    /// Tone options shown in the picker (excludes `.other` which is reserved
+    /// for free-form custom prompts entered elsewhere).
+    private static let toneCases: [AlarmTone] = [.calm, .encourage, .push, .strict, .fun]
 }
 
 // MARK: - Previews

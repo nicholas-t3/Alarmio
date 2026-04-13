@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import Supabase
 
 /// Calls the `compose-alarm` Supabase Edge Function and downloads the
 /// resulting audio files into `Library/Sounds/` so AlarmKit can use them.
@@ -20,7 +19,7 @@ final class ComposerService {
 
     // MARK: - Dependencies
 
-    private let supabase = SupabaseClient.shared
+    private let apiClient = APIClient.shared
     private let audioFileManager: AudioFileManager
 
     // MARK: - Init
@@ -35,37 +34,23 @@ final class ComposerService {
     /// Library/Sounds/, and returns the filename of the initial fire
     /// (index 0) so the caller can set `AlarmConfiguration.soundFileName`.
     ///
-    /// Throws on network failure, function error, or storage download
-    /// failure. The caller should surface the error to the user and
-    /// allow them to retry.
+    /// Throws `APIError` on network failure, function error, or storage
+    /// download failure.
     func generateAndDownloadAudio(for alarm: AlarmConfiguration) async throws -> String {
         let request = ComposeRequest.from(alarm: alarm, timezone: TimeZone.current)
 
-        // Log the session state so we can debug 401s.
-        if let session = try? await supabase.client.auth.session {
-            print("[ComposerService] user_id=\(session.user.id)")
-            print("[ComposerService] JWT=\(session.accessToken.prefix(50))...")
-            print("[ComposerService] expired=\(session.isExpired)")
-        } else {
-            print("[ComposerService] WARNING: no auth session!")
-        }
-
-        // The SDK automatically attaches the user's JWT (Authorization header)
-        // and the anon key (Apikey header) to function invocations.
-        let response: ComposeResponse = try await supabase.client.functions.invoke(
+        let response: ComposeResponse = try await apiClient.invokeFunction(
             "compose-alarm",
-            options: FunctionInvokeOptions(body: request)
+            body: request
         )
 
         // Download each file sequentially. For 2–4 small MP3s this is
-        // fast enough and keeps us on the main actor throughout, avoiding
-        // Swift 6 isolation gymnastics with TaskGroup + MainActor services.
-        // If any download fails the whole generation fails — partial state
-        // is worse than no state.
+        // fast enough and avoids Swift 6 isolation gymnastics.
         for file in response.files {
-            let bytes = try await supabase.client.storage
-                .from("alarm-audio")
-                .download(path: file.storage_path)
+            let bytes = try await apiClient.downloadFromStorage(
+                bucket: "alarm-audio",
+                path: file.storage_path
+            )
             _ = try audioFileManager.saveSound(
                 data: bytes,
                 for: alarm.id,
@@ -94,18 +79,25 @@ struct ComposeRequest: Codable, Sendable {
     let max_snoozes: Int
     let snooze_interval_minutes: Int
     let unlimited_snooze: Bool
+    let uses_24_hour: Bool
 
     static func from(alarm: AlarmConfiguration, timezone: TimeZone) -> ComposeRequest {
+        let uses24Hour = Self.deviceUses24HourTime()
+
         let formatterTime = DateFormatter()
-        formatterTime.dateFormat = "HH:mm"
         formatterTime.timeZone = timezone
+        // Send the time in the user's preferred format so the AI reads
+        // it naturally — "3:23 PM" vs "15:23"
+        if uses24Hour {
+            formatterTime.dateFormat = "HH:mm"
+        } else {
+            formatterTime.dateFormat = "h:mm a"
+        }
 
         let formatterDate = DateFormatter()
         formatterDate.dateFormat = "yyyy-MM-dd"
         formatterDate.timeZone = timezone
 
-        // Default to today if wakeTime is nil — request validation server-side
-        // would catch this anyway, but iOS shouldn't send garbage.
         let wakeDate = alarm.wakeTime ?? Date()
 
         return ComposeRequest(
@@ -122,8 +114,18 @@ struct ComposeRequest: Codable, Sendable {
             custom_prompt: alarm.customPrompt,
             max_snoozes: alarm.maxSnoozes,
             snooze_interval_minutes: alarm.snoozeInterval,
-            unlimited_snooze: alarm.unlimitedSnooze
+            unlimited_snooze: alarm.unlimitedSnooze,
+            uses_24_hour: uses24Hour
         )
+    }
+
+    /// Checks whether the user's device is set to 24-hour time.
+    private static func deviceUses24HourTime() -> Bool {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.setLocalizedDateFormatFromTemplate("j")
+        let format = formatter.dateFormat ?? ""
+        return !format.contains("a")
     }
 }
 

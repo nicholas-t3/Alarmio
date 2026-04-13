@@ -19,6 +19,7 @@ struct HomeView: View {
     // MARK: - State
 
     @State private var contentVisible = false
+    @State private var alarmsVisible = false
     @State private var fabVisible = false
     @State private var glowPulse = false
     @State private var showCreateAlarm = false
@@ -64,6 +65,27 @@ struct HomeView: View {
             contentVisible = true
             try? await Task.sleep(for: .milliseconds(400))
             fabVisible = true
+        }
+        .onChange(of: alarmStore.alarms.isEmpty) { _, isEmpty in
+            // Trigger card animation once alarms first populate (load is async
+            // from RootView). Without this, alarms snap in because contentVisible
+            // is already true by the time they arrive from the store.
+            if !isEmpty && !alarmsVisible {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(50))
+                    alarmsVisible = true
+                }
+            }
+        }
+        .onAppear {
+            // If alarms are already loaded by the time HomeView appears,
+            // trigger the animation now.
+            if !alarmStore.alarms.isEmpty && !alarmsVisible {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    alarmsVisible = true
+                }
+            }
         }
         .fullScreenCover(isPresented: $showCreateAlarm) {
             CreateAlarmView { newAlarm in
@@ -188,7 +210,7 @@ struct HomeView: View {
                             }
                         )
                         .premiumBlur(
-                        isVisible: contentVisible && !deletingAlarmIds.contains(alarm.id),
+                        isVisible: alarmsVisible && !deletingAlarmIds.contains(alarm.id),
                         delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(index) * 0.08 + 0.1,
                         duration: 0.4
                     )

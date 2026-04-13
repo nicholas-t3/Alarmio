@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import Functions
 
 struct CreateAlarmView: View {
 
@@ -557,9 +556,11 @@ struct CreateAlarmView: View {
             } catch {
                 isRegenerating = false
                 print("[CreateAlarmView] Regenerate failed: \(error)")
+                let errorMessage = (error as? APIError)?.errorDescription
+                    ?? "Please try again."
                 alertManager.showModal(
                     title: "Regeneration failed",
-                    message: "Please try again.",
+                    message: errorMessage,
                     primaryAction: AlertAction(label: "OK") {}
                 )
             }
@@ -688,22 +689,15 @@ struct CreateAlarmView: View {
             } catch {
                 statusTask.cancel()
                 statusTextVisible = false
-                // Log the full error including response body for 401/4xx debugging.
-                if case FunctionsError.httpError(let code, let data) = error {
-                    let body = String(data: data, encoding: .utf8) ?? "non-utf8"
-                    print("[CreateAlarmView] Composer failed: HTTP \(code) — \(body)")
-                } else {
-                    print("[CreateAlarmView] Composer failed: \(error)")
-                }
+                print("[CreateAlarmView] Composer failed: \(error)")
                 generatingStatusText = ""
 
-                // Present the modal over the generating screen. When the
-                // user taps "Continue", fade the sky back and transition
-                // to the configuring phase. Doing both in the action
-                // closure avoids the sky reset racing with transitionToPhase.
+                let errorMessage = (error as? APIError)?.errorDescription
+                    ?? "We'll investigate this issue. Please try again later."
+
                 alertManager.showModal(
                     title: "Something went wrong",
-                    message: "We'll investigate this issue. Please try again later.",
+                    message: errorMessage,
                     primaryAction: AlertAction(label: "Continue") { [self] in
                         withAnimation(.easeOut(duration: 0.6)) {
                             sunriseProgress = 0
