@@ -17,7 +17,11 @@ final class AlertManager {
     private(set) var currentAlert: AlertItem?
     private(set) var isPresenting = false
 
+    private(set) var currentToast: ToastItem?
+
     var hasAlert: Bool { currentAlert != nil }
+
+    private var toastDismissTask: Task<Void, Never>?
 
     // MARK: - Show Modal
 
@@ -56,6 +60,36 @@ final class AlertManager {
             onDismiss?()
         }
     }
+
+    // MARK: - Show Toast
+
+    func showToast(message: String, kind: ToastKind, duration: TimeInterval = 2.0) {
+        toastDismissTask?.cancel()
+
+        let toast = ToastItem(message: message, kind: kind)
+
+        // If one is already showing, replace it cleanly.
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            currentToast = toast
+        }
+
+        toastDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.dismissToast()
+            }
+        }
+    }
+
+    func dismissToast() {
+        toastDismissTask?.cancel()
+        toastDismissTask = nil
+
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+            currentToast = nil
+        }
+    }
 }
 
 // MARK: - Models
@@ -81,6 +115,17 @@ struct AlertAction: Equatable {
     static func == (lhs: AlertAction, rhs: AlertAction) -> Bool {
         lhs.label == rhs.label
     }
+}
+
+enum ToastKind: Equatable {
+    case success
+    case failure
+}
+
+struct ToastItem: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+    let kind: ToastKind
 }
 
 // MARK: - Environment Key

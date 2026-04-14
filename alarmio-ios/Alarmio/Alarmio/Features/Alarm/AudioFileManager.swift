@@ -73,10 +73,11 @@ final class AudioFileManager {
             return customName
         }
 
-        // Priority 3: Indexed initial-fire file (new multi-file scheme)
-        let indexedInitial = "alarm_\(alarmId.uuidString)_0.mp3"
-        if fileExists(named: indexedInitial) {
-            return indexedInitial
+        // Priority 3: Any indexed-0 file on disk (covers nonce-suffixed names)
+        let prefix = "alarm_\(alarmId.uuidString)_0"
+        if let match = (try? FileManager.default.contentsOfDirectory(atPath: soundsDirectory.path))?
+            .first(where: { $0.hasPrefix(prefix) && $0.hasSuffix(".mp3") }) {
+            return match
         }
 
         // Priority 4: Default fallback
@@ -101,28 +102,48 @@ final class AudioFileManager {
 
     /// Indexed filename for a per-snooze-fire audio file.
     /// Index 0 = initial fire, 1+ = snooze chain.
-    func indexedFileName(for alarmId: UUID, index: Int) -> String {
-        "alarm_\(alarmId.uuidString)_\(index).mp3"
+    /// Includes a nonce so every (re)generation writes to a fresh path —
+    /// this sidesteps AVAudioPlayer / CDN caching on overwrite.
+    func indexedFileName(for alarmId: UUID, index: Int, nonce: String) -> String {
+        "alarm_\(alarmId.uuidString)_\(index)_\(nonce).mp3"
     }
 
-    /// Saves a per-index sound file. Used by ComposerService to lay down
-    /// the N files returned for one composition.
+    /// Generates a short, URL-safe nonce used to freshen regenerated files.
+    static func newAudioNonce() -> String {
+        UUID().uuidString
+            .replacingOccurrences(of: "-", with: "")
+            .prefix(8)
+            .lowercased()
+    }
+
+    /// Saves a per-index sound file using a nonce-suffixed filename.
     @discardableResult
-    func saveSound(data: Data, for alarmId: UUID, index: Int, extension ext: String = "mp3") throws -> String {
+    func saveSound(
+        data: Data,
+        for alarmId: UUID,
+        index: Int,
+        nonce: String,
+        extension ext: String = "mp3"
+    ) throws -> String {
         try ensureSoundsDirectory()
-        let fileName = "alarm_\(alarmId.uuidString)_\(index).\(ext)"
+        let fileName = "alarm_\(alarmId.uuidString)_\(index)_\(nonce).\(ext)"
         let fileURL = soundsDirectory.appendingPathComponent(fileName)
         try data.write(to: fileURL)
         return fileName
     }
 
-    /// Deletes a set of indexed files for one alarm. Used when an alarm
-    /// is removed or its audio is regenerated.
-    func deleteSounds(for alarmId: UUID, indices: [Int]) {
-        for index in indices {
-            let fileName = "alarm_\(alarmId.uuidString)_\(index).mp3"
-            let fileURL = soundsDirectory.appendingPathComponent(fileName)
-            try? FileManager.default.removeItem(at: fileURL)
+    /// Deletes every indexed audio file (any nonce) belonging to the given
+    /// alarm, except those whose nonce appears in `keepingNonce`. Used on
+    /// save-commit so orphaned preview files from abandoned regenerations
+    /// get cleaned up without touching the freshly-committed nonce.
+    func purgeIndexedSounds(for alarmId: UUID, keepingNonce: String? = nil) {
+        let prefix = "alarm_\(alarmId.uuidString)_"
+        let fm = FileManager.default
+        let contents = (try? fm.contentsOfDirectory(atPath: soundsDirectory.path)) ?? []
+        for name in contents where name.hasPrefix(prefix) && name.hasSuffix(".mp3") {
+            if let keepingNonce, name.contains("_\(keepingNonce).") { continue }
+            let url = soundsDirectory.appendingPathComponent(name)
+            try? fm.removeItem(at: url)
         }
     }
 

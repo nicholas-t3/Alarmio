@@ -83,9 +83,14 @@ final class APIClient {
         do {
             try await ensureSession()
 
+            print("[APIClient] Storage download start: bucket=\(bucket) path=\(path)")
+            let t0 = Date()
             let bytes = try await supabase.client.storage
                 .from(bucket)
                 .download(path: path)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            let firstHex = bytes.prefix(16).map { String(format: "%02x", $0) }.joined()
+            print("[APIClient] Storage download done: bytes=\(bytes.count) in \(ms)ms firstBytesHex=\(firstHex)")
             return bytes
         } catch let error as APIError {
             throw error

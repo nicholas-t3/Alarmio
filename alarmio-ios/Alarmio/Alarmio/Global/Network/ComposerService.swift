@@ -39,26 +39,46 @@ final class ComposerService {
     func generateAndDownloadAudio(for alarm: AlarmConfiguration) async throws -> String {
         let request = ComposeRequest.from(alarm: alarm, timezone: TimeZone.current)
 
+        print("[Composer] >>> invoking compose-alarm (alarmId=\(request.alarm_id), persona=\(request.voice_persona), tone=\(request.tone ?? "nil"), intensity=\(request.intensity ?? "nil"), why=\(request.why_context ?? "nil"))")
+
         let response: ComposeResponse = try await apiClient.invokeFunction(
             "compose-alarm",
             body: request
         )
 
-        // Download each file sequentially. For 2–4 small MP3s this is
-        // fast enough and avoids Swift 6 isolation gymnastics.
+        print("[Composer] <<< composition_id=\(response.composition_id), files=\(response.files.count)")
+        for file in response.files {
+            let scriptPreview = String(file.script_text.prefix(60))
+            print("[Composer]     file[\(file.index)] path=\(file.storage_path) script=\"\(scriptPreview)...\"")
+        }
+
+        // Don't purge old files — caller may abandon the regeneration without
+        // committing. The existing file on disk must keep working until the
+        // new soundFileName is actually persisted to the alarm config.
+        // Purge happens in the edit-save commit path instead.
+
+        let nonce = AudioFileManager.newAudioNonce()
+
         for file in response.files {
             let bytes = try await apiClient.downloadFromStorage(
                 bucket: "alarm-audio",
                 path: file.storage_path
             )
+
+            let hashPrefix = bytes.prefix(32).map { String(format: "%02x", $0) }.joined()
+            print("[Composer]     downloaded file[\(file.index)] bytes=\(bytes.count) firstBytesHex=\(hashPrefix)")
+
             _ = try audioFileManager.saveSound(
                 data: bytes,
                 for: alarm.id,
-                index: file.index
+                index: file.index,
+                nonce: nonce
             )
         }
 
-        return audioFileManager.indexedFileName(for: alarm.id, index: 0)
+        let resultName = audioFileManager.indexedFileName(for: alarm.id, index: 0, nonce: nonce)
+        print("[Composer] === saved initial as \(resultName)")
+        return resultName
     }
 }
 

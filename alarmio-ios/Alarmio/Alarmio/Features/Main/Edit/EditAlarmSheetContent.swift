@@ -105,6 +105,9 @@ struct EditAlarmSheetContent: View {
     @State private var voicePlayer = VoicePreviewPlayer()
     @State private var voiceIndex: Int
     @State private var isRegenerating = false
+    @State private var audioRegeneratedForCurrentEdits = false
+    @State private var showSaveSuccess = false
+    @State private var saveSuccessTask: Task<Void, Never>?
 
     // MARK: - Detent Constants
 
@@ -179,6 +182,45 @@ struct EditAlarmSheetContent: View {
             || editWhyContext != alarm.whyContext
     }
 
+    private var hasTimeChanges: Bool {
+        let originalTime = alarm.wakeTime ?? Date()
+        let cal = Calendar.current
+        return cal.component(.hour, from: editTime) != cal.component(.hour, from: originalTime)
+            || cal.component(.minute, from: editTime) != cal.component(.minute, from: originalTime)
+    }
+
+    private var hasAudioAffectingChanges: Bool {
+        hasTimeChanges || hasStyleChanges
+    }
+
+    private var needsRegeneration: Bool {
+        hasAudioAffectingChanges && !audioRegeneratedForCurrentEdits
+    }
+
+    private var saveButtonLabel: String {
+        if showSaveSuccess { return "Success" }
+        if isRegenerating { return "Regenerating..." }
+        if needsRegeneration { return "Regenerate & Save" }
+        return "Save"
+    }
+
+    private var regenerateButtonLabel: String {
+        if showSaveSuccess { return "Success" }
+        if isRegenerating { return "Generating..." }
+        return "Regenerate"
+    }
+
+    private var regenerateButtonForeground: Color {
+        if showSaveSuccess { return Color(hex: "4AFF8E") }
+        let active = hasStyleChanges && !isRegenerating
+        return .white.opacity(active ? 1 : 0.35)
+    }
+
+    private var regenerateButtonBackground: Color {
+        if showSaveSuccess { return Color(hex: "4AFF8E").opacity(0.15) }
+        return .white.opacity(hasStyleChanges ? 0.1 : 0.04)
+    }
+
     private func detentForPage(_ page: EditPage) -> PresentationDetent {
         switch page {
         case .summary: return Self.summaryDetent
@@ -233,9 +275,37 @@ struct EditAlarmSheetContent: View {
         )
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(hex: "0f1a2e"))
-        .interactiveDismissDisabled(showDetail)
+        .interactiveDismissDisabled(showDetail || isRegenerating)
+        .onChange(of: editTime) { invalidateRegenerationFlag() }
+        .onChange(of: editVoicePersona) { invalidateRegenerationFlag() }
+        .onChange(of: editTone) { invalidateRegenerationFlag() }
+        .onChange(of: editIntensity) { invalidateRegenerationFlag() }
+        .onChange(of: editWhyContext) { invalidateRegenerationFlag() }
         .onDisappear {
             voicePlayer.stop()
+        }
+    }
+
+    private func invalidateRegenerationFlag() {
+        if audioRegeneratedForCurrentEdits {
+            audioRegeneratedForCurrentEdits = false
+        }
+        // Any fresh edit cancels the lingering success state immediately
+        if showSaveSuccess {
+            saveSuccessTask?.cancel()
+            saveSuccessTask = nil
+            showSaveSuccess = false
+        }
+    }
+
+    private func triggerSaveSuccess() {
+        saveSuccessTask?.cancel()
+        showSaveSuccess = true
+
+        saveSuccessTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            showSaveSuccess = false
         }
     }
 
@@ -319,24 +389,48 @@ struct EditAlarmSheetContent: View {
 
             // Save button
             Button {
-                HapticManager.shared.success()
-                var updated = alarm
-                updated.wakeTime = editTime
-                updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
-                updated.snoozeInterval = editSnoozeInterval
-                updated.maxSnoozes = editMaxSnoozes
-                updated.voicePersona = editVoicePersona
-                updated.tone = editTone
-                updated.intensity = editIntensity
-                updated.whyContext = editWhyContext
-                updated.leaveTime = editLeaveTime
-                updated.soundFileName = editSoundFileName
-                onSave(updated)
+                saveTapped()
             } label: {
-                Text("Save")
+                HStack(spacing: 8) {
+                    if isRegenerating {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                    } else if showSaveSuccess {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    Text(saveButtonLabel)
+                        .contentTransition(.numericText())
+                }
             }
-            .primaryButton(isEnabled: hasChanges)
-            .disabled(!hasChanges)
+            .primaryButton(isEnabled: hasChanges && !isRegenerating && !showSaveSuccess)
+            .disabled(!hasChanges || isRegenerating || showSaveSuccess)
+            .overlay {
+                if showSaveSuccess {
+                    Capsule()
+                        .fill(Color(hex: "4AFF8E"))
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color(hex: "4AFF8E").opacity(0.8), lineWidth: 1.5)
+                                .blur(radius: 3)
+                        }
+                        .overlay {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Success")
+                                    .font(AppTypography.button)
+                                    .tracking(AppTypography.buttonTracking)
+                            }
+                            .foregroundStyle(.black)
+                        }
+                        .shadow(color: Color(hex: "4AFF8E").opacity(0.35), radius: 18, y: 0)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeInOut(duration: 0.35), value: showSaveSuccess)
             .padding(.top, 8)
 
             // Delete
@@ -367,6 +461,18 @@ struct EditAlarmSheetContent: View {
             // Time picker
             WakeTimeCard(wakeTime: $editTime, mode: .edit)
 
+            // Regen notice
+            if hasTimeChanges && !audioRegeneratedForCurrentEdits {
+                Text("Changing the time will regenerate your alarm.")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 4)
+                    .premiumBlur(.in, profile: .gentle)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             // Day picker
             RepeatCard(selectedDays: $editDays, mode: .edit)
 
@@ -374,6 +480,8 @@ struct EditAlarmSheetContent: View {
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
         .padding(.top, 12)
+        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: hasTimeChanges)
+        .animation(.spring(response: 0.5, dampingFraction: 0.85), value: audioRegeneratedForCurrentEdits)
     }
 
     // MARK: - Snooze Page
@@ -430,21 +538,34 @@ struct EditAlarmSheetContent: View {
                             ProgressView()
                                 .tint(.white)
                                 .scaleEffect(0.8)
+                        } else if showSaveSuccess {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
                         } else {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 14, weight: .medium))
                         }
 
-                        Text(isRegenerating ? "Generating..." : "Regenerate")
+                        Text(regenerateButtonLabel)
                             .font(AppTypography.labelMedium)
+                            .contentTransition(.numericText())
                     }
-                    .foregroundStyle(.white.opacity(hasStyleChanges && !isRegenerating ? 1 : 0.35))
+                    .foregroundStyle(regenerateButtonForeground)
                     .frame(height: 44)
                     .frame(maxWidth: .infinity)
-                    .background(.white.opacity(hasStyleChanges ? 0.1 : 0.04))
+                    .background(regenerateButtonBackground)
                     .clipShape(Capsule())
+                    .overlay {
+                        if showSaveSuccess {
+                            Capsule()
+                                .strokeBorder(Color(hex: "4AFF8E").opacity(0.6), lineWidth: 1)
+                        }
+                    }
+                    .shadow(color: showSaveSuccess ? Color(hex: "4AFF8E").opacity(0.2) : .clear, radius: 12, y: 0)
                 }
-                .disabled(!hasStyleChanges || isRegenerating)
+                .disabled(!hasStyleChanges || isRegenerating || showSaveSuccess)
+                .animation(.easeInOut(duration: 0.35), value: showSaveSuccess)
+                .animation(.easeInOut(duration: 0.25), value: isRegenerating)
 
                 Spacer(minLength: 0)
                     .frame(height: 20)
@@ -641,45 +762,128 @@ struct EditAlarmSheetContent: View {
     private func regenerateAlarm() {
         voicePlayer.stop()
         isRegenerating = true
+        print("[EditAlarm] Regenerate tapped — starting (alarmId=\(alarm.id))")
 
         Task { @MainActor in
             do {
-                guard let composerService else {
-                    throw APIError.unknown(NSError(
-                        domain: "ComposerService",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
-                    ))
-                }
-
-                var config = alarm
-                config.voicePersona = editVoicePersona
-                config.tone = editTone
-                config.intensity = editIntensity
-                config.whyContext = editWhyContext
-
-                let newFileName = try await composerService.generateAndDownloadAudio(for: config)
+                let newFileName = try await performRegeneration()
+                print("[EditAlarm] Regenerate success — newFileName=\(newFileName), prev=\(editSoundFileName ?? "nil")")
                 editSoundFileName = newFileName
+                logFileState(for: newFileName)
+                audioRegeneratedForCurrentEdits = true
                 isRegenerating = false
                 HapticManager.shared.success()
-            } catch let error as APIError {
-                isRegenerating = false
-                print("[EditAlarmSheetContent] Regenerate failed: \(error)")
-                alertManager.showModal(
-                    title: "Regeneration failed",
-                    message: error.errorDescription ?? "Please try again.",
-                    primaryAction: AlertAction(label: "OK") {}
-                )
+                triggerSaveSuccess()
             } catch {
                 isRegenerating = false
-                print("[EditAlarmSheetContent] Regenerate failed: \(error)")
-                alertManager.showModal(
-                    title: "Regeneration failed",
-                    message: "Please try again.",
-                    primaryAction: AlertAction(label: "OK") {}
-                )
+                showRegenerationError(error)
             }
         }
+    }
+
+    private func saveTapped() {
+        if needsRegeneration {
+            regenerateThenSave()
+        } else {
+            HapticManager.shared.success()
+            commitSave(soundFileName: editSoundFileName)
+        }
+    }
+
+    private func regenerateThenSave() {
+        voicePlayer.stop()
+        isRegenerating = true
+        print("[EditAlarm] Save tapped with pending regen — starting (alarmId=\(alarm.id))")
+
+        Task { @MainActor in
+            do {
+                let newFileName = try await performRegeneration()
+                print("[EditAlarm] Save-regen success — newFileName=\(newFileName)")
+                editSoundFileName = newFileName
+                logFileState(for: newFileName)
+                audioRegeneratedForCurrentEdits = true
+                isRegenerating = false
+                HapticManager.shared.success()
+                showSaveSuccess = true
+                try? await Task.sleep(for: .milliseconds(1000))
+                commitSave(soundFileName: newFileName)
+            } catch {
+                isRegenerating = false
+                showRegenerationError(error)
+            }
+        }
+    }
+
+    private func performRegeneration() async throws -> String {
+        guard let composerService else {
+            throw APIError.unknown(NSError(
+                domain: "ComposerService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
+            ))
+        }
+
+        var config = alarm
+        config.wakeTime = editTime
+        config.voicePersona = editVoicePersona
+        config.tone = editTone
+        config.intensity = editIntensity
+        config.whyContext = editWhyContext
+
+        print("[EditAlarm] Calling composer — voice=\(editVoicePersona?.rawValue ?? "nil"), tone=\(editTone?.rawValue ?? "nil"), intensity=\(editIntensity?.rawValue ?? "nil"), why=\(editWhyContext?.rawValue ?? "nil"), time=\(config.wakeTime?.description ?? "nil")")
+        return try await composerService.generateAndDownloadAudio(for: config)
+    }
+
+    private func logFileState(for fileName: String) {
+        let url = alarmStore.audioFileManager.soundFileURL(named: fileName)
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        print("[EditAlarm] File state — name=\(fileName), exists=\(exists), size=\(size)B, path=\(url.path)")
+    }
+
+    private func commitSave(soundFileName: String?) {
+        var updated = alarm
+        updated.wakeTime = editTime
+        updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
+        updated.snoozeInterval = editSnoozeInterval
+        updated.maxSnoozes = editMaxSnoozes
+        updated.voicePersona = editVoicePersona
+        updated.tone = editTone
+        updated.intensity = editIntensity
+        updated.whyContext = editWhyContext
+        updated.leaveTime = editLeaveTime
+        updated.soundFileName = soundFileName
+
+        // Clean up orphaned nonce files from abandoned regenerations, but
+        // preserve the nonce we're committing. Only runs when a new
+        // nonce-suffixed filename is being persisted.
+        if let soundFileName, soundFileName != alarm.soundFileName {
+            let nonce = soundFileName
+                .components(separatedBy: ".").first?
+                .components(separatedBy: "_").last
+            alarmStore.audioFileManager.purgeIndexedSounds(
+                for: alarm.id,
+                keepingNonce: nonce
+            )
+        }
+
+        onSave(updated)
+    }
+
+    private func showRegenerationError(_ error: Error) {
+        print("[EditAlarm] Regenerate failed: \(error)")
+        let code: String
+        if let apiError = error as? APIError {
+            code = apiError.errorDescription ?? String(describing: apiError)
+        } else {
+            code = (error as NSError).domain + ":\((error as NSError).code)"
+        }
+        HapticManager.shared.error()
+        alertManager.showToast(
+            message: "Something went wrong. Please try again. (\(code))",
+            kind: .failure,
+            duration: 3.5
+        )
     }
 
     // MARK: - Data
