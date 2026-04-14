@@ -78,15 +78,22 @@ final class AlarmScheduler {
         intendedFormatter.dateFormat = "EEE yyyy-MM-dd HH:mm:ss"
         print("[AlarmScheduler.schedule] intendedFireDate=\(intendedFormatter.string(from: intendedFireDate))")
 
-        // Live Activity countdown runs for whatever headroom we have up
-        // to a 5-minute cap. Reserve `schedulingBufferSeconds` so the
-        // computed countdown start date is never "now" — AlarmKit drops
-        // schedules whose fire date has already passed by the time it
-        // processes the IPC call, even by a few ms.
+        // Pick a preAlert countdown length. `.relative` schedules pattern-
+        // match the registered `time` against the local wall clock — if
+        // that `time` (after dropping seconds) lands at or before "now",
+        // AlarmKit defers to next week. So the shifted time MUST stay
+        // comfortably in the future. `.fixed` doesn't have this issue.
+        //
+        // Strategy: aim for a 60s countdown. If that would push the
+        // shifted time into/past the current minute, drop the countdown
+        // entirely and register the raw intended time.
+        let isRepeating = !(config.repeatDays?.isEmpty ?? true)
         let headroom = intendedFireDate.timeIntervalSince(Date())
-        let usableHeadroom = headroom - Self.schedulingBufferSeconds
-        let preAlertSeconds = max(1, min(usableHeadroom, Self.preAlertLeadSeconds))
-        print("[AlarmScheduler] headroom=\(Int(headroom))s preAlert=\(Int(preAlertSeconds))s")
+        let preAlertSeconds = pickPreAlertSeconds(
+            intendedFireDate: intendedFireDate,
+            isRepeating: isRepeating
+        )
+        print("[AlarmScheduler] headroom=\(Int(headroom))s preAlert=\(Int(preAlertSeconds))s isRepeating=\(isRepeating)")
 
         let maxSnoozes = config.maxSnoozes
         let currentCount = config.currentSnoozeCount ?? 0
@@ -98,7 +105,11 @@ final class AlarmScheduler {
             : max(0, maxSnoozes - currentCount)
         print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes), unlimited=\(config.unlimitedSnooze))")
 
-        let attributes = buildAttributes(from: config, snoozesRemaining: snoozesRemaining)
+        let attributes = buildAttributes(
+            from: config,
+            snoozesRemaining: snoozesRemaining,
+            includeCountdown: preAlertSeconds > 0
+        )
 
         // Resolve the initial-fire sound from AudioFileManager. For
         // Composer-generated alarms this picks up the indexed `_0` file.
@@ -130,8 +141,15 @@ final class AlarmScheduler {
             shiftSeconds: preAlertSeconds
         )
 
+        // If preAlertSeconds is 0, omit countdownDuration AND the countdown
+        // presentation to keep AlarmKit happy (presentation is invalid
+        // without a countdownDuration).
+        let countdownDuration: Alarm.CountdownDuration? = preAlertSeconds > 0
+            ? .init(preAlert: preAlertSeconds, postAlert: nil)
+            : nil
+
         let alarmConfig = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: .init(preAlert: preAlertSeconds, postAlert: nil),
+            countdownDuration: countdownDuration,
             schedule: schedule,
             attributes: attributes,
             stopIntent: StopAlarmIntent(alarmID: config.id.uuidString),
@@ -163,6 +181,45 @@ final class AlarmScheduler {
     /// Whatever headroom we have below this we'll use fully, down to the
     /// scheduling buffer.
     static let preAlertLeadSeconds: TimeInterval = 300
+
+    /// Minimum seconds the shifted `time` must stay in the future *after*
+    /// dropping seconds (AlarmKit's .relative Time only has hour/minute).
+    /// If we can't clear this gap, we drop the preAlert to zero and
+    /// register the raw intended time instead.
+    static let minShiftedFutureSeconds: TimeInterval = 15
+
+    /// Pick a preAlert countdown length that keeps the `.relative` `time`
+    /// (hour+minute, seconds dropped) comfortably in the future. For
+    /// `.fixed` schedules we can use the full lead window — `.fixed`
+    /// tolerates a slightly-past absolute date.
+    func pickPreAlertSeconds(intendedFireDate: Date, isRepeating: Bool, now: Date = Date()) -> TimeInterval {
+        let headroom = intendedFireDate.timeIntervalSince(now)
+        let usableHeadroom = headroom - Self.schedulingBufferSeconds
+
+        if !isRepeating {
+            return max(1, min(usableHeadroom, Self.preAlertLeadSeconds))
+        }
+
+        // Repeating: .relative pattern-matches hour+minute. Compute the
+        // shifted time for a candidate preAlert, then see if that time
+        // (rounded down to the minute) is still >= now + minShiftedFutureSeconds.
+        let candidates: [TimeInterval] = [Self.preAlertLeadSeconds, 60, 30]
+        let calendar = Calendar.current
+        for candidate in candidates where candidate <= usableHeadroom {
+            let shifted = intendedFireDate.addingTimeInterval(-candidate)
+            let shiftedMinuteFloor = calendar.date(
+                bySetting: .second,
+                value: 0,
+                of: shifted
+            ) ?? shifted
+            if shiftedMinuteFloor.timeIntervalSince(now) >= Self.minShiftedFutureSeconds {
+                return candidate
+            }
+        }
+
+        // No countdown fits — register the raw intended time, no shift.
+        return 0
+    }
 
     /// Minimum gap between "now" and the schedule's .fixed() date. If we
     /// pass AlarmKit a schedule time that's already in the past (even by
@@ -260,7 +317,8 @@ final class AlarmScheduler {
 
     private func buildAttributes(
         from config: AlarmConfiguration,
-        snoozesRemaining: Int
+        snoozesRemaining: Int,
+        includeCountdown: Bool = true
     ) -> AlarmAttributes<AlarmioMetadata> {
         let title = buildAlarmTitle(from: config)
 
@@ -292,16 +350,19 @@ final class AlarmScheduler {
         }
 
         // Countdown presentation renders the pre-alert Live Activity card
-        // ("Alarm ringing soon 1:32 / Skip"). Required whenever
-        // countdownDuration.preAlert is set on the AlarmConfiguration.
-        let countdownContent = AlarmPresentation.Countdown(
-            title: "Alarm ringing soon",
-            pauseButton: AlarmButton(
-                text: "Skip",
-                textColor: .white,
-                systemImageName: "forward.fill"
+        // ("Alarm ringing soon 1:32 / Skip"). Only include it when the
+        // config has a countdownDuration — AlarmKit rejects the schedule
+        // if the presentation is present without a matching duration.
+        let countdownContent: AlarmPresentation.Countdown? = includeCountdown
+            ? AlarmPresentation.Countdown(
+                title: "Alarm ringing soon",
+                pauseButton: AlarmButton(
+                    text: "Skip",
+                    textColor: .white,
+                    systemImageName: "forward.fill"
+                )
             )
-        )
+            : nil
 
         return AlarmAttributes<AlarmioMetadata>(
             presentation: AlarmPresentation(alert: alert, countdown: countdownContent),
