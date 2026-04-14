@@ -993,7 +993,10 @@ struct CreateAlarmView: View {
     }
 
     private var configuringBottomBar: some View {
-        Button {
+        let isStep2Complete = alarm.tone != nil && alarm.whyContext != nil && alarm.intensity != nil
+        let isEnabled = step == 1 ? true : isStep2Complete
+
+        return Button {
             HapticManager.shared.buttonTap()
             if step == 1 {
                 transitionToStep(2)
@@ -1003,7 +1006,8 @@ struct CreateAlarmView: View {
         } label: {
             Text(step == 1 ? "Next" : "Create Alarm")
         }
-        .primaryButton()
+        .primaryButton(isEnabled: isEnabled)
+        .disabled(!isEnabled)
         .padding(.horizontal, AppButtons.horizontalPadding)
         .padding(.bottom, AppSpacing.screenBottom)
         .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)

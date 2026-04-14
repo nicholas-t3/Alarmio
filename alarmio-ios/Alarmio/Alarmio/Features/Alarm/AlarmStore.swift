@@ -46,34 +46,53 @@ final class AlarmStore {
     func load() {
         let cal = Calendar.current
 
-        if let data = AppGroup.defaults.data(forKey: Self.storageKey),
+        let rawData = AppGroup.defaults.data(forKey: Self.storageKey)
+        print("[AlarmStore.load] storageKey=\(Self.storageKey), rawData=\(rawData?.count ?? 0) bytes")
+
+        if let data = rawData,
            let decoded = try? JSONDecoder().decode([AlarmConfiguration].self, from: data) {
             alarms = decoded
+            print("[AlarmStore.load] Decoded \(decoded.count) alarm(s) from storage:")
+            for (i, a) in decoded.enumerated() {
+                print("  [\(i)] id=\(a.id) isDemo=\(a.isDemo) enabled=\(a.isEnabled) wake=\(a.wakeTime?.description ?? "nil")")
+            }
         } else {
             alarms = []
+            print("[AlarmStore.load] No decodable data → starting with empty list")
         }
 
-        let hasDemos = alarms.contains(where: { $0.isDemo })
-        if !hasDemos {
-            let demo = AlarmConfiguration(
-                isEnabled: true,
-                wakeTime: cal.date(from: DateComponents(hour: 7, minute: 0)),
-                repeatDays: [1, 2, 3, 4, 5],
-                tone: .calm,
-                intensity: .gentle,
-                voicePersona: .calmGuide,
-                snoozeInterval: 5,
-                maxSnoozes: 3,
-                isDemo: true
-            )
-            alarms.append(demo)
-            save()
-        }
+        // let demoCount = alarms.filter { $0.isDemo }.count
+        // let hasDemos = demoCount > 0
+        // print("[AlarmStore.load] demoCount=\(demoCount), hasDemos=\(hasDemos)")
+        //
+        // if !hasDemos {
+        //     let demo = AlarmConfiguration(
+        //         isEnabled: true,
+        //         wakeTime: cal.date(from: DateComponents(hour: 7, minute: 0)),
+        //         repeatDays: [1, 2, 3, 4, 5],
+        //         tone: .calm,
+        //         intensity: .gentle,
+        //         voicePersona: .calmGuide,
+        //         snoozeInterval: 5,
+        //         maxSnoozes: 3,
+        //         isDemo: true
+        //     )
+        //     alarms.append(demo)
+        //     save()
+        //     print("[AlarmStore.load] Inserted fresh demo alarm id=\(demo.id) → alarms.count=\(alarms.count)")
+        // } else {
+        //     print("[AlarmStore.load] Skipping demo insertion — demo already present")
+        // }
     }
 
     func save() {
-        guard let data = try? JSONEncoder().encode(alarms) else { return }
+        guard let data = try? JSONEncoder().encode(alarms) else {
+            print("[AlarmStore.save] FAILED to encode alarms (count=\(alarms.count))")
+            return
+        }
         AppGroup.defaults.set(data, forKey: Self.storageKey)
+        let verify = AppGroup.defaults.data(forKey: Self.storageKey)?.count ?? 0
+        print("[AlarmStore.save] Wrote \(data.count) bytes to storageKey=\(Self.storageKey), alarms.count=\(alarms.count), readback=\(verify) bytes")
     }
 
     // MARK: - CRUD
@@ -95,7 +114,11 @@ final class AlarmStore {
     }
 
     func deleteAlarm(id: UUID) async {
+        let before = alarms.count
+        let target = alarms.first(where: { $0.id == id })
+        print("[AlarmStore.delete] Deleting id=\(id) isDemo=\(target?.isDemo ?? false) — before=\(before)")
         alarms.removeAll { $0.id == id }
+        print("[AlarmStore.delete] After removal, alarms.count=\(alarms.count)")
         save()
         try? scheduler.cancelAlarm(id: id)
         audioFileManager.deleteSound(for: id)

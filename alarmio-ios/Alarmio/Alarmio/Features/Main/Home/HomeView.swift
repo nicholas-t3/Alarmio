@@ -28,7 +28,7 @@ struct HomeView: View {
     @State private var showEditModal = false
     @State private var editBlurVisible = false
     @State private var deletingAlarmIds: Set<UUID> = []
-    @State private var emptyStateVisible = false
+    @State private var emptyStateOpacity: Double = 0
 
     // MARK: - Body
 
@@ -77,10 +77,16 @@ struct HomeView: View {
                     alarmsVisible = true
                 }
             }
+
+            // When the list transitions from non-empty → empty, reset the
+            // empty state's visibility flag so its next mount starts hidden.
+            // The empty view itself flips the flag to true in its onAppear,
+            // which drives the blur-in.
+            if isEmpty {
+                emptyStateOpacity = 0
+            }
         }
         .onAppear {
-            // If alarms are already loaded by the time HomeView appears,
-            // trigger the animation now.
             if !alarmStore.alarms.isEmpty && !alarmsVisible {
                 Task {
                     try? await Task.sleep(for: .milliseconds(150))
@@ -249,36 +255,34 @@ struct HomeView: View {
                         .foregroundStyle(.white.opacity(0.25))
                 }
 
-                // Headline
-                Text("No alarms yet")
-                    .font(AppTypography.headlineLarge)
-                    .tracking(AppTypography.headlineLargeTracking)
-                    .foregroundStyle(.white.opacity(0.7))
+                // Headline + subtitle (kept tight; icon stays 16pt from headline)
+                VStack(spacing: 6) {
+                    Text("No alarms yet")
+                        .font(AppTypography.headlineLarge)
+                        .tracking(AppTypography.headlineLargeTracking)
+                        .foregroundStyle(.white.opacity(0.7))
 
-                // Subtitle
-                Text("Tap + to create your first\npersonalized wake-up call")
-                    .font(AppTypography.bodyMedium)
-                    .foregroundStyle(.white.opacity(0.35))
-                    .multilineTextAlignment(.center)
-            }
-            .premiumBlur(isVisible: emptyStateVisible, delay: 0.1, duration: 0.6)
-            .onAppear {
-                // Start hidden and blur in on mount so this doesn't snap when
-                // the list transitions from cards → empty state after a delete.
-                emptyStateVisible = false
-                Task {
-                    try? await Task.sleep(for: .milliseconds(80))
-                    emptyStateVisible = true
+                    Text("Tap + to create your first\npersonalized wake-up call")
+                        .font(AppTypography.bodyMedium)
+                        .foregroundStyle(.white.opacity(0.35))
+                        .multilineTextAlignment(.center)
                 }
-            }
-            .onDisappear {
-                emptyStateVisible = false
             }
 
             Spacer()
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .opacity(emptyStateOpacity)
+        .onAppear {
+            emptyStateOpacity = 0
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                withAnimation(.easeOut(duration: 0.6)) {
+                    emptyStateOpacity = 1
+                }
+            }
+        }
     }
 
     private var addButton: some View {

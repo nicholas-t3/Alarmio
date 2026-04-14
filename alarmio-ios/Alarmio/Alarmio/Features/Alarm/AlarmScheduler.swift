@@ -62,10 +62,21 @@ final class AlarmScheduler {
         // Cancel existing first to prevent duplicates
         try? cancelAlarm(id: config.id)
 
+        let wakeDesc: String = {
+            guard let w = config.wakeTime else { return "nil" }
+            let f = DateFormatter(); f.dateFormat = "HH:mm"
+            return f.string(from: w)
+        }()
+        print("[AlarmScheduler.schedule] id=\(config.id) wake=\(wakeDesc) repeatDays=\(config.repeatDays.map { String(describing: $0) } ?? "nil") enabled=\(config.isEnabled)")
+
         guard let intendedFireDate = buildIntendedFireDate(from: config) else {
             print("[AlarmScheduler] Cannot build schedule — no wake time set")
             return
         }
+
+        let intendedFormatter = DateFormatter()
+        intendedFormatter.dateFormat = "EEE yyyy-MM-dd HH:mm:ss"
+        print("[AlarmScheduler.schedule] intendedFireDate=\(intendedFormatter.string(from: intendedFireDate))")
 
         // Live Activity countdown runs for whatever headroom we have up
         // to a 5-minute cap. Reserve `schedulingBufferSeconds` so the
@@ -216,11 +227,22 @@ final class AlarmScheduler {
             let calendar = Calendar.current
             let hour = calendar.component(.hour, from: shifted)
             let minute = calendar.component(.minute, from: shifted)
+            let intendedHour = calendar.component(.hour, from: intendedFireDate)
+            let intendedMinute = calendar.component(.minute, from: intendedFireDate)
+            let shiftedWeekday = calendar.component(.weekday, from: shifted)
+            let intendedWeekday = calendar.component(.weekday, from: intendedFireDate)
+            print("[AlarmScheduler.buildSchedule] REPEATING — repeatDays(0=Sun)=\(repeatDays), weekdays=\(weekdays)")
+            print("[AlarmScheduler.buildSchedule]   intended=\(intendedHour):\(String(format: "%02d", intendedMinute)) weekday=\(intendedWeekday) (1=Sun)")
+            print("[AlarmScheduler.buildSchedule]   shifted =\(hour):\(String(format: "%02d", minute)) weekday=\(shiftedWeekday) (1=Sun)  shiftSeconds=\(Int(shiftSeconds))")
+            if shiftedWeekday != intendedWeekday {
+                print("[AlarmScheduler.buildSchedule]   ⚠️ shift crossed a day boundary — selected weekdays no longer match the shifted time's weekday")
+            }
             return .relative(.init(
                 time: .init(hour: hour, minute: minute),
                 repeats: .weekly(weekdays)
             ))
         }
+        print("[AlarmScheduler.buildSchedule] ONE-TIME fixed=\(intendedFireDate.addingTimeInterval(-shiftSeconds))")
         return .fixed(intendedFireDate.addingTimeInterval(-shiftSeconds))
     }
 
