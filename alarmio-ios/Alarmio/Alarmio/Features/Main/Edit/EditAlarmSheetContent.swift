@@ -89,6 +89,7 @@ struct EditAlarmSheetContent: View {
     // MARK: - State
 
     @State private var selectedDetent: PresentationDetent = .custom(EditSummaryDetent.self)
+    @State private var allowedDetents: Set<PresentationDetent> = [.custom(EditSummaryDetent.self)]
     @State private var editTime: Date
     @State private var editDays: Set<Int>
     @State private var editSnoozeInterval: Int
@@ -230,6 +231,17 @@ struct EditAlarmSheetContent: View {
         }
     }
 
+    private var currentDetent: PresentationDetent {
+        showDetail ? detentForPage(activePage) : Self.summaryDetent
+    }
+
+    private static let allDetents: Set<PresentationDetent> = [
+        .custom(EditSummaryDetent.self),
+        .custom(EditCompactDetent.self),
+        .custom(EditDetailDetent.self),
+        .custom(EditFullDetent.self)
+    ]
+
     // MARK: - Body
 
     var body: some View {
@@ -269,13 +281,10 @@ struct EditAlarmSheetContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .presentationDetents(
-            [Self.compactDetent, Self.summaryDetent, Self.detailDetent, Self.fullDetent],
-            selection: $selectedDetent
-        )
+        .presentationDetents(allowedDetents, selection: $selectedDetent)
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(hex: "0f1a2e"))
-        .interactiveDismissDisabled(showDetail || isRegenerating)
+        .interactiveDismissDisabled(isRegenerating)
         .onChange(of: editTime) { invalidateRegenerationFlag() }
         .onChange(of: editVoicePersona) { invalidateRegenerationFlag() }
         .onChange(of: editTone) { invalidateRegenerationFlag() }
@@ -317,8 +326,9 @@ struct EditAlarmSheetContent: View {
         // Phase 1: blur out current content
         contentVisible = false
 
-        // Phase 2: swap page + resize detent while blurred
+        // Phase 2: open the detent gate, swap page, animate resize
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            allowedDetents = Self.allDetents
             activePage = page
             showDetail = true
             _ = withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
@@ -330,6 +340,12 @@ struct EditAlarmSheetContent: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
             contentVisible = true
         }
+
+        // Phase 4: collapse the detent set to only the destination so the
+        // user can't drag away from the current page's height.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            allowedDetents = [detentForPage(page)]
+        }
     }
 
     private func navigateBack() {
@@ -338,8 +354,9 @@ struct EditAlarmSheetContent: View {
         // Phase 1: blur out current content
         contentVisible = false
 
-        // Phase 2: swap back to summary + resize while blurred
+        // Phase 2: open the detent gate, swap back, animate resize
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            allowedDetents = Self.allDetents
             showDetail = false
             _ = withAnimation(.spring(duration: 0.5, bounce: 0.2)) {
                 selectedDetent = Self.summaryDetent
@@ -349,6 +366,11 @@ struct EditAlarmSheetContent: View {
         // Phase 3: blur in summary after resize settles
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
             contentVisible = true
+        }
+
+        // Phase 4: collapse to summary-only so user can't drag away
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            allowedDetents = [Self.summaryDetent]
         }
     }
 

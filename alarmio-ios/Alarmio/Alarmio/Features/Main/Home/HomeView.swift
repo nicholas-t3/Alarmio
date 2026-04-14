@@ -28,6 +28,7 @@ struct HomeView: View {
     @State private var showEditModal = false
     @State private var editBlurVisible = false
     @State private var deletingAlarmIds: Set<UUID> = []
+    @State private var emptyStateVisible = false
 
     // MARK: - Body
 
@@ -92,8 +93,11 @@ struct HomeView: View {
                 Task { await alarmStore.addAlarm(newAlarm) }
             }
         }
-        .motionModal(isPresented: $showSettings) {
+        .sheet(isPresented: $showSettings) {
             SettingsView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Color(hex: "0f1a2e"))
         }
         .sheet(isPresented: $showEditModal) {
             if let alarmId = editingAlarmId, let alarm = alarmStore.alarm(for: alarmId) {
@@ -257,7 +261,19 @@ struct HomeView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .multilineTextAlignment(.center)
             }
-            .premiumBlur(isVisible: contentVisible, delay: 0.15, duration: 0.5)
+            .premiumBlur(isVisible: emptyStateVisible, delay: 0.1, duration: 0.6)
+            .onAppear {
+                // Start hidden and blur in on mount so this doesn't snap when
+                // the list transitions from cards → empty state after a delete.
+                emptyStateVisible = false
+                Task {
+                    try? await Task.sleep(for: .milliseconds(80))
+                    emptyStateVisible = true
+                }
+            }
+            .onDisappear {
+                emptyStateVisible = false
+            }
 
             Spacer()
             Spacer()

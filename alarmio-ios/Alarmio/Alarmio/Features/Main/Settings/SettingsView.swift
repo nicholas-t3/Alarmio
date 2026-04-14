@@ -296,10 +296,12 @@ struct SettingsView: View {
         var body: some View {
             ZStack {
                 MorningSky(starOpacity: 0.8, showConstellations: false)
-
-                MotionModal(isPresented: $showSettings, dismissible: true) {
-                    SettingsView()
-                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(Color(hex: "0f1a2e"))
             }
         }
     }
