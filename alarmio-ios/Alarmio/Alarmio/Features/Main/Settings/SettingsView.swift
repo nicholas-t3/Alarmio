@@ -166,7 +166,7 @@ struct SettingsView: View {
         }
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
         .animation(.easeInOut(duration: 0.25), value: subscription.isPro)
     }
 

@@ -41,6 +41,12 @@ struct CreateAlarmView: View {
     @State private var confirmationCardVisible: Bool = false
     @State private var statusTextVisible: Bool = false
     @State private var isRegenerating: Bool = false
+    @State private var showRegenSuccess: Bool = false
+    @State private var regenSuccessTask: Task<Void, Never>?
+    @State private var baselineTone: AlarmTone?
+    @State private var baselineWhy: WhyContext?
+    @State private var baselineIntensity: AlarmIntensity?
+    @State private var baselineVoice: VoicePersona?
 
     // MARK: - Constants
 
@@ -117,6 +123,10 @@ struct CreateAlarmView: View {
             try? await Task.sleep(for: .milliseconds(500))
             buttonVisible = true
         }
+        .onChange(of: alarm.tone) { invalidateRegenSuccess() }
+        .onChange(of: alarm.whyContext) { invalidateRegenSuccess() }
+        .onChange(of: alarm.intensity) { invalidateRegenSuccess() }
+        .onChange(of: alarm.voicePersona) { invalidateRegenSuccess() }
     }
 
     // MARK: - Subviews
@@ -355,8 +365,16 @@ struct CreateAlarmView: View {
             waveformPulse = false
         }
 
-        // If a preview is in flight, hand it off to the new voice so the
-        // user keeps momentum while browsing.
+        // On the confirmation screen the preview plays the generated file,
+        // which is tied to the previously selected voice. Cycling makes that
+        // file stale, so stop playback and let the user regenerate.
+        if phase == .confirming {
+            voicePlayer.stop()
+            return
+        }
+
+        // If a bundled-voice preview is in flight during configuration,
+        // hand it off to the new voice so the user keeps momentum.
         if voicePlayer.isPlaying {
             voicePlayer.play(persona: heroVoices[newIndex].persona)
         }
@@ -446,83 +464,233 @@ struct CreateAlarmView: View {
     }
 
     private var confirmationCard: some View {
-        VStack {
+        ScrollView {
+            VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-            Spacer()
+                // Alarm audio preview
+                alarmPreviewCard
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0, duration: 0.5)
 
-            // Audio preview card
-            VStack(spacing: 16) {
+                // Compact voice selector
+                compactVoiceCard
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0.1, duration: 0.5)
 
-                // Label
-                Text("PREVIEW")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
+                // Customize (tone + reason + intensity)
+                CustomizeCard(
+                    tone: $alarm.tone,
+                    whyContext: $alarm.whyContext,
+                    intensity: $alarm.intensity
+                )
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
 
-                // Waveform visualizer
-                VoiceWaveform(bands: voicePlayer.bands, isPlaying: voicePlayer.isPlaying)
-                    .frame(height: 48)
-                    .padding(.horizontal, 8)
+                // Regenerate button
+                regenerateButton
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0.2, duration: 0.5)
 
-                // Play + Regenerate buttons
-                HStack(spacing: 12) {
+                Spacer(minLength: 0)
+                    .frame(height: 20)
+            }
+            .padding(.top, 8)
+        }
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize)
+        .mask(scrollFadeMask)
+    }
 
-                    // Play / Stop
-                    Button {
-                        HapticManager.shared.buttonTap()
-                        toggleAlarmPreview()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: voicePlayer.isPlaying ? "stop.fill" : "play.fill")
-                                .font(.system(size: 14))
-                                .contentTransition(.symbolEffect(.replace))
+    // MARK: - Confirmation: Alarm Preview Card
 
-                            Text(voicePlayer.isPlaying ? "Stop" : "Preview")
-                                .font(AppTypography.labelMedium)
-                        }
-                        .foregroundStyle(.white)
-                        .frame(height: 40)
-                        .frame(maxWidth: .infinity)
-                        .background(.white.opacity(0.12))
-                        .clipShape(Capsule())
-                    }
-                    .disabled(isRegenerating)
+    private var alarmPreviewCard: some View {
+        let isPlaying = voicePlayer.isPlaying
 
-                    // Regenerate
-                    Button {
-                        HapticManager.shared.buttonTap()
-                        regenerateAlarm()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isRegenerating {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 14))
-                            }
+        return VStack(spacing: 14) {
 
-                            Text(isRegenerating ? "Generating" : "Regenerate")
-                                .font(AppTypography.labelMedium)
-                        }
-                        .foregroundStyle(.white.opacity(isRegenerating ? 0.5 : 1))
-                        .frame(height: 40)
-                        .frame(maxWidth: .infinity)
-                        .background(.white.opacity(0.08))
-                        .clipShape(Capsule())
-                    }
-                    .disabled(isRegenerating)
+            Text("ALARM PREVIEW")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+
+            // Waveform
+            VoiceWaveform(bands: voicePlayer.bands, isPlaying: isPlaying)
+                .frame(height: 40)
+                .padding(.horizontal, 8)
+
+            // Play button
+            Button {
+                HapticManager.shared.buttonTap()
+                toggleAlarmPreview()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                        .font(.system(size: 14))
+                        .contentTransition(.symbolEffect(.replace))
+
+                    Text(isPlaying ? "Stop" : "Play")
+                        .font(AppTypography.labelMedium)
+                        .contentTransition(.numericText())
                 }
+                .foregroundStyle(.white)
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .background(.white.opacity(0.12))
+                .clipShape(Capsule())
+            }
+            .disabled(alarm.soundFileName == nil || isRegenerating)
+            .opacity(alarm.soundFileName == nil ? 0.4 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlaying)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    // MARK: - Confirmation: Compact Voice Card
+
+    private var compactVoiceCard: some View {
+        let voice = heroVoices[voiceIndex]
+
+        return HStack(spacing: 10) {
+
+            // Prev
+            Button {
+                HapticManager.shared.selection()
+                cycleVoice(by: -1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+
+            // Voice info
+            VStack(spacing: 2) {
+                Text(voice.name)
+                    .font(AppTypography.labelMedium)
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+
+                Text(voice.descriptor)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .contentTransition(.numericText())
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
-            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .premiumBlur(isVisible: confirmationCardVisible, duration: 0.5)
+            .animation(.spring(response: 0.3, dampingFraction: 0.85), value: voiceIndex)
 
-            Spacer()
+            // Next
+            Button {
+                HapticManager.shared.selection()
+                cycleVoice(by: 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.1))
+                    .clipShape(Circle())
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    // MARK: - Confirmation: Regenerate Button
+
+    private var hasStyleChanges: Bool {
+        alarm.tone != baselineTone
+            || alarm.whyContext != baselineWhy
+            || alarm.intensity != baselineIntensity
+            || alarm.voicePersona != baselineVoice
+    }
+
+    private var regenerateButtonLabel: String {
+        if showRegenSuccess { return "Success" }
+        if isRegenerating { return "Generating..." }
+        return "Regenerate"
+    }
+
+    private var regenerateButtonForeground: Color {
+        if showRegenSuccess { return Color(hex: "4AFF8E") }
+        let active = hasStyleChanges && !isRegenerating
+        return .white.opacity(active ? 1 : 0.35)
+    }
+
+    private var regenerateButtonBackground: Color {
+        if showRegenSuccess { return Color(hex: "4AFF8E").opacity(0.15) }
+        return .white.opacity(hasStyleChanges ? 0.1 : 0.04)
+    }
+
+    private var regenerateButton: some View {
+        Button {
+            HapticManager.shared.buttonTap()
+            regenerateAlarm()
+        } label: {
+            HStack(spacing: 8) {
+                if isRegenerating {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.8)
+                } else if showRegenSuccess {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .medium))
+                }
+
+                Text(regenerateButtonLabel)
+                    .font(AppTypography.labelMedium)
+                    .contentTransition(.numericText())
+            }
+            .foregroundStyle(regenerateButtonForeground)
+            .frame(height: 44)
+            .frame(maxWidth: .infinity)
+            .background(regenerateButtonBackground)
+            .clipShape(Capsule())
+            .overlay {
+                if showRegenSuccess {
+                    Capsule()
+                        .strokeBorder(Color(hex: "4AFF8E").opacity(0.6), lineWidth: 1)
+                }
+            }
+            .shadow(color: showRegenSuccess ? Color(hex: "4AFF8E").opacity(0.2) : .clear, radius: 12, y: 0)
+        }
+        .disabled(!hasStyleChanges || isRegenerating || showRegenSuccess)
+        .animation(.easeInOut(duration: 0.35), value: showRegenSuccess)
+        .animation(.easeInOut(duration: 0.25), value: isRegenerating)
+    }
+
+    private func snapshotBaseline() {
+        baselineTone = alarm.tone
+        baselineWhy = alarm.whyContext
+        baselineIntensity = alarm.intensity
+        baselineVoice = alarm.voicePersona
+    }
+
+    private func triggerRegenSuccess() {
+        regenSuccessTask?.cancel()
+        showRegenSuccess = true
+
+        regenSuccessTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            showRegenSuccess = false
+        }
+    }
+
+    private func invalidateRegenSuccess() {
+        if showRegenSuccess {
+            regenSuccessTask?.cancel()
+            regenSuccessTask = nil
+            showRegenSuccess = false
         }
     }
 
@@ -552,7 +720,9 @@ struct CreateAlarmView: View {
                 let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
                 alarm.soundFileName = initialFileName
                 isRegenerating = false
+                snapshotBaseline()
                 HapticManager.shared.success()
+                triggerRegenSuccess()
             } catch {
                 isRegenerating = false
                 print("[CreateAlarmView] Regenerate failed: \(error)")
@@ -681,6 +851,7 @@ struct CreateAlarmView: View {
                 statusTask.cancel()
                 statusTextVisible = false
                 alarm.soundFileName = initialFileName
+                snapshotBaseline()
                 try? await Task.sleep(for: .milliseconds(300))
                 generatingStatusText = "Almost ready..."
                 statusTextVisible = true
@@ -848,7 +1019,8 @@ struct CreateAlarmView: View {
         } label: {
             Text("Schedule Alarm")
         }
-        .primaryButton()
+        .primaryButton(isEnabled: !isRegenerating)
+        .disabled(isRegenerating)
         .padding(.horizontal, AppButtons.horizontalPadding)
         .padding(.bottom, AppSpacing.screenBottom)
         .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
