@@ -177,47 +177,44 @@ final class AlarmScheduler {
 
     // MARK: - Schedule Building (internal for testability)
 
-    /// Maximum Live Activity countdown window for an initial alarm fire.
-    /// Whatever headroom we have below this we'll use fully, down to the
-    /// scheduling buffer.
-    static let preAlertLeadSeconds: TimeInterval = 300
+    /// Maximum Live Activity countdown window. Alarms with more headroom
+    /// than this cap at this length; closer ones use as much as fits.
+    /// Shift is always a whole number of minutes so the shifted `time`
+    /// (hour+minute, seconds dropped) equals the intended ring time
+    /// minus exactly `preAlert` seconds — no drift.
+    static let preAlertLeadSeconds: TimeInterval = 3600
 
-    /// Minimum seconds the shifted `time` must stay in the future *after*
-    /// dropping seconds (AlarmKit's .relative Time only has hour/minute).
-    /// If we can't clear this gap, we drop the preAlert to zero and
-    /// register the raw intended time instead.
+    /// Minimum gap between "now" and the shifted `time` for a repeating
+    /// alarm. AlarmKit's `.relative` defers to next week if `time` lands
+    /// at or before the current wall-clock minute. 15s keeps us safe.
     static let minShiftedFutureSeconds: TimeInterval = 15
 
-    /// Pick a preAlert countdown length that keeps the `.relative` `time`
-    /// (hour+minute, seconds dropped) comfortably in the future. For
-    /// `.fixed` schedules we can use the full lead window — `.fixed`
-    /// tolerates a slightly-past absolute date.
+    /// Pick a preAlert countdown length.
+    ///
+    /// Alarms are always set on the minute (user picks minute precision),
+    /// so the shift must always be a whole number of minutes — otherwise
+    /// AlarmKit drops the seconds component and the ring time drifts.
+    ///
+    /// Strategy: try the longest minute-multiple shift that (1) fits
+    /// inside usable headroom and (2) keeps the shifted time ≥15s in the
+    /// future. If none fit, preAlert=0, no countdown.
     func pickPreAlertSeconds(intendedFireDate: Date, isRepeating: Bool, now: Date = Date()) -> TimeInterval {
         let headroom = intendedFireDate.timeIntervalSince(now)
         let usableHeadroom = headroom - Self.schedulingBufferSeconds
+        guard usableHeadroom > 0 else { return 0 }
 
-        if !isRepeating {
-            return max(1, min(usableHeadroom, Self.preAlertLeadSeconds))
-        }
+        let maxCandidate = min(Self.preAlertLeadSeconds, usableHeadroom)
+        let maxMinutes = Int(floor(maxCandidate / 60.0))
+        guard maxMinutes >= 1 else { return 0 }
 
-        // Repeating: .relative pattern-matches hour+minute. Compute the
-        // shifted time for a candidate preAlert, then see if that time
-        // (rounded down to the minute) is still >= now + minShiftedFutureSeconds.
-        let candidates: [TimeInterval] = [Self.preAlertLeadSeconds, 60, 30]
-        let calendar = Calendar.current
-        for candidate in candidates where candidate <= usableHeadroom {
+        // Walk from longest to shortest minute-multiple until one fits.
+        for minutes in stride(from: maxMinutes, through: 1, by: -1) {
+            let candidate = TimeInterval(minutes * 60)
             let shifted = intendedFireDate.addingTimeInterval(-candidate)
-            let shiftedMinuteFloor = calendar.date(
-                bySetting: .second,
-                value: 0,
-                of: shifted
-            ) ?? shifted
-            if shiftedMinuteFloor.timeIntervalSince(now) >= Self.minShiftedFutureSeconds {
+            if shifted.timeIntervalSince(now) >= Self.minShiftedFutureSeconds {
                 return candidate
             }
         }
-
-        // No countdown fits — register the raw intended time, no shift.
         return 0
     }
 
