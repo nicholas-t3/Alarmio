@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var deviceInfo = DeviceInfo()
     @State private var alarmStore: AlarmStore
     @State private var composerService: ComposerService
+    @State private var subscriptionService = SubscriptionService()
 
     // MARK: - Init
 
@@ -46,6 +47,7 @@ struct RootView: View {
         .environment(\.deviceInfo, deviceInfo)
         .environment(\.alarmStore, alarmStore)
         .environment(\.composerService, composerService)
+        .environment(\.subscriptionService, subscriptionService)
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
@@ -57,11 +59,15 @@ struct RootView: View {
             // the background so a dead connection can never block the UI.
             alarmStore.audioFileManager.ensureSetup()
             alarmStore.load()
+            subscriptionService.configure()
             await appState.checkOnboardingStatus()
 
             Task {
                 do {
                     try await APIClient.shared.ensureSession()
+                    if let userId = SupabaseClient.shared.currentUserId {
+                        await subscriptionService.identify(userId: userId.uuidString)
+                    }
                 } catch {
                     print("[RootView] Auth failed: \(error)")
                 }

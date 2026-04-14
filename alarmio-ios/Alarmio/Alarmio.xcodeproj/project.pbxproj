@@ -12,6 +12,8 @@
 		E1898E952F880F5400CEEB21 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E942F880F5400CEEB21 /* PostgREST */; };
 		E1898E972F880F5400CEEB21 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E962F880F5400CEEB21 /* Storage */; };
 		E1898E992F8811C800CEEB21 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E1898E982F8811C800CEEB21 /* Supabase */; };
+		E18F86782F8D513600D8EF4A /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = E18F86772F8D513600D8EF4A /* RevenueCat */; };
+		E18F867A2F8D513600D8EF4A /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = E18F86792F8D513600D8EF4A /* RevenueCatUI */; };
 		E1B488602F87B7960038F812 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1B4885F2F87B7960038F812 /* WidgetKit.framework */; };
 		E1B488622F87B7960038F812 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1B488612F87B7960038F812 /* SwiftUI.framework */; };
 		E1B4886F2F87B7970038F812 /* AlarmioWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1B4885D2F87B7960038F812 /* AlarmioWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -124,6 +126,8 @@
 			files = (
 				E1898E992F8811C800CEEB21 /* Supabase in Frameworks */,
 				E1898E972F880F5400CEEB21 /* Storage in Frameworks */,
+				E18F867A2F8D513600D8EF4A /* RevenueCatUI in Frameworks */,
+				E18F86782F8D513600D8EF4A /* RevenueCat in Frameworks */,
 				E1898E952F880F5400CEEB21 /* PostgREST in Frameworks */,
 				E1898E932F880F5400CEEB21 /* Functions in Frameworks */,
 				E1898E912F880F5400CEEB21 /* Auth in Frameworks */,
@@ -223,6 +227,8 @@
 				E1898E942F880F5400CEEB21 /* PostgREST */,
 				E1898E962F880F5400CEEB21 /* Storage */,
 				E1898E982F8811C800CEEB21 /* Supabase */,
+				E18F86772F8D513600D8EF4A /* RevenueCat */,
+				E18F86792F8D513600D8EF4A /* RevenueCatUI */,
 			);
 			productName = Alarmio;
 			productReference = E18F8EBD2F7D125700907484 /* Alarmio.app */;
@@ -284,6 +290,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				E18F86762F8D513600D8EF4A /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E18F8EBE2F7D125700907484 /* Products */;
@@ -712,6 +719,14 @@
 				minimumVersion = 2.5.1;
 			};
 		};
+		E18F86762F8D513600D8EF4A /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.67.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -739,6 +754,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E1898E8F2F880F5400CEEB21 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
+		};
+		E18F86772F8D513600D8EF4A /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E18F86762F8D513600D8EF4A /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+		E18F86792F8D513600D8EF4A /* RevenueCatUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E18F86762F8D513600D8EF4A /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCatUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

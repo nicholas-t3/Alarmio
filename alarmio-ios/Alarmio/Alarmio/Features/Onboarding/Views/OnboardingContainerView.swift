@@ -32,6 +32,7 @@ struct OnboardingContainerView: View {
     // MARK: - State
 
     @Environment(\.previewStep) private var previewStep
+    @Environment(\.subscriptionService) private var subscription
     @State private var showHome = false
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
@@ -48,6 +49,7 @@ struct OnboardingContainerView: View {
     @State private var voiceVisualizerVisible = false
     @State private var sunriseProgress: Double = 0
     @State private var starSpinProgress: Double = 0
+    @State private var showPaywall = false
 
     // MARK: - Body
 
@@ -162,6 +164,17 @@ struct OnboardingContainerView: View {
             HomeView()
                 .environment(AppState())
                 .environment(\.deviceInfo, deviceInfo)
+        }
+        .sheet(
+            isPresented: $showPaywall,
+            onDismiss: {
+                // After the paywall dismisses (by close, purchase, or restore),
+                // continue to the confirmation step regardless of subscription
+                // state. Soft/skippable paywall — free tier is allowed.
+                advanceToConfirmationAfterPaywall()
+            }
+        ) {
+            PaywallSheet()
         }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
@@ -381,6 +394,23 @@ struct OnboardingContainerView: View {
     }
 
     private func autoAdvanceFromGenerating() {
+        // If the user is already Pro, skip the paywall and go straight to
+        // the confirmation screen. Otherwise present the paywall sheet —
+        // the sheet's onDismiss handler will advance us to confirmation.
+        if subscription.isPro {
+            advanceToConfirmation()
+        } else {
+            showPaywall = true
+        }
+    }
+
+    /// Called from the paywall sheet's onDismiss. Always proceeds to
+    /// confirmation regardless of whether the user purchased.
+    private func advanceToConfirmationAfterPaywall() {
+        advanceToConfirmation()
+    }
+
+    private func advanceToConfirmation() {
         isTransitioning = true
         contentVisible = false
 
