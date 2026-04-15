@@ -7,8 +7,6 @@
 //
 
 import SwiftUI
-import AlarmKit
-import ActivityKit
 
 struct SettingsView: View {
 
@@ -21,6 +19,7 @@ struct SettingsView: View {
     // MARK: - State
 
     @State private var showPaywall = false
+    @State private var safariURL: IdentifiableURL?
 
     // MARK: - Constants
 
@@ -29,6 +28,15 @@ struct SettingsView: View {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "v\(version) (\(build))"
     }()
+
+    private let appVersionShort: String = {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        return version
+    }()
+
+    private let termsURL = URL(string: "https://alarmioapp.com/terms-of-use")!
+    private let privacyURL = URL(string: "https://alarmioapp.com/privacy-policy")!
+    private let supportEmail = "support@alarmioapp.com"
 
     // MARK: - Body
 
@@ -42,18 +50,18 @@ struct SettingsView: View {
             // Menu rows
             VStack(spacing: 2) {
                 settingsRow(icon: "doc.text", title: "Terms of Service") {
-                    // TODO: Open terms URL
                     HapticManager.shared.softTap()
+                    safariURL = IdentifiableURL(url: termsURL)
                 }
 
                 settingsRow(icon: "lock.shield", title: "Privacy Policy") {
-                    // TODO: Open privacy URL
                     HapticManager.shared.softTap()
+                    safariURL = IdentifiableURL(url: privacyURL)
                 }
 
                 settingsRow(icon: "envelope", title: "Contact Support") {
-                    // TODO: Open support email
                     HapticManager.shared.softTap()
+                    openSupportEmail()
                 }
 
                 settingsRow(icon: "arrow.clockwise", title: "Restore Purchases") {
@@ -65,9 +73,6 @@ struct SettingsView: View {
             #if DEBUG
             debugSubscriptionMenu
                 .padding(.top, 24)
-
-            debugAlarmKitMenu
-                .padding(.top, 16)
             #endif
 
             Spacer()
@@ -92,6 +97,10 @@ struct SettingsView: View {
         .padding(.vertical, 24)
         .sheet(isPresented: $showPaywall) {
             PaywallSheet()
+        }
+        .sheet(item: $safariURL) { item in
+            SafariView(url: item.url)
+                .ignoresSafeArea()
         }
     }
 
@@ -241,262 +250,6 @@ struct SettingsView: View {
         )
     }
 
-    // MARK: - Debug AlarmKit Menu
-
-    private var debugAlarmKitMenu: some View {
-        VStack(alignment: .leading, spacing: 8) {
-
-            Text("DEBUG — ALARMKIT DIAGNOSTICS")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.orange.opacity(0.6))
-                .padding(.horizontal, AppSpacing.rowHorizontal)
-
-            VStack(spacing: 2) {
-                debugRow(
-                    title: "Schedule minimal repeating (+2m)",
-                    isActive: false
-                ) {
-                    Task { await scheduleMinimalRepeating() }
-                }
-
-                debugRow(
-                    title: "Schedule minimal fixed (+2m)",
-                    isActive: false
-                ) {
-                    Task { await scheduleMinimalFixed() }
-                }
-
-                debugRow(
-                    title: "Schedule FULL-config repeating (+2m)",
-                    isActive: false
-                ) {
-                    Task { await scheduleFullConfigRepeating() }
-                }
-
-                debugRow(
-                    title: "Cancel all diagnostic alarms",
-                    isActive: false
-                ) {
-                    Task { await cancelDiagnosticAlarms() }
-                }
-            }
-        }
-        .padding(.vertical, 8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Debug AlarmKit Actions
-
-    private static let diagnosticRepeatingID = UUID(uuidString: "00000000-0000-0000-0000-00000000D1A1")!
-    private static let diagnosticFixedID = UUID(uuidString: "00000000-0000-0000-0000-00000000D1A2")!
-    private static let diagnosticFullConfigID = UUID(uuidString: "00000000-0000-0000-0000-00000000D1A3")!
-
-    /// Bare-bones repeating alarm. No preAlert, no custom sound, no
-    /// custom intents, only required presentation. Registers for EVERY
-    /// weekday at a time 2 minutes in the future. If this doesn't fire
-    /// today, the problem is not in our AlarmKit config layering.
-    private func scheduleMinimalRepeating() async {
-        let manager = AlarmManager.shared
-        let id = Self.diagnosticRepeatingID
-
-        let target = Date().addingTimeInterval(120)
-        let cal = Calendar.current
-        let hour = cal.component(.hour, from: target)
-        let minute = cal.component(.minute, from: target)
-        let weekday = cal.component(.weekday, from: target)
-        print("[DiagRepeat] scheduling id=\(id) for \(hour):\(String(format: "%02d", minute)) weekday=\(weekday) (target=\(target))")
-
-        let schedule: Alarm.Schedule = .relative(.init(
-            time: .init(hour: hour, minute: minute),
-            repeats: .weekly([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
-        ))
-
-        let stopButton = AlarmButton(
-            text: "STOP",
-            textColor: .red,
-            systemImageName: "stop.circle.fill"
-        )
-        let alert = AlarmPresentation.Alert(
-            title: "Diag Repeat",
-            stopButton: stopButton
-        )
-        let attributes = AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert),
-            tintColor: .orange
-        )
-
-        let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            schedule: schedule,
-            attributes: attributes
-        )
-
-        do {
-            try? manager.cancel(id: id)
-            _ = try await manager.schedule(id: id, configuration: config)
-            print("[DiagRepeat] scheduled OK")
-            alertManager.showModal(
-                title: "Minimal repeating scheduled",
-                message: "Will fire at \(hour):\(String(format: "%02d", minute)) on any weekday. Lock the phone and wait.",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        } catch {
-            print("[DiagRepeat] FAILED: \(error)")
-            alertManager.showModal(
-                title: "Failed to schedule",
-                message: "\(error)",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        }
-    }
-
-    /// Bare-bones one-time fixed alarm, 2 minutes from now. Same config
-    /// as repeating but `.fixed` schedule. If this fires and repeating
-    /// doesn't, it's a `.relative` problem. If both fire, our main code
-    /// is the issue.
-    private func scheduleMinimalFixed() async {
-        let manager = AlarmManager.shared
-        let id = Self.diagnosticFixedID
-
-        let target = Date().addingTimeInterval(120)
-        print("[DiagFixed] scheduling id=\(id) for \(target)")
-
-        let schedule: Alarm.Schedule = .fixed(target)
-
-        let stopButton = AlarmButton(
-            text: "STOP",
-            textColor: .red,
-            systemImageName: "stop.circle.fill"
-        )
-        let alert = AlarmPresentation.Alert(
-            title: "Diag Fixed",
-            stopButton: stopButton
-        )
-        let attributes = AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert),
-            tintColor: .green
-        )
-
-        let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            schedule: schedule,
-            attributes: attributes
-        )
-
-        do {
-            try? manager.cancel(id: id)
-            _ = try await manager.schedule(id: id, configuration: config)
-            print("[DiagFixed] scheduled OK")
-            alertManager.showModal(
-                title: "Minimal fixed scheduled",
-                message: "Will fire at \(target). Lock the phone and wait.",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        } catch {
-            print("[DiagFixed] FAILED: \(error)")
-            alertManager.showModal(
-                title: "Failed to schedule",
-                message: "\(error)",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        }
-    }
-
-    /// Schedules the FULL real-app config: custom sound, stop/snooze
-    /// intents, snooze button, countdown presentation — but with a
-    /// `.relative(weekly(allDays))` schedule 2 minutes out, using a
-    /// diagnostic UUID. If the minimal version fires and this doesn't,
-    /// ONE of these layered pieces is the bug.
-    private func scheduleFullConfigRepeating() async {
-        let manager = AlarmManager.shared
-        let id = Self.diagnosticFullConfigID
-
-        let target = Date().addingTimeInterval(120)
-        let cal = Calendar.current
-        let hour = cal.component(.hour, from: target)
-        let minute = cal.component(.minute, from: target)
-        print("[DiagFull] scheduling id=\(id) for \(hour):\(String(format: "%02d", minute)) (target=\(target))")
-
-        let schedule: Alarm.Schedule = .relative(.init(
-            time: .init(hour: hour, minute: minute),
-            repeats: .weekly([.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday])
-        ))
-
-        // Mirror buildAttributes: stop + snooze buttons, tintColor, countdown presentation.
-        let stopButton = AlarmButton(
-            text: "STOP",
-            textColor: .red,
-            systemImageName: "stop.circle.fill"
-        )
-        let snoozeButton = AlarmButton(
-            text: "SNOOZE",
-            textColor: .black,
-            systemImageName: "zzz"
-        )
-        let alert = AlarmPresentation.Alert(
-            title: "Diag Full",
-            stopButton: stopButton,
-            secondaryButton: snoozeButton,
-            secondaryButtonBehavior: .custom
-        )
-        // Add countdown presentation + countdownDuration back in to test
-        // whether this is the combination that silently kills same-day
-        // firing on .relative schedules.
-        let countdownContent = AlarmPresentation.Countdown(
-            title: "Alarm ringing soon",
-            pauseButton: AlarmButton(
-                text: "Skip",
-                textColor: .white,
-                systemImageName: "forward.fill"
-            )
-        )
-        let attributes = AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert, countdown: countdownContent),
-            tintColor: Color(hex: "3A6EAA")
-        )
-
-        // Mirror scheduleAlarm: bundled sound (alarm1.mp3 is copied into
-        // Library/Sounds on launch by AudioFileManager), real intents.
-        let sound: ActivityKit.AlertConfiguration.AlertSound = .named("alarm1.mp3")
-
-        let alarmConfig = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: .init(preAlert: 65, postAlert: nil),
-            schedule: schedule,
-            attributes: attributes,
-            stopIntent: StopAlarmIntent(alarmID: id.uuidString),
-            secondaryIntent: SnoozeAlarmIntent(alarmID: id.uuidString),
-            sound: sound
-        )
-
-        do {
-            try? manager.cancel(id: id)
-            _ = try await manager.schedule(id: id, configuration: alarmConfig)
-            print("[DiagFull] scheduled OK")
-            alertManager.showModal(
-                title: "Full-config repeating scheduled",
-                message: "Will fire at \(hour):\(String(format: "%02d", minute)). Lock the phone.",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        } catch {
-            print("[DiagFull] FAILED: \(error)")
-            alertManager.showModal(
-                title: "Failed to schedule",
-                message: "\(error)",
-                primaryAction: AlertAction(label: "OK") {}
-            )
-        }
-    }
-
-    private func cancelDiagnosticAlarms() async {
-        let manager = AlarmManager.shared
-        try? manager.cancel(id: Self.diagnosticRepeatingID)
-        try? manager.cancel(id: Self.diagnosticFixedID)
-        try? manager.cancel(id: Self.diagnosticFullConfigID)
-        print("[Diag] cancelled diagnostic alarms")
-    }
-
     private func debugRow(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button {
             HapticManager.shared.selection()
@@ -520,6 +273,24 @@ struct SettingsView: View {
         }
     }
     #endif
+
+    // MARK: - Support
+
+    private func openSupportEmail() {
+        let subject = "Alarmio (v\(appVersionShort)) Support"
+        let body = "\n\n\n--\nAlarmio \(appVersion)"
+
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = supportEmail
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+
+        guard let url = components.url else { return }
+        UIApplication.shared.open(url)
+    }
 
     // MARK: - Restore
 
@@ -546,6 +317,13 @@ struct SettingsView: View {
             }
         }
     }
+}
+
+// MARK: - IdentifiableURL
+
+private struct IdentifiableURL: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
 }
 
 // MARK: - Previews
