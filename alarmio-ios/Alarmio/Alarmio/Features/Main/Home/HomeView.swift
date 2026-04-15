@@ -118,13 +118,7 @@ struct HomeView: View {
                         showEditModal = false
                         Task {
                             try? await Task.sleep(for: .milliseconds(500))
-                            deletingAlarmIds.insert(id)
-                            try? await Task.sleep(for: .milliseconds(400))
-                            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                Task { await alarmStore.deleteAlarm(id: id) }
-                            }
-                            try? await Task.sleep(for: .milliseconds(400))
-                            deletingAlarmIds.remove(id)
+                            deleteAlarm(id: id)
                         }
                     }
                 )
@@ -199,40 +193,62 @@ struct HomeView: View {
         if alarmStore.alarms.isEmpty {
             emptyState
         } else {
-            ScrollView {
-                VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
+            List {
 
-                    // Top spacer
-                    Spacer()
-                        .frame(height: 4)
+                // Top spacer
+                Color.clear
+                    .frame(height: 4)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
 
-                    // Alarm cards
-                    ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
-                        AlarmCardView(
-                            alarm: alarm,
-                            onToggle: {
-                                Task { await alarmStore.toggleAlarm(id: alarm.id) }
-                            },
-                            onEdit: {
-                                HapticManager.shared.softTap()
-                                editingAlarmId = alarm.id
-                                showEditModal = true
-                            }
-                        )
-                        .premiumBlur(
+                // Alarm cards
+                ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
+                    AlarmCardView(
+                        alarm: alarm,
+                        onToggle: {
+                            Task { await alarmStore.toggleAlarm(id: alarm.id) }
+                        },
+                        onEdit: {
+                            HapticManager.shared.softTap()
+                            editingAlarmId = alarm.id
+                            showEditModal = true
+                        }
+                    )
+                    .premiumBlur(
                         isVisible: alarmsVisible && !deletingAlarmIds.contains(alarm.id),
                         delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(index) * 0.08 + 0.1,
                         duration: 0.4
                     )
-                    .transition(.opacity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: AppSpacing.itemGap(deviceInfo.spacingScale) / 2,
+                        leading: AppSpacing.screenHorizontal,
+                        bottom: AppSpacing.itemGap(deviceInfo.spacingScale) / 2,
+                        trailing: AppSpacing.screenHorizontal
+                    ))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteAlarm(id: alarm.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
-
-                    // Bottom spacer to clear FAB
-                    Spacer()
-                        .frame(height: 100)
                 }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
+
+                // Bottom spacer to clear FAB
+                Color.clear
+                    .frame(height: 100)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
             }
+            .listStyle(.plain)
+            .listSectionSpacing(0)
+            .environment(\.defaultMinListHeaderHeight, 0)
+            .contentMargins(.top, -40, for: .scrollContent)
+            .scrollContentBackground(.hidden)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
         }
@@ -306,6 +322,20 @@ struct HomeView: View {
             }
             .padding(.trailing, AppSpacing.screenHorizontal)
             .padding(.bottom, AppSpacing.screenBottom)
+        }
+    }
+
+    // MARK: - Private Methods
+
+    private func deleteAlarm(id: UUID) {
+        Task {
+            deletingAlarmIds.insert(id)
+            try? await Task.sleep(for: .milliseconds(400))
+            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                Task { await alarmStore.deleteAlarm(id: id) }
+            }
+            try? await Task.sleep(for: .milliseconds(400))
+            deletingAlarmIds.remove(id)
         }
     }
 }

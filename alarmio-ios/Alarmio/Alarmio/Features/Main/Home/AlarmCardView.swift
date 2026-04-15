@@ -35,7 +35,6 @@ struct AlarmCardView: View {
                 // Toggle — visual only, tap fires callback
                 Toggle("", isOn: .constant(alarm.isEnabled))
                     .labelsHidden()
-                    .tint(Color(hex: "0a1628"))
                     .allowsHitTesting(false)
                     .overlay {
                         Color.clear.contentShape(Rectangle())

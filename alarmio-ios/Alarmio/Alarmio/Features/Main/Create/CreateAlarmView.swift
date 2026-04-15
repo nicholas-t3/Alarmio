@@ -20,7 +20,15 @@ struct CreateAlarmView: View {
 
     // MARK: - State
 
-    @State private var alarm = AlarmConfiguration(
+    // Local draft — what the user is currently editing. Never passed
+    // straight to onCreate; the audio may not yet reflect these values.
+    @State private var draft = AlarmConfiguration(
+        intensity: .gentle
+    )
+    // Committed config — promoted from draft only after a successful
+    // generation, so it always matches the audio file that exists on disk.
+    // This is what gets persisted when the user taps Schedule.
+    @State private var committed = AlarmConfiguration(
         intensity: .gentle
     )
     @State private var step: Int
@@ -43,10 +51,6 @@ struct CreateAlarmView: View {
     @State private var isRegenerating: Bool = false
     @State private var showRegenSuccess: Bool = false
     @State private var regenSuccessTask: Task<Void, Never>?
-    @State private var baselineTone: AlarmTone?
-    @State private var baselineWhy: WhyContext?
-    @State private var baselineIntensity: AlarmIntensity?
-    @State private var baselineVoice: VoicePersona?
 
     // MARK: - Constants
 
@@ -117,16 +121,17 @@ struct CreateAlarmView: View {
 
         }
         .task {
-            alarm.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
+            draft.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
+            draft.voicePersona = heroVoices[voiceIndex].persona
             try? await Task.sleep(for: .milliseconds(100))
             cardsVisible = true
             try? await Task.sleep(for: .milliseconds(500))
             buttonVisible = true
         }
-        .onChange(of: alarm.tone) { invalidateRegenSuccess() }
-        .onChange(of: alarm.whyContext) { invalidateRegenSuccess() }
-        .onChange(of: alarm.intensity) { invalidateRegenSuccess() }
-        .onChange(of: alarm.voicePersona) { invalidateRegenSuccess() }
+        .onChange(of: draft.tone) { invalidateRegenSuccess() }
+        .onChange(of: draft.whyContext) { invalidateRegenSuccess() }
+        .onChange(of: draft.intensity) { invalidateRegenSuccess() }
+        .onChange(of: draft.voicePersona) { invalidateRegenSuccess() }
     }
 
     // MARK: - Subviews
@@ -211,23 +216,23 @@ struct CreateAlarmView: View {
 
     private var timeCard: some View {
         WakeTimeCard(wakeTime: Binding(
-            get: { alarm.wakeTime ?? Date() },
-            set: { alarm.wakeTime = $0 }
+            get: { draft.wakeTime ?? Date() },
+            set: { draft.wakeTime = $0 }
         ))
     }
 
     private var scheduleCard: some View {
         RepeatCard(selectedDays: $selectedDays)
             .onChange(of: selectedDays) { _, newDays in
-                alarm.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
+                draft.repeatDays = newDays.isEmpty ? nil : Array(newDays).sorted()
             }
     }
 
     private var snoozeCard: some View {
         SnoozeCard(
-            maxSnoozes: $alarm.maxSnoozes,
-            snoozeInterval: $alarm.snoozeInterval,
-            unlimitedSnooze: $alarm.unlimitedSnooze,
+            maxSnoozes: $draft.maxSnoozes,
+            snoozeInterval: $draft.snoozeInterval,
+            unlimitedSnooze: $draft.unlimitedSnooze,
             allowUnlimited: true
         )
     }
@@ -245,11 +250,11 @@ struct CreateAlarmView: View {
 
                 // Customize (tone + reason + intensity + leave time)
                 CustomizeCard(
-                    tone: $alarm.tone,
-                    whyContext: $alarm.whyContext,
-                    intensity: $alarm.intensity,
-                    leaveTime: $alarm.leaveTime,
-                    wakeTime: alarm.wakeTime,
+                    tone: $draft.tone,
+                    whyContext: $draft.whyContext,
+                    intensity: $draft.intensity,
+                    leaveTime: $draft.leaveTime,
+                    wakeTime: draft.wakeTime,
                     showLeaveTime: true
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
@@ -355,7 +360,7 @@ struct CreateAlarmView: View {
     private func cycleVoice(by delta: Int) {
         let newIndex = (voiceIndex + delta + heroVoices.count) % heroVoices.count
         voiceIndex = newIndex
-        alarm.voicePersona = heroVoices[newIndex].persona
+        draft.voicePersona = heroVoices[newIndex].persona
 
         // Pulse the waveform briefly so the change is visible even when
         // audio isn't playing.
@@ -479,9 +484,9 @@ struct CreateAlarmView: View {
 
                 // Customize (tone + reason + intensity)
                 CustomizeCard(
-                    tone: $alarm.tone,
-                    whyContext: $alarm.whyContext,
-                    intensity: $alarm.intensity
+                    tone: $draft.tone,
+                    whyContext: $draft.whyContext,
+                    intensity: $draft.intensity
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
@@ -538,8 +543,8 @@ struct CreateAlarmView: View {
                 .background(.white.opacity(0.12))
                 .clipShape(Capsule())
             }
-            .disabled(alarm.soundFileName == nil || isRegenerating)
-            .opacity(alarm.soundFileName == nil ? 0.4 : 1)
+            .disabled(committed.soundFileName == nil || isRegenerating)
+            .opacity(committed.soundFileName == nil ? 0.4 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlaying)
         }
         .frame(maxWidth: .infinity)
@@ -605,10 +610,10 @@ struct CreateAlarmView: View {
     // MARK: - Confirmation: Regenerate Button
 
     private var hasStyleChanges: Bool {
-        alarm.tone != baselineTone
-            || alarm.whyContext != baselineWhy
-            || alarm.intensity != baselineIntensity
-            || alarm.voicePersona != baselineVoice
+        draft.tone != committed.tone
+            || draft.whyContext != committed.whyContext
+            || draft.intensity != committed.intensity
+            || draft.voicePersona != committed.voicePersona
     }
 
     private var regenerateButtonLabel: String {
@@ -668,11 +673,13 @@ struct CreateAlarmView: View {
         .animation(.easeInOut(duration: 0.25), value: isRegenerating)
     }
 
-    private func snapshotBaseline() {
-        baselineTone = alarm.tone
-        baselineWhy = alarm.whyContext
-        baselineIntensity = alarm.intensity
-        baselineVoice = alarm.voicePersona
+    /// Promote the current draft to committed after a successful generation.
+    /// The audio file on disk now matches these style fields, so it's safe
+    /// to persist them if the user taps Schedule.
+    private func promoteDraftToCommitted(soundFileName: String) {
+        var next = draft
+        next.soundFileName = soundFileName
+        committed = next
     }
 
     private func triggerRegenSuccess() {
@@ -698,9 +705,9 @@ struct CreateAlarmView: View {
         if voicePlayer.isPlaying {
             voicePlayer.stop()
         } else {
-            guard let fileName = alarm.soundFileName else { return }
+            guard let fileName = committed.soundFileName else { return }
             let url = alarmStore.audioFileManager.soundFileURL(named: fileName)
-            voicePlayer.playFromFile(url: url, persona: alarm.voicePersona)
+            voicePlayer.playFromFile(url: url, persona: committed.voicePersona)
         }
     }
 
@@ -717,10 +724,9 @@ struct CreateAlarmView: View {
                         userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
                     )
                 }
-                let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
-                alarm.soundFileName = initialFileName
+                let newFileName = try await composerService.generateAndDownloadAudio(for: draft)
+                promoteDraftToCommitted(soundFileName: newFileName)
                 isRegenerating = false
-                snapshotBaseline()
                 HapticManager.shared.success()
                 triggerRegenSuccess()
             } catch {
@@ -847,11 +853,10 @@ struct CreateAlarmView: View {
                         userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
                     )
                 }
-                let initialFileName = try await composerService.generateAndDownloadAudio(for: alarm)
+                let initialFileName = try await composerService.generateAndDownloadAudio(for: draft)
                 statusTask.cancel()
                 statusTextVisible = false
-                alarm.soundFileName = initialFileName
-                snapshotBaseline()
+                promoteDraftToCommitted(soundFileName: initialFileName)
                 try? await Task.sleep(for: .milliseconds(300))
                 generatingStatusText = "Almost ready..."
                 statusTextVisible = true
@@ -911,16 +916,16 @@ struct CreateAlarmView: View {
     private func buildStatusMessages() -> [String] {
         var messages: [String] = []
 
-        if let tone = alarm.tone {
+        if let tone = draft.tone {
             messages.append(toneStatusMessage(tone))
         }
-        if let why = alarm.whyContext {
+        if let why = draft.whyContext {
             messages.append(whyStatusMessage(why))
         }
-        if let intensity = alarm.intensity {
+        if let intensity = draft.intensity {
             messages.append(intensityStatusMessage(intensity))
         }
-        if let voice = alarm.voicePersona {
+        if let voice = draft.voicePersona {
             messages.append(voiceStatusMessage(voice))
         }
         messages.append("Writing your wake-up call")
@@ -993,7 +998,7 @@ struct CreateAlarmView: View {
     }
 
     private var configuringBottomBar: some View {
-        let isStep2Complete = alarm.tone != nil && alarm.whyContext != nil && alarm.intensity != nil
+        let isStep2Complete = draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
         let isEnabled = step == 1 ? true : isStep2Complete
 
         return Button {
@@ -1017,8 +1022,10 @@ struct CreateAlarmView: View {
         Button {
             HapticManager.shared.buttonTap()
             voicePlayer.stop()
-            alarm.isEnabled = true
-            onCreate(alarm)
+
+            var configured = committed
+            configured.isEnabled = true
+            onCreate(configured)
             dismiss()
         } label: {
             Text("Schedule Alarm")
