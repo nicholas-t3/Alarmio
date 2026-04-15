@@ -89,10 +89,13 @@ final class AlarmScheduler {
         // entirely and register the raw intended time.
         let isRepeating = !(config.repeatDays?.isEmpty ?? true)
         let headroom = intendedFireDate.timeIntervalSince(Date())
-        let preAlertSeconds = pickPreAlertSeconds(
-            intendedFireDate: intendedFireDate,
-            isRepeating: isRepeating
-        )
+        // Live Activities disabled — force preAlert to 0 so no countdown
+        // card renders. Uncomment the pickPreAlertSeconds call to restore.
+        let preAlertSeconds: TimeInterval = 0
+//        let preAlertSeconds = pickPreAlertSeconds(
+//            intendedFireDate: intendedFireDate,
+//            isRepeating: isRepeating
+//        )
         print("[AlarmScheduler] headroom=\(Int(headroom))s preAlert=\(Int(preAlertSeconds))s isRepeating=\(isRepeating)")
 
         let maxSnoozes = config.maxSnoozes

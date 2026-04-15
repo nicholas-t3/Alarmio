@@ -65,70 +65,70 @@ final class AlarmStore {
         let hasDemos = demoCount > 0
         print("[AlarmStore.load] demoCount=\(demoCount), hasDemos=\(hasDemos)")
 
-        if !hasDemos {
-            let demos: [AlarmConfiguration] = [
-                AlarmConfiguration(
-                    isEnabled: true,
-                    wakeTime: cal.date(from: DateComponents(hour: 7, minute: 0)),
-                    repeatDays: [1, 2, 3, 4, 5],
-                    tone: .calm,
-                    intensity: .gentle,
-                    voicePersona: .calmGuide,
-                    snoozeInterval: 5,
-                    maxSnoozes: 3,
-                    isDemo: true
-                ),
-                AlarmConfiguration(
-                    isEnabled: true,
-                    wakeTime: cal.date(from: DateComponents(hour: 6, minute: 30)),
-                    repeatDays: [1, 2, 3, 4, 5],
-                    tone: .encourage,
-                    intensity: .balanced,
-                    voicePersona: .energeticCoach,
-                    snoozeInterval: 5,
-                    maxSnoozes: 3,
-                    isDemo: true
-                ),
-                AlarmConfiguration(
-                    isEnabled: false,
-                    wakeTime: cal.date(from: DateComponents(hour: 5, minute: 45)),
-                    repeatDays: [1, 3, 5],
-                    tone: .push,
-                    intensity: .intense,
-                    voicePersona: .hardSergeant,
-                    snoozeInterval: 3,
-                    maxSnoozes: 2,
-                    isDemo: true
-                ),
-                AlarmConfiguration(
-                    isEnabled: true,
-                    wakeTime: cal.date(from: DateComponents(hour: 8, minute: 30)),
-                    repeatDays: [0, 6],
-                    tone: .fun,
-                    intensity: .gentle,
-                    voicePersona: .playful,
-                    snoozeInterval: 10,
-                    maxSnoozes: 5,
-                    isDemo: true
-                ),
-                AlarmConfiguration(
-                    isEnabled: false,
-                    wakeTime: cal.date(from: DateComponents(hour: 9, minute: 15)),
-                    repeatDays: nil,
-                    tone: .strict,
-                    intensity: .balanced,
-                    voicePersona: .digitalAssistant,
-                    snoozeInterval: 5,
-                    maxSnoozes: 3,
-                    isDemo: true
-                )
-            ]
-            alarms.append(contentsOf: demos)
-            save()
-            print("[AlarmStore.load] Inserted \(demos.count) fresh demo alarms → alarms.count=\(alarms.count)")
-        } else {
-            print("[AlarmStore.load] Skipping demo insertion — demos already present")
-        }
+//        if !hasDemos {
+//            let demos: [AlarmConfiguration] = [
+//                AlarmConfiguration(
+//                    isEnabled: true,
+//                    wakeTime: cal.date(from: DateComponents(hour: 7, minute: 0)),
+//                    repeatDays: [1, 2, 3, 4, 5],
+//                    tone: .calm,
+//                    intensity: .gentle,
+//                    voicePersona: .calmGuide,
+//                    snoozeInterval: 5,
+//                    maxSnoozes: 3,
+//                    isDemo: true
+//                ),
+//                AlarmConfiguration(
+//                    isEnabled: true,
+//                    wakeTime: cal.date(from: DateComponents(hour: 6, minute: 30)),
+//                    repeatDays: [1, 2, 3, 4, 5],
+//                    tone: .encourage,
+//                    intensity: .balanced,
+//                    voicePersona: .energeticCoach,
+//                    snoozeInterval: 5,
+//                    maxSnoozes: 3,
+//                    isDemo: true
+//                ),
+//                AlarmConfiguration(
+//                    isEnabled: false,
+//                    wakeTime: cal.date(from: DateComponents(hour: 5, minute: 45)),
+//                    repeatDays: [1, 3, 5],
+//                    tone: .push,
+//                    intensity: .intense,
+//                    voicePersona: .hardSergeant,
+//                    snoozeInterval: 3,
+//                    maxSnoozes: 2,
+//                    isDemo: true
+//                ),
+//                AlarmConfiguration(
+//                    isEnabled: true,
+//                    wakeTime: cal.date(from: DateComponents(hour: 8, minute: 30)),
+//                    repeatDays: [0, 6],
+//                    tone: .fun,
+//                    intensity: .gentle,
+//                    voicePersona: .playful,
+//                    snoozeInterval: 10,
+//                    maxSnoozes: 5,
+//                    isDemo: true
+//                ),
+//                AlarmConfiguration(
+//                    isEnabled: false,
+//                    wakeTime: cal.date(from: DateComponents(hour: 9, minute: 15)),
+//                    repeatDays: nil,
+//                    tone: .strict,
+//                    intensity: .balanced,
+//                    voicePersona: .digitalAssistant,
+//                    snoozeInterval: 5,
+//                    maxSnoozes: 3,
+//                    isDemo: true
+//                )
+//            ]
+//            alarms.append(contentsOf: demos)
+//            save()
+//            print("[AlarmStore.load] Inserted \(demos.count) fresh demo alarms → alarms.count=\(alarms.count)")
+//        } else {
+//            print("[AlarmStore.load] Skipping demo insertion — demos already present")
+//        }
     }
 
     func save() {
