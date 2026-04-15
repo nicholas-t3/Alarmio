@@ -117,8 +117,10 @@ final class AlarmScheduler {
             secondaryIntent = nil
         }
 
-        // Schedule for the user's intended ring time directly. No preAlert
-        // countdown — Live Activities are disabled for this app.
+        // No preAlert — we register the user's intended hour:minute
+        // directly for repeating `.relative` alarms, and the absolute
+        // intended date for one-time `.fixed` alarms. This avoids the
+        // same-day defer dead-zone the shift math creates.
         let schedule = buildScheduleShifted(
             intendedFireDate: intendedFireDate,
             config: config,
@@ -205,16 +207,20 @@ final class AlarmScheduler {
         )
     }
 
-    /// Build the AlarmKit schedule for the user's intended ring time.
-    /// `shiftSeconds` is retained for call-site compatibility but always
-    /// passed as 0 now that pre-alert countdowns are disabled.
+    /// Build the AlarmKit schedule. For repeating `.relative` alarms the
+    /// registered hour/minute is shifted back by `shiftSeconds` so that
+    /// ring time (`time + preAlertSeconds`) equals the user's intended
+    /// time. `shiftSeconds` MUST be a whole number of minutes — AlarmKit
+    /// drops seconds from the registered `time`, so a non-minute-aligned
+    /// shift introduces drift.
     func buildScheduleShifted(intendedFireDate: Date, config: AlarmConfiguration, shiftSeconds: TimeInterval) -> Alarm.Schedule {
         if let repeatDays = config.repeatDays, !repeatDays.isEmpty {
             let weekdays = repeatDays.compactMap { mapDayIndexToWeekday($0) }
+            let shifted = intendedFireDate.addingTimeInterval(-shiftSeconds)
             let calendar = Calendar.current
-            let hour = calendar.component(.hour, from: intendedFireDate)
-            let minute = calendar.component(.minute, from: intendedFireDate)
-            print("[AlarmScheduler.buildSchedule] REPEATING — repeatDays(0=Sun)=\(repeatDays), weekdays=\(weekdays), time=\(hour):\(String(format: "%02d", minute))")
+            let hour = calendar.component(.hour, from: shifted)
+            let minute = calendar.component(.minute, from: shifted)
+            print("[AlarmScheduler.buildSchedule] REPEATING — repeatDays(0=Sun)=\(repeatDays), weekdays=\(weekdays), registeredTime=\(hour):\(String(format: "%02d", minute)), shiftSeconds=\(Int(shiftSeconds))")
             return .relative(.init(
                 time: .init(hour: hour, minute: minute),
                 repeats: .weekly(weekdays)

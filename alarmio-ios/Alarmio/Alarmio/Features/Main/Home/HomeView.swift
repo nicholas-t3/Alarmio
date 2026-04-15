@@ -191,8 +191,8 @@ struct HomeView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
 
-                // Alarm cards
-                ForEach(Array(alarmStore.alarms.enumerated()), id: \.element.id) { index, alarm in
+                // Alarm cards — enabled alarms first (by time), then disabled (by time)
+                ForEach(sortedAlarms, id: \.id) { alarm in
                     AlarmCardView(
                         alarm: alarm,
                         onToggle: {
@@ -206,7 +206,7 @@ struct HomeView: View {
                     )
                     .premiumBlur(
                         isVisible: alarmsVisible && !deletingAlarmIds.contains(alarm.id),
-                        delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(index) * 0.08 + 0.1,
+                        delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(sortedAlarms.firstIndex(where: { $0.id == alarm.id }) ?? 0) * 0.08 + 0.1,
                         duration: 0.4
                     )
                     .listRowBackground(Color.clear)
@@ -240,6 +240,7 @@ struct HomeView: View {
             .scrollContentBackground(.hidden)
             .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: sortedAlarms.map(\.id))
         }
     }
 
@@ -315,6 +316,20 @@ struct HomeView: View {
     }
 
     // MARK: - Private Methods
+
+    // Enabled alarms first, then disabled. Within each group, earliest time-of-day first.
+    private var sortedAlarms: [AlarmConfiguration] {
+        alarmStore.alarms.sorted { lhs, rhs in
+            if lhs.isEnabled != rhs.isEnabled { return lhs.isEnabled }
+            return minutesOfDay(lhs.wakeTime) < minutesOfDay(rhs.wakeTime)
+        }
+    }
+
+    private func minutesOfDay(_ date: Date?) -> Int {
+        guard let date else { return .max }
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+    }
 
     private func deleteAlarm(id: UUID) {
         Task {

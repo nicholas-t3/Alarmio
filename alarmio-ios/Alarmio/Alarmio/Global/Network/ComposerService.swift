@@ -37,6 +37,10 @@ final class ComposerService {
     /// Throws `APIError` on network failure, function error, or storage
     /// download failure.
     func generateAndDownloadAudio(for alarm: AlarmConfiguration) async throws -> String {
+        if DevFlags.skipGeneration {
+            return try await generateAndDownloadAudioSkipped(for: alarm)
+        }
+
         let request = ComposeRequest.from(alarm: alarm, timezone: TimeZone.current)
 
         print("[Composer] >>> invoking compose-alarm (alarmId=\(request.alarm_id), persona=\(request.voice_persona), tone=\(request.tone ?? "nil"), intensity=\(request.intensity ?? "nil"), why=\(request.why_context ?? "nil"))")
@@ -79,6 +83,61 @@ final class ComposerService {
         let resultName = audioFileManager.indexedFileName(for: alarm.id, index: 0, nonce: nonce)
         print("[Composer] === saved initial as \(resultName)")
         return resultName
+    }
+
+    // MARK: - Dev skip path
+
+    /// Dev-only shortcut: skips the Composer API entirely. Copies bundled
+    /// `alarm1/2/3.mp3` into the per-alarm indexed filenames (index 0..2
+    /// map to alarm1/2/3, index ≥3 falls back to alarm1) so the rest of
+    /// the scheduling / playback path resolves exactly as it would for a
+    /// Composer-generated alarm. Waits 3s to preserve the "generating"
+    /// UX delay.
+    private func generateAndDownloadAudioSkipped(for alarm: AlarmConfiguration) async throws -> String {
+        print("[Composer] >>> DEV SKIP: reusing bundled alarm1/2/3 for alarmId=\(alarm.id.uuidString)")
+
+        try await Task.sleep(nanoseconds: 3_000_000_000)
+
+        // Count of indices to materialize: initial (0) + one per snooze.
+        // Unlimited mode mirrors the real Composer contract: 2 files
+        // (initial + loop).
+        let indexCount: Int = alarm.unlimitedSnooze ? 2 : alarm.maxSnoozes + 1
+
+        let nonce = AudioFileManager.newAudioNonce()
+
+        for index in 0..<indexCount {
+            let sourceName = bundledFallbackName(for: index)
+            guard let sourceURL = Bundle.main.url(forResource: sourceName, withExtension: "mp3") else {
+                throw APIError.unknown(NSError(
+                    domain: "ComposerService.DevSkip",
+                    code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: "\(sourceName).mp3 not found in main bundle"]
+                ))
+            }
+            let bytes = try Data(contentsOf: sourceURL)
+            _ = try audioFileManager.saveSound(
+                data: bytes,
+                for: alarm.id,
+                index: index,
+                nonce: nonce
+            )
+            print("[Composer]     DEV SKIP file[\(index)] copied from \(sourceName).mp3 bytes=\(bytes.count)")
+        }
+
+        let resultName = audioFileManager.indexedFileName(for: alarm.id, index: 0, nonce: nonce)
+        print("[Composer] === DEV SKIP saved initial as \(resultName)")
+        return resultName
+    }
+
+    /// Maps an audio index to one of the three bundled test clips.
+    /// 0→alarm1, 1→alarm2, 2→alarm3, 3+→alarm1.
+    private func bundledFallbackName(for index: Int) -> String {
+        switch index {
+        case 0: return "alarm1"
+        case 1: return "alarm2"
+        case 2: return "alarm3"
+        default: return "alarm1"
+        }
     }
 }
 

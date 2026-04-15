@@ -162,19 +162,34 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             secondaryIntent = nil
         }
 
-        // Schedule the next ring for `now + snoozeDuration`. No preAlert /
-        // Live Activity — AlarmKit rings directly at the fire date.
-        let fireDate = Date().addingTimeInterval(snoozeDurationSeconds)
+        // Proven working snooze pattern (memory 2026-04-09, on-device):
+        //   schedule = .fixed(now + buffer)
+        //   countdownDuration = .init(preAlert: snooze - buffer, postAlert: nil)
+        //   presentation includes AlarmPresentation.Countdown
+        // AlarmKit rings at schedule + preAlert = now + snooze. Any
+        // variant of this shape (bare `.fixed(now + snooze)`, or countdown
+        // without Countdown presentation) throws Code=0 at schedule time.
+        let schedulingBuffer: TimeInterval = 3
+        let countdownStart = Date().addingTimeInterval(schedulingBuffer)
+        let preAlertSeconds = max(1, snoozeDurationSeconds - schedulingBuffer)
 
-        let presentation = AlarmPresentation(alert: alert)
+        let countdownContent = AlarmPresentation.Countdown(
+            title: "Alarm ringing soon",
+            pauseButton: AlarmButton(
+                text: "Skip",
+                textColor: .white,
+                systemImageName: "forward.fill"
+            )
+        )
+        let presentation = AlarmPresentation(alert: alert, countdown: countdownContent)
         let attributes = AlarmAttributes<AlarmioMetadata>(
             presentation: presentation,
             tintColor: .blue
         )
 
         let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: nil,
-            schedule: .fixed(fireDate),
+            countdownDuration: .init(preAlert: preAlertSeconds, postAlert: nil),
+            schedule: .fixed(countdownStart),
             attributes: attributes,
             stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
             secondaryIntent: secondaryIntent,
