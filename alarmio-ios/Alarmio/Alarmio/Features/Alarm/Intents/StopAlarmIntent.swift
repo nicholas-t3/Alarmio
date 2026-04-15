@@ -23,6 +23,9 @@ struct StopAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm:ss.SSS"
+        print("[StopAlarmIntent.T] TAP at \(fmt.string(from: Date())) for alarmID=\(alarmID)")
         print("[StopAlarmIntent] fired for alarmID=\(alarmID)")
 
         guard let uuid = UUID(uuidString: alarmID) else {

@@ -36,6 +36,9 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        let tapFmt = DateFormatter()
+        tapFmt.dateFormat = "HH:mm:ss.SSS"
+        print("[SnoozeAlarmIntent.T] TAP at \(tapFmt.string(from: Date())) for alarmID=\(alarmID)")
         print("[SnoozeAlarmIntent] fired for alarmID=\(alarmID)")
 
         guard let uuid = UUID(uuidString: alarmID) else {
@@ -117,7 +120,15 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             )
             print("[SnoozeAlarmIntent] next alarm scheduled successfully with sound=\(soundName ?? "<system default>")")
         } catch {
+            let ns = error as NSError
             print("[SnoozeAlarmIntent] next schedule failed: \(error)")
+            print("[SnoozeAlarmIntent.ERR] domain=\(ns.domain) code=\(ns.code)")
+            print("[SnoozeAlarmIntent.ERR] localizedDescription=\(ns.localizedDescription)")
+            print("[SnoozeAlarmIntent.ERR] debugDescription=\(ns.debugDescription)")
+            print("[SnoozeAlarmIntent.ERR] userInfo=\(ns.userInfo)")
+            if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError {
+                print("[SnoozeAlarmIntent.ERR] underlying: domain=\(underlying.domain) code=\(underlying.code) desc=\(underlying.localizedDescription) userInfo=\(underlying.userInfo)")
+            }
         }
 
         return .result()
@@ -162,41 +173,96 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             secondaryIntent = nil
         }
 
-        // Proven working snooze pattern (memory 2026-04-09, on-device):
-        //   schedule = .fixed(now + buffer)
-        //   countdownDuration = .init(preAlert: snooze - buffer, postAlert: nil)
-        //   presentation includes AlarmPresentation.Countdown
-        // AlarmKit rings at schedule + preAlert = now + snooze. Any
-        // variant of this shape (bare `.fixed(now + snooze)`, or countdown
-        // without Countdown presentation) throws Code=0 at schedule time.
-        let schedulingBuffer: TimeInterval = 3
-        let countdownStart = Date().addingTimeInterval(schedulingBuffer)
-        let preAlertSeconds = max(1, snoozeDurationSeconds - schedulingBuffer)
+        // Diagnostic phase. Start at 1 (minimum config), add a layer,
+        // rebuild, test. First phase that throws Code=0 identifies the
+        // culprit. Phases:
+        //   1: bare alert, .fixed(now+65s), no countdown, no secondary, default sound
+        //   2: +  .fixed(now+3s) with preAlert=62s, still no countdown presentation
+        //   3: + AlarmPresentation.Countdown in presentation
+        //   4: + secondaryIntent
+        //   5: + custom sound (.named(soundName))
+        //   6: phase 1 (no countdown / no Live Activity) + secondaryIntent + custom sound
+        let phase: Int = 6
 
-        let countdownContent = AlarmPresentation.Countdown(
-            title: "Alarm ringing soon",
-            pauseButton: AlarmButton(
-                text: "Skip",
-                textColor: .white,
-                systemImageName: "forward.fill"
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm:ss.SSS"
+
+        let schedulingBuffer: TimeInterval = 3
+        let effectiveSnooze = max(snoozeDurationSeconds, 60) // enforce ≥60s
+        let countdownStart = Date().addingTimeInterval(schedulingBuffer)
+        let preAlertSeconds = max(1, effectiveSnooze - schedulingBuffer)
+        let bareFireDate = Date().addingTimeInterval(effectiveSnooze + schedulingBuffer)
+
+        // Build presentation per phase.
+        let presentation: AlarmPresentation
+        if phase >= 3 {
+            let countdownContent = AlarmPresentation.Countdown(
+                title: "Alarm ringing soon",
+                pauseButton: AlarmButton(
+                    text: "Skip",
+                    textColor: .white,
+                    systemImageName: "forward.fill"
+                )
             )
-        )
-        let presentation = AlarmPresentation(alert: alert, countdown: countdownContent)
+            presentation = AlarmPresentation(alert: alert, countdown: countdownContent)
+        } else {
+            presentation = AlarmPresentation(alert: alert)
+        }
+
         let attributes = AlarmAttributes<AlarmioMetadata>(
             presentation: presentation,
             tintColor: .blue
         )
 
+        // countdownDuration + schedule varies by phase.
+        let countdownDuration: Alarm.CountdownDuration?
+        let schedule: Alarm.Schedule
+        switch phase {
+        case 1:
+            countdownDuration = nil
+            schedule = .fixed(bareFireDate)
+        default:
+            countdownDuration = .init(preAlert: preAlertSeconds, postAlert: nil)
+            schedule = .fixed(countdownStart)
+        }
+
+        // secondaryIntent per phase.
+        let phaseSecondaryIntent: (any LiveActivityIntent)? = phase >= 4 ? secondaryIntent : nil
+
+        // sound per phase.
+        let phaseSound: AlertConfiguration.AlertSound
+        if phase >= 5, let name = soundName {
+            phaseSound = .named(name)
+        } else {
+            phaseSound = .default
+        }
+
         let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: .init(preAlert: preAlertSeconds, postAlert: nil),
-            schedule: .fixed(countdownStart),
+            countdownDuration: countdownDuration,
+            schedule: schedule,
             attributes: attributes,
             stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
-            secondaryIntent: secondaryIntent,
-            sound: soundName.map { .named($0) } ?? .default
+            secondaryIntent: phaseSecondaryIntent,
+            sound: phaseSound
         )
 
+        let preCallDate = Date()
+        print("[SnoozeAlarmIntent.PHASE] phase=\(phase) preSchedule=\(fmt.string(from: preCallDate))")
+        print("[SnoozeAlarmIntent.CFG] hasCountdownPresentation=\(phase >= 3) hasSecondaryIntent=\(phaseSecondaryIntent != nil) soundIsDefault=\(phase < 5 || soundName == nil) countdownDuration.preAlert=\(countdownDuration?.preAlert ?? -1) scheduleFireDate=\(fmt.string(from: phase == 1 ? bareFireDate : countdownStart))")
+        print("[SnoozeAlarmIntent.AUTH] extensionAuthState=\(AlarmManager.shared.authorizationState)")
+
+        // Defensive: ensure the previous alarm slot is fully released
+        // before scheduling with the same UUID. Sometimes AlarmKit's
+        // stop() returns before alarmd has finished tearing down the
+        // record, and schedule() with the same UUID throws Code=0.
+        try? AlarmManager.shared.cancel(id: alarmID)
+        try? await Task.sleep(nanoseconds: 200_000_000)  // 200ms
+        print("[SnoozeAlarmIntent.T] cancelled + slept 200ms, scheduling now")
+
         _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
+
+        let postCallDate = Date()
+        print("[SnoozeAlarmIntent.T] phase=\(phase) postSchedule=\(fmt.string(from: postCallDate)) schedCallTook=\(Int(postCallDate.timeIntervalSince(preCallDate) * 1000))ms")
     }
 
     private func buildTitle(for alarm: AlarmConfiguration) -> LocalizedStringResource {
