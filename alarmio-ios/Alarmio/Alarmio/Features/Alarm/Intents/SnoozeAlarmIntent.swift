@@ -106,8 +106,19 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         let soundsDir = FileManager.default
             .urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sounds")
-        let soundName: String? = (try? FileManager.default.contentsOfDirectory(atPath: soundsDir.path))?
+        let allSoundFiles = (try? FileManager.default.contentsOfDirectory(atPath: soundsDir.path)) ?? []
+        print("[SnoozeAlarmIntent.FILES] soundsDir=\(soundsDir.path)")
+        print("[SnoozeAlarmIntent.FILES] contents=\(allSoundFiles)")
+        let soundName: String? = allSoundFiles
             .first(where: { $0.hasPrefix(prefix) && $0.hasSuffix(".mp3") })
+        if let soundName {
+            let url = soundsDir.appendingPathComponent(soundName)
+            let exists = FileManager.default.fileExists(atPath: url.path)
+            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? -1
+            print("[SnoozeAlarmIntent.FILES] resolved=\(soundName) exists=\(exists) size=\(size)B")
+        } else {
+            print("[SnoozeAlarmIntent.FILES] NO match for prefix=\(prefix) — will fall back to .default")
+        }
         print("[SnoozeAlarmIntent] next fire in \(alarm.snoozeInterval)min, snoozesRemaining=\(snoozesRemaining), sound=\(soundName ?? "<system default>") (unlimited=\(alarm.unlimitedSnooze))")
 
         do {
@@ -193,9 +204,12 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         let preAlertSeconds = max(1, effectiveSnooze - schedulingBuffer)
         let bareFireDate = Date().addingTimeInterval(effectiveSnooze + schedulingBuffer)
 
-        // Build presentation per phase.
+        // Build presentation per phase. Phase 6 intentionally omits the
+        // Countdown presentation to keep the Live Activity from rendering
+        // a black bar (our widget returns EmptyView).
+        let wantsCountdownPresentation = (phase >= 3 && phase != 6)
         let presentation: AlarmPresentation
-        if phase >= 3 {
+        if wantsCountdownPresentation {
             let countdownContent = AlarmPresentation.Countdown(
                 title: "Alarm ringing soon",
                 pauseButton: AlarmButton(
@@ -214,24 +228,27 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             tintColor: .blue
         )
 
-        // countdownDuration + schedule varies by phase.
+        // countdownDuration + schedule varies by phase. Phase 6 uses the
+        // phase-1 bare `.fixed(now + snooze + buffer)` schedule with no
+        // countdownDuration, so no Live Activity timeline drives anything.
         let countdownDuration: Alarm.CountdownDuration?
         let schedule: Alarm.Schedule
-        switch phase {
-        case 1:
+        if phase == 1 || phase == 6 {
             countdownDuration = nil
             schedule = .fixed(bareFireDate)
-        default:
+        } else {
             countdownDuration = .init(preAlert: preAlertSeconds, postAlert: nil)
             schedule = .fixed(countdownStart)
         }
 
-        // secondaryIntent per phase.
-        let phaseSecondaryIntent: (any LiveActivityIntent)? = phase >= 4 ? secondaryIntent : nil
+        // secondaryIntent per phase — phase 4+ and phase 6 keep the
+        // intent so the rescheduled alarm's Snooze button actually fires.
+        let phaseSecondaryIntent: (any LiveActivityIntent)? = (phase >= 4 || phase == 6) ? secondaryIntent : nil
 
-        // sound per phase.
+        // sound per phase — phase 5+ and phase 6 use the composer-generated
+        // file; earlier phases fall back to the iOS system default.
         let phaseSound: AlertConfiguration.AlertSound
-        if phase >= 5, let name = soundName {
+        if (phase >= 5 || phase == 6), let name = soundName {
             phaseSound = .named(name)
         } else {
             phaseSound = .default
@@ -248,7 +265,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
 
         let preCallDate = Date()
         print("[SnoozeAlarmIntent.PHASE] phase=\(phase) preSchedule=\(fmt.string(from: preCallDate))")
-        print("[SnoozeAlarmIntent.CFG] hasCountdownPresentation=\(phase >= 3) hasSecondaryIntent=\(phaseSecondaryIntent != nil) soundIsDefault=\(phase < 5 || soundName == nil) countdownDuration.preAlert=\(countdownDuration?.preAlert ?? -1) scheduleFireDate=\(fmt.string(from: phase == 1 ? bareFireDate : countdownStart))")
+        print("[SnoozeAlarmIntent.CFG] hasCountdownPresentation=\(wantsCountdownPresentation) hasSecondaryIntent=\(phaseSecondaryIntent != nil) soundIsDefault=\(!(phase >= 5 || phase == 6) || soundName == nil) countdownDuration.preAlert=\(countdownDuration?.preAlert ?? -1) scheduleFireDate=\(fmt.string(from: (phase == 1 || phase == 6) ? bareFireDate : countdownStart))")
         print("[SnoozeAlarmIntent.AUTH] extensionAuthState=\(AlarmManager.shared.authorizationState)")
 
         // Defensive: ensure the previous alarm slot is fully released
