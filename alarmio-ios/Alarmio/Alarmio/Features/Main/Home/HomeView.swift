@@ -26,7 +26,6 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
-    @State private var editBlurVisible = false
     @State private var deletingAlarmIds: Set<UUID> = []
     @State private var emptyStateOpacity: Double = 0
 
@@ -53,13 +52,6 @@ struct HomeView: View {
             addButton
                 .premiumBlur(isVisible: fabVisible, delay: 0, duration: 0.3)
 
-            // Blur overlay for edit modal
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea()
-                .opacity(editBlurVisible ? 0.7 : 0)
-                .animation(.easeOut(duration: 0.3), value: editBlurVisible)
-                .allowsHitTesting(false)
         }
         .task {
             try? await Task.sleep(for: .milliseconds(100))
@@ -125,11 +117,8 @@ struct HomeView: View {
             }
         }
         .onChange(of: showEditModal) { _, showing in
-            editBlurVisible = showing
             if !showing {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    editingAlarmId = nil
-                }
+                editingAlarmId = nil
             }
         }
     }
