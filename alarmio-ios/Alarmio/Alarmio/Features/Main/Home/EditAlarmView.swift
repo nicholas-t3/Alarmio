@@ -259,7 +259,9 @@ struct EditAlarmView: View {
             return
         }
 
-        let soundName = audioManager.soundFileName(for: alarm.id, configured: alarm.soundFileName)
+        guard let soundName = audioManager.soundFileName(for: alarm.id, configured: alarm.soundFileName) else {
+            return
+        }
         let soundsDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Sounds")
         let fileURL = soundsDir.appendingPathComponent(soundName)

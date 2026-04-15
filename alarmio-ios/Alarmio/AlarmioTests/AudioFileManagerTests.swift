@@ -21,26 +21,24 @@ struct AudioFileManagerTests {
 
     // MARK: - Sound Resolution
 
-    @Test("No custom file, no configured name → default")
+    @Test("No custom file, no configured name → nil (system default)")
     func defaultFallback() {
         let manager = makeManager()
         let alarmId = UUID()
 
         let result = manager.soundFileName(for: alarmId, configured: nil)
-        #expect(result == AudioFileManager.defaultSoundFileName)
+        #expect(result == nil)
     }
 
-    @Test("Configured name with non-existent file → default")
+    @Test("Configured name with non-existent file → nil (system default)")
     func configuredButMissing() {
         let manager = makeManager()
         let alarmId = UUID()
 
         let result = manager.soundFileName(for: alarmId, configured: "nonexistent_file.mp3")
 
-        // File doesn't exist, so should fall through
-        // If custom alarm file also doesn't exist, returns default
         if !manager.hasCustomSound(for: alarmId) {
-            #expect(result == AudioFileManager.defaultSoundFileName)
+            #expect(result == nil)
         }
     }
 

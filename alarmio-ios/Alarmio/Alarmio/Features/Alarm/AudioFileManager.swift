@@ -13,10 +13,7 @@ final class AudioFileManager {
 
     // MARK: - Constants
 
-    static let defaultSoundFileName = "default_alarm.mp3"
     private static let soundsDirectoryName = "Sounds"
-    private static let defaultBundleResource = "calm_guide"
-    private static let defaultBundleExtension = "mp3"
 
     // MARK: - Computed Properties
 
@@ -30,7 +27,6 @@ final class AudioFileManager {
     func ensureSetup() {
         do {
             try ensureSoundsDirectory()
-            copyDefaultSoundIfNeeded()
             copyTestAlarmSoundsIfNeeded()
         } catch {
             print("[AudioFileManager] Setup failed: \(error)")
@@ -61,7 +57,10 @@ final class AudioFileManager {
 
     // MARK: - Sound Resolution
 
-    func soundFileName(for alarmId: UUID, configured: String? = nil) -> String {
+    /// Returns the filename to play for this alarm, or `nil` when no
+    /// generated file exists — callers should fall back to the iOS system
+    /// alarm sound via `AlertSound.default`.
+    func soundFileName(for alarmId: UUID, configured: String? = nil) -> String? {
         // Priority 1: Explicitly configured filename (from Composer)
         if let configured, fileExists(named: configured) {
             return configured
@@ -80,8 +79,7 @@ final class AudioFileManager {
             return match
         }
 
-        // Priority 4: Default fallback
-        return Self.defaultSoundFileName
+        return nil
     }
 
     func hasCustomSound(for alarmId: UUID) -> Bool {
@@ -160,25 +158,6 @@ final class AudioFileManager {
             at: soundsDirectory,
             withIntermediateDirectories: true
         )
-    }
-
-    private func copyDefaultSoundIfNeeded() {
-        let destinationURL = soundsDirectory.appendingPathComponent(Self.defaultSoundFileName)
-        guard !FileManager.default.fileExists(atPath: destinationURL.path) else { return }
-
-        guard let bundleURL = Bundle.main.url(
-            forResource: Self.defaultBundleResource,
-            withExtension: Self.defaultBundleExtension
-        ) else {
-            print("[AudioFileManager] Default sound not found in bundle")
-            return
-        }
-
-        do {
-            try FileManager.default.copyItem(at: bundleURL, to: destinationURL)
-        } catch {
-            print("[AudioFileManager] Failed to copy default sound: \(error)")
-        }
     }
 
     func soundFileURL(named fileName: String) -> URL {
