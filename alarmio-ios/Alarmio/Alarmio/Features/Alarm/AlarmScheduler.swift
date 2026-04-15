@@ -136,15 +136,7 @@ final class AlarmScheduler {
             sound: sound
         )
 
-        let preCallDate = Date()
-        let fmt = DateFormatter()
-        fmt.dateFormat = "HH:mm:ss.SSS"
-        print("[AlarmScheduler.T] preSchedule=\(fmt.string(from: preCallDate)) intendedRing=\(fmt.string(from: intendedFireDate))")
-
         _ = try await manager.schedule(id: config.id, configuration: alarmConfig)
-
-        let postCallDate = Date()
-        print("[AlarmScheduler.T] postSchedule=\(fmt.string(from: postCallDate)) schedCallTook=\(Int(postCallDate.timeIntervalSince(preCallDate) * 1000))ms")
         print("[AlarmScheduler] scheduled successfully")
     }
 
