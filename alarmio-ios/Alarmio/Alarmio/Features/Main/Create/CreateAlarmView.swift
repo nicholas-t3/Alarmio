@@ -51,6 +51,7 @@ struct CreateAlarmView: View {
     @State private var isRegenerating: Bool = false
     @State private var showRegenSuccess: Bool = false
     @State private var regenSuccessTask: Task<Void, Never>?
+    @State private var showNameSheet: Bool = false
 
     // MARK: - Constants
 
@@ -482,6 +483,14 @@ struct CreateAlarmView: View {
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: confirmationCardVisible, delay: 0.1, duration: 0.5)
 
+                // Name row (under voice — matches voice card dimensions)
+                NameRowCard(name: committed.name, style: .clear) {
+                    HapticManager.shared.softTap()
+                    showNameSheet = true
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
+
                 // Customize (tone + reason + intensity)
                 CustomizeCard(
                     tone: $draft.tone,
@@ -489,12 +498,12 @@ struct CreateAlarmView: View {
                     intensity: $draft.intensity
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
-                .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
+                .premiumBlur(isVisible: confirmationCardVisible, delay: 0.2, duration: 0.5)
 
                 // Regenerate button
                 regenerateButton
                     .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0.2, duration: 0.5)
+                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0.25, duration: 0.5)
 
                 Spacer(minLength: 0)
                     .frame(height: 20)
@@ -504,6 +513,14 @@ struct CreateAlarmView: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
         .mask(scrollFadeMask)
+        .sheet(isPresented: $showNameSheet) {
+            NameAlarmSheet(initialName: committed.name ?? "") { newName in
+                committed.name = newName.isEmpty ? nil : newName
+            }
+            .presentationDetents([.height(240)])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(Color(hex: "0f1a2e"))
+        }
     }
 
     // MARK: - Confirmation: Alarm Preview Card

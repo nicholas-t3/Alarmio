@@ -65,6 +65,9 @@ enum ContentFlag: String, CaseIterable, Codable, Sendable {
 struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     var id: UUID = UUID()
     var isEnabled: Bool = true
+    /// User-provided display name. Optional — nil renders as "None" in the
+    /// edit sheet and is omitted from the home card. Max 40 chars by UI.
+    var name: String?
     var wakeTime: Date?
     var repeatDays: [Int]?
     var leaveTime: Date?

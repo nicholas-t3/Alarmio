@@ -46,6 +46,14 @@ struct AlarmCardView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
 
+                    // Name (optional, primary info line)
+                    if let name = alarm.name, !name.isEmpty {
+                        Text(name)
+                            .font(AppTypography.labelSmall)
+                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.95 : 0.4))
+                            .lineLimit(1)
+                    }
+
                     // Schedule
                     Text(scheduleSummary)
                         .font(AppTypography.labelSmall)
@@ -122,6 +130,7 @@ struct AlarmCardView: View {
         AlarmCardView(
             alarm: AlarmConfiguration(
                 isEnabled: true,
+                name: "Weekday Focus",
                 wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
                 repeatDays: [1, 2, 3, 4, 5],
                 tone: .calm,

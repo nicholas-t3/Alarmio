@@ -12,7 +12,7 @@ import SwiftUI
 
 struct EditSummaryDetent: CustomPresentationDetent {
     static func height(in context: Context) -> CGFloat? {
-        context.maxDetentValue * 0.55
+        context.maxDetentValue * 0.65
     }
 }
 
@@ -69,6 +69,7 @@ struct EditAlarmSheetContent: View {
         _editWhyContext = State(initialValue: alarm.whyContext)
         _editLeaveTime = State(initialValue: alarm.leaveTime)
         _editSoundFileName = State(initialValue: alarm.soundFileName)
+        _editName = State(initialValue: alarm.name ?? "")
 
         let initialIndex: Int
         if let persona = alarm.voicePersona,
@@ -100,6 +101,8 @@ struct EditAlarmSheetContent: View {
     @State private var editWhyContext: WhyContext?
     @State private var editLeaveTime: Date?
     @State private var editSoundFileName: String?
+    @State private var editName: String
+    @FocusState private var nameFieldFocused: Bool
     @State private var activePage: EditPage = .summary
     @State private var showDetail = false
     @State private var contentVisible = true
@@ -174,6 +177,11 @@ struct EditAlarmSheetContent: View {
             || editIntensity != alarm.intensity
             || editWhyContext != alarm.whyContext
             || editSoundFileName != alarm.soundFileName
+            || normalizedEditName != (alarm.name ?? "")
+    }
+
+    private var normalizedEditName: String {
+        editName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var hasStyleChanges: Bool {
@@ -225,6 +233,7 @@ struct EditAlarmSheetContent: View {
     private func detentForPage(_ page: EditPage) -> PresentationDetent {
         switch page {
         case .summary: return Self.summaryDetent
+        case .name: return Self.compactDetent
         case .schedule: return Self.detailDetent
         case .snooze: return Self.compactDetent
         case .style: return Self.fullDetent
@@ -262,6 +271,8 @@ struct EditAlarmSheetContent: View {
             if showDetail {
                 Group {
                     switch activePage {
+                    case .name:
+                        namePage
                     case .schedule:
                         schedulePage
                     case .snooze:
@@ -350,6 +361,7 @@ struct EditAlarmSheetContent: View {
 
     private func navigateBack() {
         voicePlayer.stop()
+        nameFieldFocused = false
 
         // Phase 1: blur out current content
         contentVisible = false
@@ -378,6 +390,16 @@ struct EditAlarmSheetContent: View {
 
     private var summaryPage: some View {
         VStack(spacing: 12) {
+
+            // Name row
+            summaryRow(
+                icon: "tag.fill",
+                label: "Name",
+                value: normalizedEditName.isEmpty ? "None" : normalizedEditName,
+                detail: nil
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { navigateTo(.name) }
 
             // Schedule row
             summaryRow(
@@ -470,6 +492,67 @@ struct EditAlarmSheetContent: View {
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
         .padding(.top, 16)
+    }
+
+    // MARK: - Name Page
+
+    private var namePage: some View {
+        VStack(spacing: 16) {
+
+            // Back row
+            backButton
+
+            // Name field card
+            VStack(alignment: .leading, spacing: 10) {
+                Text("ALARM NAME")
+                    .font(AppTypography.caption)
+                    .tracking(AppTypography.captionTracking)
+                    .foregroundStyle(.white.opacity(0.4))
+
+                TextField(
+                    "",
+                    text: $editName,
+                    prompt: Text("Name this alarm").foregroundStyle(.white.opacity(0.3))
+                )
+                .font(AppTypography.labelLarge)
+                .foregroundStyle(.white)
+                .tint(.white)
+                .submitLabel(.done)
+                .focused($nameFieldFocused)
+                .onSubmit { navigateBack() }
+                .onChange(of: editName) { _, newValue in
+                    if newValue.count > 40 {
+                        editName = String(newValue.prefix(40))
+                    }
+                }
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            nameFieldFocused = false
+                            navigateBack()
+                        }
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white)
+                    }
+                }
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.top, 12)
+        .onAppear {
+            // Auto-focus after the premium blur transition settles so the
+            // keyboard animation doesn't race the sheet resize.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                nameFieldFocused = true
+            }
+        }
     }
 
     // MARK: - Schedule Page
@@ -875,6 +958,7 @@ struct EditAlarmSheetContent: View {
         updated.whyContext = editWhyContext
         updated.leaveTime = editLeaveTime
         updated.soundFileName = soundFileName
+        updated.name = normalizedEditName.isEmpty ? nil : normalizedEditName
 
         // Clean up orphaned nonce files from abandoned regenerations, but
         // preserve the nonce we're committing. Only runs when a new
@@ -912,6 +996,7 @@ struct EditAlarmSheetContent: View {
 
     private enum EditPage {
         case summary
+        case name
         case schedule
         case snooze
         case style
