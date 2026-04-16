@@ -7,6 +7,7 @@
 //
 
 import AlarmKit
+import StoreKit
 import SwiftUI
 import UIKit
 
@@ -26,6 +27,11 @@ struct HomeView: View {
     @State private var alarmsVisible = false
     @State private var fabVisible = false
     @State private var glowPulse = false
+    /// One-shot guard — set the first time the post-onboarding review
+    /// prompt fires so we never ask again on this install. Apple also
+    /// rate-limits requestReview to 3 per 365 days regardless.
+    @AppStorage("hasRequestedPostOnboardingReview") private var hasRequestedPostOnboardingReview = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var showCreateAlarm = false
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
@@ -62,6 +68,16 @@ struct HomeView: View {
             contentVisible = true
             try? await Task.sleep(for: .milliseconds(400))
             fabVisible = true
+
+            // Fire the native rating prompt once, the first time HomeView
+            // appears after onboarding has completed. Gated on an
+            // @AppStorage flag so we never ask a second time even if the
+            // user backgrounds and returns.
+            if hasCompletedOnboarding, !hasRequestedPostOnboardingReview {
+                hasRequestedPostOnboardingReview = true
+                try? await Task.sleep(for: .milliseconds(800))
+                requestAppReview()
+            }
         }
         .onChange(of: alarmStore.alarms.isEmpty) { _, isEmpty in
             // Trigger card animation once alarms first populate (load is async
@@ -355,6 +371,17 @@ struct HomeView: View {
         guard let date else { return .max }
         let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
         return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+    }
+
+    /// Present Apple's native rating prompt. iOS silently throttles this
+    /// to 3 requests per 365 days per user, and may choose not to show it
+    /// at all based on its own heuristics — both are expected.
+    private func requestAppReview() {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+        AppStore.requestReview(in: scene)
     }
 
     private func showAlarmsDisabledModal() {
