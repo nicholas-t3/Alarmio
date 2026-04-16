@@ -8,6 +8,30 @@
 
 import Foundation
 
+/// Snapshot of the inputs that produced a pro script preview. Compared
+/// against live draft values to decide whether the CTA button should read
+/// "Save" (clean) or "Regenerate" (dirty). Lives outside the view layer
+/// so both CreateAlarmView and EditAlarmSheetContent can share it.
+struct ProPreviewInputs: Equatable {
+    let prompt: String
+    let includes: Set<CustomPromptInclude>
+    let creativeSnoozes: Bool
+    let leaveTime: Date?
+    let maxSnoozes: Int
+    let unlimitedSnooze: Bool
+
+    static func from(_ draft: AlarmConfiguration) -> ProPreviewInputs {
+        ProPreviewInputs(
+            prompt: draft.customPrompt ?? "",
+            includes: draft.customPromptIncludes,
+            creativeSnoozes: draft.creativeSnoozes,
+            leaveTime: draft.leaveTime,
+            maxSnoozes: draft.maxSnoozes,
+            unlimitedSnooze: draft.unlimitedSnooze
+        )
+    }
+}
+
 /// Keeps `AlarmConfiguration.approvedScripts` in sync with later changes to
 /// snooze count or wake/leave times, without forcing the user to re-approve
 /// their text. Silent by design — the user's main message is preserved

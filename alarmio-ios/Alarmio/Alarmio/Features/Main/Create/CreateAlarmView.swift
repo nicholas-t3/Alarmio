@@ -57,6 +57,14 @@ struct CreateAlarmView: View {
     /// True while reconcile is running on the Next button. Shows a spinner
     /// on the button and prevents double-taps.
     @State private var isReconciling: Bool = false
+    /// When true, the confirmation card is swapped out for the Pro prompt
+    /// editor. Only meaningful during `.confirming` phase. Mirrors the
+    /// step-machine's `.proPrompt` step but inside the confirmation phase,
+    /// which doesn't have a step machine of its own.
+    @State private var confirmationProEditMode: Bool = false
+    /// The `alarmType` value at the moment the user entered the Pro editor
+    /// from the confirmation screen. Used to revert on back-without-save.
+    @State private var confirmationProOriginalAlarmType: AlarmType = .basic
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -173,15 +181,34 @@ struct CreateAlarmView: View {
     private var header: some View {
         HStack {
 
-            // Back / Close — hidden during generating, confirming, and
-            // while the Pro preview is in flight (user shouldn't be able to
-            // back out mid-generation).
-            let hideBack = phase != .configuring
+            // Back / Close — hidden during generating, during the
+            // confirmation summary card (terminal state, use Regenerate
+            // button instead), and while the Pro preview is in flight.
+            // Shown on configuring steps AND on confirmation's Pro editor
+            // substate.
+            let onConfirmPro = phase == .confirming && confirmationProEditMode
+            let hideBack = (phase == .generating)
+                || (phase == .confirming && !confirmationProEditMode)
                 || (step == .proPrompt && proPreviewIsGenerating)
+                || (onConfirmPro && proPreviewIsGenerating)
 
             if !hideBack {
                 Button {
                     HapticManager.shared.buttonTap()
+                    if onConfirmPro {
+                        // Back from Pro editor on confirmation → revert
+                        // alarmType if the user didn't save, then return
+                        // to the confirmation card.
+                        if !proSavedThisVisit {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                draft.alarmType = confirmationProOriginalAlarmType
+                            }
+                        }
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            confirmationProEditMode = false
+                        }
+                        return
+                    }
                     switch step {
                     case .configure:
                         dismiss()
@@ -199,7 +226,7 @@ struct CreateAlarmView: View {
                         transitionToStep(.customize)
                     }
                 } label: {
-                    Image(systemName: step == .configure ? "xmark" : "chevron.left")
+                    Image(systemName: (step == .configure && !onConfirmPro) ? "xmark" : "chevron.left")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
@@ -519,14 +546,40 @@ struct CreateAlarmView: View {
                 confirmationHero
             }
 
-            // Substate 2: Empty placeholder card
-            if confirmationHeroExited {
+            // Substate 2a: Confirmation summary card
+            if confirmationHeroExited && !confirmationProEditMode {
                 confirmationCard
+                    .transition(.opacity)
+            }
+
+            // Substate 2b: Pro editor (in place of the summary card)
+            if confirmationHeroExited && confirmationProEditMode {
+                confirmationProEditor
+                    .transition(.opacity)
             }
         }
         .task {
             await runConfirmationSequence()
         }
+    }
+
+    private var confirmationProEditor: some View {
+        ProPromptView(
+            prompt: Binding(
+                get: { draft.customPrompt ?? "" },
+                set: { draft.customPrompt = $0.isEmpty ? nil : $0 }
+            ),
+            includes: $draft.customPromptIncludes,
+            leaveTime: $draft.leaveTime,
+            creativeSnoozes: $draft.creativeSnoozes,
+            wakeTime: draft.wakeTime,
+            cardsVisible: confirmationCardVisible,
+            generated: proPreviewScripts?.first,
+            isGenerating: proPreviewIsGenerating,
+            errorMessage: proPreviewError,
+            onPromptChange: handleProPromptInputChange
+        )
+        .mask(scrollFadeMask)
     }
 
     private var confirmationHero: some View {
@@ -584,11 +637,19 @@ struct CreateAlarmView: View {
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
 
-                // Customize (tone + reason + intensity)
+                // Customize (tone + reason + intensity + Pro)
                 CustomizeCard(
                     tone: $draft.tone,
                     whyContext: $draft.whyContext,
-                    intensity: $draft.intensity
+                    intensity: $draft.intensity,
+                    isProOn: Binding(
+                        get: { draft.alarmType == .pro },
+                        set: { draft.alarmType = $0 ? .pro : .basic }
+                    ),
+                    showProRow: true,
+                    proCustomized: draft.approvedScripts != nil,
+                    onTapProRow: handleTapProRow,
+                    onFlipProOn: handleFlipProOn
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: confirmationCardVisible, delay: 0.2, duration: 0.5)
@@ -834,6 +895,17 @@ struct CreateAlarmView: View {
                         userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
                     )
                 }
+
+                // Reconcile pro scripts against any drift (snooze count,
+                // wake/leave time) introduced since the last save. Silent
+                // update of `approvedScripts`. No-op for basic alarms.
+                if let snapshot = lastProSnapshot, draft.alarmType == .pro {
+                    let reconciler = ProScriptReconciler(composer: composerService)
+                    let reconciled = try await reconciler.reconcile(from: snapshot, to: draft)
+                    draft = reconciled
+                    lastProSnapshot = reconciled
+                }
+
                 let newFileName = try await composerService.generateAndDownloadAudio(for: draft)
                 promoteDraftToCommitted(soundFileName: newFileName)
                 isRegenerating = false
@@ -1116,7 +1188,16 @@ struct CreateAlarmView: View {
             // No button while generating — keep the layout slot empty
             Color.clear.frame(height: 0)
         case .confirming:
-            confirmingBottomBar
+            if confirmationProEditMode {
+                // Pro editor is swapped over the confirmation card. Reuse
+                // the same bottom bar the step-machine .proPrompt uses.
+                proPromptBottomBar
+                    .padding(.horizontal, AppButtons.horizontalPadding)
+                    .padding(.bottom, AppSpacing.screenBottom)
+                    .premiumBlur(isVisible: confirmationCardVisible, delay: 0, duration: 0.4)
+            } else {
+                confirmingBottomBar
+            }
         }
     }
 
@@ -1180,6 +1261,14 @@ struct CreateAlarmView: View {
         let promptText = draft.customPrompt ?? ""
         let canGenerate = !proPreviewIsGenerating && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let isDirty = hasResult && proPreviewSnapshot != ProPreviewInputs.from(draft)
+        // If the current preview is already what's persisted on the draft
+        // AND inputs haven't drifted since, there's literally nothing to
+        // save — disable the button so the user just taps Back.
+        let alreadyPersisted = proPreviewScripts == draft.approvedScripts
+        let cleanAndPersisted = hasResult && !isDirty && alreadyPersisted
+        let tappable = !proPreviewIsGenerating
+            && !cleanAndPersisted
+            && (isDirty || canGenerate || (hasResult && !alreadyPersisted))
         let label: String = {
             if proPreviewIsGenerating { return "" }
             if hasResult { return isDirty ? "Regenerate" : "Save" }
@@ -1187,15 +1276,24 @@ struct CreateAlarmView: View {
         }()
 
         Button {
-            if proPreviewIsGenerating { return }
-            if hasResult && !isDirty {
+            if !tappable { return }
+            if hasResult && !isDirty && !alreadyPersisted {
                 HapticManager.shared.success()
                 draft.approvedScripts = proPreviewScripts
                 draft.alarmType = .pro
                 proSavedThisVisit = true
                 // Freeze the draft so the reconciler can detect later drift.
                 lastProSnapshot = draft
-                transitionToStep(.customize)
+                if phase == .confirming {
+                    // Return to the confirmation card. Do NOT regenerate
+                    // audio — that's the Regenerate button's job, same as
+                    // any other field change on this screen.
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        confirmationProEditMode = false
+                    }
+                } else {
+                    transitionToStep(.customize)
+                }
             } else {
                 HapticManager.shared.buttonTap()
                 Task { await runProPreview() }
@@ -1215,8 +1313,64 @@ struct CreateAlarmView: View {
             .animation(.easeInOut(duration: 0.25), value: proPreviewIsGenerating)
             .animation(.easeInOut(duration: 0.25), value: label)
         }
-        .primaryButton(isEnabled: hasResult || canGenerate)
-        .disabled(proPreviewIsGenerating || !(hasResult || canGenerate))
+        .primaryButton(isEnabled: tappable)
+        .disabled(!tappable)
+    }
+
+    /// True when the draft differs from the committed config in any way
+    /// that affects the generated audio. Used by the Schedule Alarm button
+    /// to decide whether to regenerate first. Mirrors the fields checked
+    /// in EditAlarmSheetContent's hasAudioAffectingChanges.
+    private var draftDiffersFromCommitted: Bool {
+        draft.tone != committed.tone
+            || draft.whyContext != committed.whyContext
+            || draft.intensity != committed.intensity
+            || draft.voicePersona != committed.voicePersona
+            || draft.alarmType != committed.alarmType
+            || draft.approvedScripts != committed.approvedScripts
+            || draft.customPrompt != committed.customPrompt
+            || draft.customPromptIncludes != committed.customPromptIncludes
+            || draft.creativeSnoozes != committed.creativeSnoozes
+    }
+
+    private var scheduleButtonLabel: String {
+        if isRegenerating { return "Regenerating…" }
+        if draftDiffersFromCommitted { return "Regenerate & Schedule" }
+        return "Schedule Alarm"
+    }
+
+    private func commitAndSchedule() {
+        var configured = committed
+        configured.isEnabled = true
+        // Basic alarms drop any Pro-only fields left over from an
+        // aborted Pro flow so they don't confuse the backend or linger
+        // in persisted state.
+        if configured.alarmType == .basic {
+            configured.approvedScripts = nil
+            configured.customPrompt = nil
+            configured.customPromptIncludes = []
+        }
+        onCreate(configured)
+        dismiss()
+    }
+
+    /// Called when the user taps Schedule but the draft has pending
+    /// changes. Triggers `regenerateAlarm()` — which reconciles + re-TTSes
+    /// — and then commits once `committed` reflects the new draft.
+    private func scheduleAfterRegeneration() {
+        regenerateAlarm()
+        Task { @MainActor in
+            // Wait for isRegenerating to flip false. regenerateAlarm sets
+            // it on the MainActor so we can poll cheaply.
+            while isRegenerating {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            // If committed now matches the draft, we're good. If not
+            // (error path), regenerateAlarm already surfaced the alert;
+            // bail silently.
+            guard !draftDiffersFromCommitted else { return }
+            commitAndSchedule()
+        }
     }
 
     private var confirmingBottomBar: some View {
@@ -1224,20 +1378,17 @@ struct CreateAlarmView: View {
             HapticManager.shared.buttonTap()
             voicePlayer.stop()
 
-            var configured = committed
-            configured.isEnabled = true
-            // Basic alarms drop any Pro-only fields left over from an
-            // aborted Pro flow so they don't confuse the backend or linger
-            // in persisted state.
-            if configured.alarmType == .basic {
-                configured.approvedScripts = nil
-                configured.customPrompt = nil
-                configured.customPromptIncludes = []
+            if draftDiffersFromCommitted {
+                // User changed pro/tone/voice on confirmation but didn't
+                // tap Regenerate. Auto-regenerate first, then commit.
+                // `regenerateAlarm()` flips `isRegenerating` while it runs;
+                // we schedule the commit for when it settles.
+                scheduleAfterRegeneration()
+            } else {
+                commitAndSchedule()
             }
-            onCreate(configured)
-            dismiss()
         } label: {
-            Text("Schedule Alarm")
+            Text(scheduleButtonLabel)
         }
         .primaryButton(isEnabled: !isRegenerating)
         .disabled(isRegenerating)
@@ -1303,23 +1454,39 @@ struct CreateAlarmView: View {
     // MARK: - Pro Prompt Helpers
 
     /// Tapping the Pro row (not the toggle). Only navigates when Pro is
-    /// already on — turning it on is the toggle's job. Since Pro is
-    /// already on, the user has either already saved once or we're
-    /// re-entering an in-progress alarm, so any existing approved scripts
-    /// stand regardless of whether they Save again on this visit.
+    /// already on — turning it on is the toggle's job. On the confirmation
+    /// phase, swaps the confirmation card for the Pro editor in-place
+    /// instead of using the step machine.
     private func handleTapProRow() {
-        proSavedThisVisit = true
-        transitionToStep(.proPrompt)
+        if phase == .confirming {
+            confirmationProOriginalAlarmType = draft.alarmType
+            proSavedThisVisit = true
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                confirmationProEditMode = true
+            }
+        } else {
+            proSavedThisVisit = true
+            transitionToStep(.proPrompt)
+        }
     }
 
-    /// Toggling Pro on via the switch. Auto-navigates to the Pro screen so
-    /// the user can fill out their prompt without a second tap.
+    /// Toggling Pro on via the switch. Auto-navigates to the Pro editor.
+    /// On confirmation phase this swaps the confirmation card for the
+    /// editor in-place; on configuring phase it triggers a step transition.
     private func handleFlipProOn() {
         // IAP gating disabled for now — always open the Pro screen while
         // we're iterating on the UI.
         // if subscriptionService.isPro { ... } else { showPaywall = true }
-        proSavedThisVisit = false
-        transitionToStep(.proPrompt)
+        if phase == .confirming {
+            confirmationProOriginalAlarmType = .basic
+            proSavedThisVisit = false
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                confirmationProEditMode = true
+            }
+        } else {
+            proSavedThisVisit = false
+            transitionToStep(.proPrompt)
+        }
     }
 
     private func handleProPromptInputChange() {
@@ -1454,29 +1621,6 @@ struct CreateAlarmView: View {
             case 2:  self = .customize
             default: self = .configure
             }
-        }
-    }
-
-    /// Snapshot of the Pro-prompt inputs at the moment a preview was
-    /// generated. If the live draft's values diverge from these, the CTA
-    /// shows "Regenerate" instead of "Save".
-    struct ProPreviewInputs: Equatable {
-        let prompt: String
-        let includes: Set<CustomPromptInclude>
-        let creativeSnoozes: Bool
-        let leaveTime: Date?
-        let maxSnoozes: Int
-        let unlimitedSnooze: Bool
-
-        static func from(_ draft: AlarmConfiguration) -> ProPreviewInputs {
-            ProPreviewInputs(
-                prompt: draft.customPrompt ?? "",
-                includes: draft.customPromptIncludes,
-                creativeSnoozes: draft.creativeSnoozes,
-                leaveTime: draft.leaveTime,
-                maxSnoozes: draft.maxSnoozes,
-                unlimitedSnooze: draft.unlimitedSnooze
-            )
         }
     }
 

@@ -70,6 +70,23 @@ struct EditAlarmSheetContent: View {
         _editLeaveTime = State(initialValue: alarm.leaveTime)
         _editSoundFileName = State(initialValue: alarm.soundFileName)
         _editName = State(initialValue: alarm.name ?? "")
+        _editAlarmType = State(initialValue: alarm.alarmType)
+        _editApprovedScripts = State(initialValue: alarm.approvedScripts)
+        _editCustomPrompt = State(initialValue: alarm.customPrompt ?? "")
+        _editCustomPromptIncludes = State(initialValue: alarm.customPromptIncludes)
+        _editCreativeSnoozes = State(initialValue: alarm.creativeSnoozes)
+        _editProPreviewScripts = State(initialValue: alarm.approvedScripts)
+        // Seed the snapshot so on-open state is considered clean (Save,
+        // not Regenerate). A nil snapshot would always read as dirty vs
+        // any non-nil draft snapshot.
+        _editProPreviewSnapshot = State(initialValue: ProPreviewInputs(
+            prompt: alarm.customPrompt ?? "",
+            includes: alarm.customPromptIncludes,
+            creativeSnoozes: alarm.creativeSnoozes,
+            leaveTime: alarm.leaveTime,
+            maxSnoozes: alarm.maxSnoozes,
+            unlimitedSnooze: false
+        ))
 
         let initialIndex: Int
         if let persona = alarm.voicePersona,
@@ -117,6 +134,28 @@ struct EditAlarmSheetContent: View {
     @State private var reconciledApprovedScripts: [String]?
     @State private var showSaveSuccess = false
     @State private var saveSuccessTask: Task<Void, Never>?
+
+    // Pro fields — editable when the alarm is (or becomes) a pro alarm.
+    @State private var editAlarmType: AlarmType
+    @State private var editApprovedScripts: [String]?
+    @State private var editCustomPrompt: String
+    @State private var editCustomPromptIncludes: Set<CustomPromptInclude>
+    @State private var editCreativeSnoozes: Bool
+    /// Pro preview scratchpad used while the user is on the .proPrompt
+    /// page. Mirrors `proPreviewScripts` in CreateAlarmView.
+    @State private var editProPreviewScripts: [String]?
+    @State private var editProPreviewIsGenerating: Bool = false
+    @State private var editProPreviewError: String?
+    @State private var editProPreviewSnapshot: ProPreviewInputs?
+    /// Tracks whether the user pressed Save during the current visit to
+    /// the .proPrompt page. Reset on entry; consulted on back to decide
+    /// whether to revert the pro-related edits to their pre-entry values.
+    @State private var proEditDidSaveThisVisit: Bool = false
+    /// Snapshot of all pro-editable fields taken on entry to the Pro page,
+    /// so back-without-save can revert the lot. The Pro page edits these
+    /// through bindings, so writes land immediately — the revert is how
+    /// we get "back throws away changes" semantics.
+    @State private var proEditRestore: ProEditRestore?
 
     // MARK: - Detent Constants
 
@@ -183,6 +222,7 @@ struct EditAlarmSheetContent: View {
             || editWhyContext != alarm.whyContext
             || editSoundFileName != alarm.soundFileName
             || normalizedEditName != (alarm.name ?? "")
+            || hasProChanges
     }
 
     private var normalizedEditName: String {
@@ -203,8 +243,16 @@ struct EditAlarmSheetContent: View {
             || cal.component(.minute, from: editTime) != cal.component(.minute, from: originalTime)
     }
 
+    private var hasProChanges: Bool {
+        editAlarmType != alarm.alarmType
+            || editApprovedScripts != alarm.approvedScripts
+            || editCustomPrompt != (alarm.customPrompt ?? "")
+            || editCustomPromptIncludes != alarm.customPromptIncludes
+            || editCreativeSnoozes != alarm.creativeSnoozes
+    }
+
     private var hasAudioAffectingChanges: Bool {
-        hasTimeChanges || hasStyleChanges
+        hasTimeChanges || hasStyleChanges || hasProChanges
     }
 
     private var needsRegeneration: Bool {
@@ -242,6 +290,7 @@ struct EditAlarmSheetContent: View {
         case .schedule: return Self.detailDetent
         case .snooze: return Self.compactDetent
         case .style: return Self.fullDetent
+        case .proPrompt: return Self.fullDetent
         }
     }
 
@@ -284,6 +333,8 @@ struct EditAlarmSheetContent: View {
                         snoozePage
                     case .style:
                         stylePage
+                    case .proPrompt:
+                        proPromptPage
                     default:
                         EmptyView()
                     }
@@ -306,6 +357,11 @@ struct EditAlarmSheetContent: View {
         .onChange(of: editTone) { invalidateRegenerationFlag() }
         .onChange(of: editIntensity) { invalidateRegenerationFlag() }
         .onChange(of: editWhyContext) { invalidateRegenerationFlag() }
+        .onChange(of: editAlarmType) { invalidateRegenerationFlag() }
+        .onChange(of: editApprovedScripts) { invalidateRegenerationFlag() }
+        .onChange(of: editCustomPrompt) { invalidateRegenerationFlag() }
+        .onChange(of: editCustomPromptIncludes) { invalidateRegenerationFlag() }
+        .onChange(of: editCreativeSnoozes) { invalidateRegenerationFlag() }
         .onDisappear {
             voicePlayer.stop()
         }
@@ -630,11 +686,21 @@ struct EditAlarmSheetContent: View {
                 // Compact voice selector
                 compactVoiceCard
 
-                // Customize card
+                // Customize card (tone / reason / intensity / Pro)
                 CustomizeCard(
                     tone: $editTone,
                     whyContext: $editWhyContext,
                     intensity: $editIntensity,
+                    isProOn: Binding(
+                        get: { editAlarmType == .pro },
+                        set: { newValue in
+                            editAlarmType = newValue ? .pro : .basic
+                        }
+                    ),
+                    showProRow: true,
+                    proCustomized: (editApprovedScripts ?? []).isEmpty == false,
+                    onTapProRow: handleEditTapProRow,
+                    onFlipProOn: handleEditFlipProOn,
                     mode: .edit
                 )
 
@@ -685,6 +751,206 @@ struct EditAlarmSheetContent: View {
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    // MARK: - Pro Prompt Page
+
+    private var proPromptPage: some View {
+        VStack(spacing: 0) {
+
+            // Back row — reverts editAlarmType if not saved, then returns
+            // to the style page (not the summary).
+            HStack {
+                Button {
+                    if !proEditDidSaveThisVisit {
+                        editAlarmType = proEditOriginalAlarmType
+                    }
+                    navigateTo(.style)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Back")
+                            .font(AppTypography.labelMedium)
+                    }
+                    .foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .padding(.top, 12)
+
+            // Pro editor — reuses the same component as CreateAlarmView's
+            // .proPrompt step. Hardcoded cardsVisible=true because the edit
+            // sheet's blur system runs at the page level, not per card.
+            ProPromptView(
+                prompt: Binding(
+                    get: { editCustomPrompt },
+                    set: { editCustomPrompt = $0 }
+                ),
+                includes: $editCustomPromptIncludes,
+                leaveTime: $editLeaveTime,
+                creativeSnoozes: $editCreativeSnoozes,
+                wakeTime: editTime,
+                cardsVisible: true,
+                generated: editProPreviewScripts?.first,
+                isGenerating: editProPreviewIsGenerating,
+                errorMessage: editProPreviewError,
+                onPromptChange: { /* dirty-check handled by the Save button */ }
+            )
+
+            // Bottom bar — Generate Text / spinner / Save, same 3-state
+            // pattern as CreateAlarmView's proPromptBottomBar.
+            proPromptBottomBar
+                .padding(.horizontal, AppButtons.horizontalPadding)
+                .padding(.bottom, AppSpacing.screenBottom)
+        }
+    }
+
+    @ViewBuilder
+    private var proPromptBottomBar: some View {
+        let hasResult = !(editProPreviewScripts?.isEmpty ?? true)
+        let promptText = editCustomPrompt
+        let canGenerate = !editProPreviewIsGenerating
+            && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let draftSnapshot = proPreviewDraftSnapshot()
+        let isDirty = hasResult && editProPreviewSnapshot != draftSnapshot
+        let label: String = {
+            if editProPreviewIsGenerating { return "" }
+            if hasResult { return isDirty ? "Regenerate" : "Save" }
+            return "Generate Text"
+        }()
+
+        // Is the current preview already saved to the alarm config? If
+        // yes AND inputs are clean, there's nothing to do — disable the
+        // button so the user just taps Back.
+        let alreadyPersisted = editProPreviewScripts == editApprovedScripts
+        let cleanAndPersisted = hasResult && !isDirty && alreadyPersisted
+        // Tappable only when there's actual work: dirty inputs mean
+        // regenerate, clean-but-unsaved means commit the new scripts.
+        let tappable = !editProPreviewIsGenerating
+            && !cleanAndPersisted
+            && (isDirty || canGenerate || (hasResult && !alreadyPersisted))
+
+        Button {
+            if !tappable { return }
+            if hasResult && !isDirty && !alreadyPersisted {
+                HapticManager.shared.success()
+                editApprovedScripts = editProPreviewScripts
+                editAlarmType = .pro
+                proEditDidSaveThisVisit = true
+                invalidateRegenerationFlag()
+                navigateTo(.style)
+            } else {
+                HapticManager.shared.buttonTap()
+                Task { await runEditProPreview() }
+            }
+        } label: {
+            ZStack {
+                if editProPreviewIsGenerating {
+                    ProgressView().tint(.black).transition(.opacity)
+                } else {
+                    Text(label).contentTransition(.numericText()).transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: editProPreviewIsGenerating)
+            .animation(.easeInOut(duration: 0.25), value: label)
+        }
+        .primaryButton(isEnabled: tappable)
+        .disabled(!tappable)
+    }
+
+    /// Builds a CreateAlarmView.ProPreviewInputs snapshot from the current
+    /// edit-state values. Used to detect dirtiness against
+    /// `editProPreviewSnapshot` (set when the user last generated).
+    private func proPreviewDraftSnapshot() -> ProPreviewInputs {
+        ProPreviewInputs(
+            prompt: editCustomPrompt,
+            includes: editCustomPromptIncludes,
+            creativeSnoozes: editCreativeSnoozes,
+            leaveTime: editLeaveTime,
+            maxSnoozes: editMaxSnoozes,
+            unlimitedSnooze: false
+        )
+    }
+
+    private func runEditProPreview() async {
+        let promptText = editCustomPrompt
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !editProPreviewIsGenerating else { return }
+        guard let composerService else {
+            editProPreviewError = "Composer service unavailable."
+            HapticManager.shared.error()
+            return
+        }
+
+        // Build an AlarmConfiguration from the current edit state to pass
+        // as the draft (the endpoint uses voice/tone/persona fields).
+        var draft = alarm
+        draft.wakeTime = editTime
+        draft.voicePersona = editVoicePersona
+        draft.tone = editTone
+        draft.intensity = editIntensity
+        draft.whyContext = editWhyContext
+        draft.leaveTime = editLeaveTime
+        draft.maxSnoozes = editMaxSnoozes
+        draft.customPrompt = promptText
+        draft.customPromptIncludes = editCustomPromptIncludes
+        draft.creativeSnoozes = editCreativeSnoozes
+
+        let snoozeCount: Int = {
+            guard editCreativeSnoozes else { return 0 }
+            // Edit sheet doesn't expose unlimitedSnooze currently; treat
+            // as limited by default.
+            return editMaxSnoozes
+        }()
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            editProPreviewIsGenerating = true
+            editProPreviewError = nil
+            editProPreviewScripts = nil
+        }
+
+        do {
+            let scripts = try await composerService.generateCustomAlarmText(
+                draft: draft,
+                prompt: promptText,
+                includes: editCustomPromptIncludes,
+                snoozeCount: snoozeCount,
+                baseScript: nil
+            )
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                editProPreviewScripts = scripts
+                editProPreviewSnapshot = proPreviewDraftSnapshot()
+                editProPreviewIsGenerating = false
+            }
+            HapticManager.shared.softTap()
+        } catch {
+            let description = (error as? APIError)?.errorDescription ?? "Please try again."
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                editProPreviewError = description
+                editProPreviewIsGenerating = false
+            }
+            HapticManager.shared.error()
+        }
+    }
+
+    // MARK: - Pro Row Handlers
+
+    /// Tapping the Pro row (not the toggle). Only navigates when Pro is
+    /// already on — same contract as CreateAlarmView.
+    private func handleEditTapProRow() {
+        proEditDidSaveThisVisit = true
+        proEditOriginalAlarmType = editAlarmType
+        navigateTo(.proPrompt)
+    }
+
+    /// Toggling Pro on via the switch. Auto-navigates to the Pro page so
+    /// the user can fill out their prompt without a second tap.
+    private func handleEditFlipProOn() {
+        proEditDidSaveThisVisit = false
+        proEditOriginalAlarmType = .basic  // we know they just flipped from basic → pro
+        navigateTo(.proPrompt)
     }
 
     // MARK: - Alarm Preview Card
@@ -949,6 +1215,12 @@ struct EditAlarmSheetContent: View {
         config.leaveTime = editLeaveTime
         config.snoozeInterval = editSnoozeInterval
         config.maxSnoozes = editMaxSnoozes
+        // Pro fields — all mutable via the new Pro page.
+        config.alarmType = editAlarmType
+        config.approvedScripts = editApprovedScripts
+        config.customPrompt = editCustomPrompt.isEmpty ? nil : editCustomPrompt
+        config.customPromptIncludes = editCustomPromptIncludes
+        config.creativeSnoozes = editCreativeSnoozes
 
         // Reconcile pro scripts against any edit-sheet drift (snooze count,
         // wake/leave time). Silent update of `approvedScripts`. No-op for
@@ -984,11 +1256,25 @@ struct EditAlarmSheetContent: View {
         updated.leaveTime = editLeaveTime
         updated.soundFileName = soundFileName
         updated.name = normalizedEditName.isEmpty ? nil : normalizedEditName
+        // Pro fields — persisted from the edit-state.
+        updated.alarmType = editAlarmType
+        updated.approvedScripts = editApprovedScripts
+        updated.customPrompt = editCustomPrompt.isEmpty ? nil : editCustomPrompt
+        updated.customPromptIncludes = editCustomPromptIncludes
+        updated.creativeSnoozes = editCreativeSnoozes
         // If the regeneration path reconciled the pro scripts (e.g. snooze
         // count changed, or wake time was rewritten), persist those new
         // scripts so the saved config matches the audio files on disk.
         if let reconciledApprovedScripts {
             updated.approvedScripts = reconciledApprovedScripts
+        }
+        // Basic alarms drop any Pro-only fields left over from an aborted
+        // Pro flow so they don't linger in persisted state. Mirrors the
+        // behavior in CreateAlarmView's commitSave.
+        if updated.alarmType == .basic {
+            updated.approvedScripts = nil
+            updated.customPrompt = nil
+            updated.customPromptIncludes = []
         }
 
         // Clean up orphaned nonce files from abandoned regenerations, but
@@ -1031,6 +1317,7 @@ struct EditAlarmSheetContent: View {
         case schedule
         case snooze
         case style
+        case proPrompt
     }
 }
 
