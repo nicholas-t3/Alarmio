@@ -131,6 +131,55 @@ final class ComposerService {
         return response.scripts
     }
 
+    /// Surgically rewrites time references in existing pro scripts without
+    /// changing anything else. Returns a new array of the same length as
+    /// `scripts` with the old wake/leave time values swapped for new ones.
+    /// Voice, jokes, and structure are preserved word-for-word.
+    ///
+    /// At least one of (oldWake + newWake) or (oldLeave + newLeave) must be
+    /// provided. Pass nil for the pair that didn't change.
+    func rewriteAlarmTimes(
+        draft: AlarmConfiguration,
+        scripts: [String],
+        oldWake: Date?,
+        newWake: Date?,
+        oldLeave: Date?,
+        newLeave: Date?
+    ) async throws -> [String] {
+        if DevFlags.skipGeneration {
+            try await Task.sleep(nanoseconds: 800_000_000)
+            return scripts.map { stubRewriteScript($0, oldWake: oldWake, newWake: newWake) }
+        }
+
+        let request = RewriteAlarmTimesRequest.from(
+            alarm: draft,
+            timezone: TimeZone.current,
+            scripts: scripts,
+            oldWake: oldWake,
+            newWake: newWake,
+            oldLeave: oldLeave,
+            newLeave: newLeave
+        )
+
+        print("[Composer] >>> invoking generate-custom-alarm-text (mode=rewrite, scripts=\(scripts.count), wakeDrift=\(request.old_wake_time_local != nil), leaveDrift=\(request.old_leave_time_local != nil))")
+
+        let response: GenerateCustomAlarmTextResponse = try await apiClient.invokeFunction(
+            "generate-custom-alarm-text",
+            body: request
+        )
+
+        print("[Composer] <<< rewrote \(response.scripts.count) scripts")
+        return response.scripts
+    }
+
+    private func stubRewriteScript(_ script: String, oldWake: Date?, newWake: Date?) -> String {
+        guard let oldWake, let newWake else { return script }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return script.replacingOccurrences(of: f.string(from: oldWake), with: f.string(from: newWake))
+    }
+
     private func stubCustomAlarmScripts(
         prompt: String,
         includes: Set<CustomPromptInclude>,
@@ -367,4 +416,70 @@ struct GenerateCustomAlarmTextRequest: Codable, Sendable {
 
 struct GenerateCustomAlarmTextResponse: Codable, Sendable {
     let scripts: [String]
+}
+
+// MARK: - Rewrite Alarm Times
+
+/// Sent to the same `generate-custom-alarm-text` endpoint but with the
+/// rewrite-mode fields populated. `rewrite_scripts` triggers the time-swap
+/// branch on the backend; `snooze_count` and `custom_prompt` are ignored in
+/// that mode but are kept in the payload so the request shape stays
+/// consistent.
+struct RewriteAlarmTimesRequest: Codable, Sendable {
+    let voice_persona: String
+    let tone: String?
+    let intensity: String?
+    let why_context: String?
+    let custom_prompt: String
+    let includes: [String]
+    let wake_time_local: String?
+    let leave_time_local: String?
+    let timezone: String
+    let snooze_count: Int
+    let snooze_interval_minutes: Int?
+    let rewrite_scripts: [String]
+    let old_wake_time_local: String?
+    let new_wake_time_local: String?
+    let old_leave_time_local: String?
+    let new_leave_time_local: String?
+    let uses_24_hour: Bool
+
+    static func from(
+        alarm: AlarmConfiguration,
+        timezone: TimeZone,
+        scripts: [String],
+        oldWake: Date?,
+        newWake: Date?,
+        oldLeave: Date?,
+        newLeave: Date?
+    ) -> RewriteAlarmTimesRequest {
+        let f = DateFormatter()
+        f.timeZone = timezone
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+
+        let uses24Hour = ComposeRequest.deviceUses24HourTime()
+        let newWakeLocal = (newWake ?? alarm.wakeTime).map { f.string(from: $0) }
+        let newLeaveLocal = (newLeave ?? alarm.leaveTime).map { f.string(from: $0) }
+
+        return RewriteAlarmTimesRequest(
+            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
+            tone: alarm.tone?.rawValue,
+            intensity: alarm.intensity?.rawValue,
+            why_context: alarm.whyContext?.rawValue,
+            custom_prompt: alarm.customPrompt ?? "",
+            includes: alarm.customPromptIncludes.map(\.rawValue).sorted(),
+            wake_time_local: newWakeLocal,
+            leave_time_local: newLeaveLocal,
+            timezone: timezone.identifier,
+            snooze_count: 0,
+            snooze_interval_minutes: alarm.snoozeInterval,
+            rewrite_scripts: scripts,
+            old_wake_time_local: oldWake.map { f.string(from: $0) },
+            new_wake_time_local: newWake.map { f.string(from: $0) },
+            old_leave_time_local: oldLeave.map { f.string(from: $0) },
+            new_leave_time_local: newLeave.map { f.string(from: $0) },
+            uses_24_hour: uses24Hour
+        )
+    }
 }

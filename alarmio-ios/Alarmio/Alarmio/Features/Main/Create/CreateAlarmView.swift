@@ -49,6 +49,14 @@ struct CreateAlarmView: View {
     /// screen. Reset on entry; consulted on exit to decide whether to revert
     /// `alarmType` back to `.basic` (if they backed out without saving).
     @State private var proSavedThisVisit: Bool = false
+    /// Snapshot of the draft at the moment the user last saved on the Pro
+    /// screen. Used as the "old" baseline by `ProScriptReconciler` when the
+    /// user comes back to step 1 and changes snooze count or wake time —
+    /// we need the original times/counts to detect drift.
+    @State private var lastProSnapshot: AlarmConfiguration?
+    /// True while reconcile is running on the Next button. Shows a spinner
+    /// on the button and prevents double-taps.
+    @State private var isReconciling: Bool = false
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -955,6 +963,19 @@ struct CreateAlarmView: View {
                         userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
                     )
                 }
+
+                // Reconcile pro scripts against any step-1 drift (snooze
+                // count changes, wake time changes). Silently updates
+                // `approvedScripts` in place. No-op for basic alarms.
+                if let snapshot = lastProSnapshot, draft.alarmType == .pro {
+                    let reconciler = ProScriptReconciler(composer: composerService)
+                    let reconciled = try await reconciler.reconcile(from: snapshot, to: draft)
+                    draft = reconciled
+                    // Refresh the snapshot so any subsequent retry uses the
+                    // latest known-good baseline.
+                    lastProSnapshot = reconciled
+                }
+
                 let initialFileName = try await composerService.generateAndDownloadAudio(for: draft)
                 statusTask.cancel()
                 statusTextVisible = false
@@ -1104,12 +1125,21 @@ struct CreateAlarmView: View {
         switch step {
         case .configure:
             Button {
+                if isReconciling { return }
                 HapticManager.shared.buttonTap()
-                transitionToStep(.customize)
+                Task { await reconcileThenAdvanceToCustomize() }
             } label: {
-                Text("Next")
+                ZStack {
+                    if isReconciling {
+                        ProgressView().tint(.black).transition(.opacity)
+                    } else {
+                        Text("Next").transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: isReconciling)
             }
-            .primaryButton()
+            .primaryButton(isEnabled: !isReconciling)
+            .disabled(isReconciling)
             .padding(.horizontal, AppButtons.horizontalPadding)
             .padding(.bottom, AppSpacing.screenBottom)
             .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
@@ -1163,6 +1193,8 @@ struct CreateAlarmView: View {
                 draft.approvedScripts = proPreviewScripts
                 draft.alarmType = .pro
                 proSavedThisVisit = true
+                // Freeze the draft so the reconciler can detect later drift.
+                lastProSnapshot = draft
                 transitionToStep(.customize)
             } else {
                 HapticManager.shared.buttonTap()
@@ -1307,6 +1339,60 @@ struct CreateAlarmView: View {
     private var proPreviewSnoozeCount: Int {
         guard draft.creativeSnoozes else { return 0 }
         return draft.unlimitedSnooze ? 1 : draft.maxSnoozes
+    }
+
+    /// Tapping Next from step 1. If the user previously saved a Pro preview,
+    /// reconcile approvedScripts against any step-1 changes (snoozes, wake
+    /// time, leave time) BEFORE transitioning to step 2. This way the Pro
+    /// screen — if they re-enter it — already shows fresh text instead of
+    /// stale text referencing the old time.
+    ///
+    /// Logs before/after scripts so you can eyeball what changed without
+    /// generating TTS audio.
+    private func reconcileThenAdvanceToCustomize() async {
+        // No snapshot means no Pro save has happened yet — skip reconcile.
+        guard let snapshot = lastProSnapshot, draft.alarmType == .pro else {
+            transitionToStep(.customize)
+            return
+        }
+        guard let composerService else {
+            transitionToStep(.customize)
+            return
+        }
+
+        isReconciling = true
+
+        let beforeScripts = draft.approvedScripts ?? []
+        print("[reconcile] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("[reconcile] Triggered from step1→step2 Next")
+        print("[reconcile] Snapshot → wake=\(snapshot.wakeTime?.description ?? "nil") leave=\(snapshot.leaveTime?.description ?? "nil") maxSnoozes=\(snapshot.maxSnoozes) unlimited=\(snapshot.unlimitedSnooze) creative=\(snapshot.creativeSnoozes)")
+        print("[reconcile] Current  → wake=\(draft.wakeTime?.description ?? "nil") leave=\(draft.leaveTime?.description ?? "nil") maxSnoozes=\(draft.maxSnoozes) unlimited=\(draft.unlimitedSnooze) creative=\(draft.creativeSnoozes)")
+        print("[reconcile] BEFORE scripts (count=\(beforeScripts.count)):")
+        for (i, s) in beforeScripts.enumerated() {
+            print("[reconcile]   [\(i)] \(s)")
+        }
+
+        let reconciler = ProScriptReconciler(composer: composerService)
+        do {
+            let reconciled = try await reconciler.reconcile(from: snapshot, to: draft)
+            draft = reconciled
+            lastProSnapshot = reconciled
+            // Keep the Pro screen's scratchpad in sync so if the user re-enters
+            // the Pro screen via the row, they see the updated text.
+            proPreviewScripts = reconciled.approvedScripts
+
+            let afterScripts = reconciled.approvedScripts ?? []
+            print("[reconcile] AFTER scripts (count=\(afterScripts.count)):")
+            for (i, s) in afterScripts.enumerated() {
+                print("[reconcile]   [\(i)] \(s)")
+            }
+            print("[reconcile] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        } catch {
+            print("[reconcile] FAILED: \(error). Proceeding with stale scripts.")
+        }
+
+        isReconciling = false
+        transitionToStep(.customize)
     }
 
     private func runProPreview() async {

@@ -110,6 +110,11 @@ struct EditAlarmSheetContent: View {
     @State private var voiceIndex: Int
     @State private var isRegenerating = false
     @State private var audioRegeneratedForCurrentEdits = false
+    /// Reconciled approvedScripts from the last regeneration. Nil means
+    /// either this is a basic alarm or reconcile hasn't run yet. When
+    /// non-nil, `commitSave` uses these instead of the original alarm's
+    /// scripts so the persisted config matches the audio on disk.
+    @State private var reconciledApprovedScripts: [String]?
     @State private var showSaveSuccess = false
     @State private var saveSuccessTask: Task<Void, Never>?
 
@@ -928,14 +933,34 @@ struct EditAlarmSheetContent: View {
             ))
         }
 
+        // `var config = alarm` copies every AlarmConfiguration field,
+        // including the pro ones (alarmType, approvedScripts,
+        // customPrompt, customPromptIncludes, creativeSnoozes). We then
+        // override the fields the edit sheet lets the user mutate. Keep
+        // this list in lockstep with `commitSave` — both should see the
+        // same final config, otherwise reconcile sees drift that never
+        // makes it onto disk (or vice versa).
         var config = alarm
         config.wakeTime = editTime
         config.voicePersona = editVoicePersona
         config.tone = editTone
         config.intensity = editIntensity
         config.whyContext = editWhyContext
+        config.leaveTime = editLeaveTime
+        config.snoozeInterval = editSnoozeInterval
+        config.maxSnoozes = editMaxSnoozes
 
-        print("[EditAlarm] Calling composer — voice=\(editVoicePersona?.rawValue ?? "nil"), tone=\(editTone?.rawValue ?? "nil"), intensity=\(editIntensity?.rawValue ?? "nil"), why=\(editWhyContext?.rawValue ?? "nil"), time=\(config.wakeTime?.description ?? "nil")")
+        // Reconcile pro scripts against any edit-sheet drift (snooze count,
+        // wake/leave time). Silent update of `approvedScripts`. No-op for
+        // basic alarms. Stash the result so `commitSave` persists the same
+        // scripts that produced the audio we're about to generate.
+        if config.alarmType == .pro {
+            let reconciler = ProScriptReconciler(composer: composerService)
+            config = try await reconciler.reconcile(from: alarm, to: config)
+            reconciledApprovedScripts = config.approvedScripts
+        }
+
+        print("[EditAlarm] Calling composer — voice=\(editVoicePersona?.rawValue ?? "nil"), tone=\(editTone?.rawValue ?? "nil"), intensity=\(editIntensity?.rawValue ?? "nil"), why=\(editWhyContext?.rawValue ?? "nil"), time=\(config.wakeTime?.description ?? "nil"), alarmType=\(config.alarmType.rawValue), approvedCount=\(config.approvedScripts?.count ?? 0)")
         return try await composerService.generateAndDownloadAudio(for: config)
     }
 
@@ -959,6 +984,12 @@ struct EditAlarmSheetContent: View {
         updated.leaveTime = editLeaveTime
         updated.soundFileName = soundFileName
         updated.name = normalizedEditName.isEmpty ? nil : normalizedEditName
+        // If the regeneration path reconciled the pro scripts (e.g. snooze
+        // count changed, or wake time was rewritten), persist those new
+        // scripts so the saved config matches the audio files on disk.
+        if let reconciledApprovedScripts {
+            updated.approvedScripts = reconciledApprovedScripts
+        }
 
         // Clean up orphaned nonce files from abandoned regenerations, but
         // preserve the nonce we're committing. Only runs when a new
