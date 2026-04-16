@@ -199,11 +199,19 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         await updateCountdownActivity(alarmID: alarmID, fireDate: fireDate)
     }
 
-    /// Update or start the consolidated countdown Activity to include
-    /// this alarm's fresh snooze fire date. If an Activity is already
-    /// running, we merge this alarm in. If not, we start a new one with
-    /// just this alarm. Uses the same `CountdownActivityAttributes`
-    /// registration as the main app's `LiveActivityManager`.
+    /// Update the consolidated countdown Activity to reflect this alarm's
+    /// fresh snooze fire date. UPDATE ONLY — does not start a new one.
+    ///
+    /// Background: `Activity.request` from a `LiveActivityIntent` running
+    /// on the lock screen fails with `ActivityAuthorizationError.visibility`
+    /// because the extension process isn't considered foreground. That's
+    /// an iOS rule, not something we can route around from here.
+    ///
+    /// Update-only is correct for snooze: the Activity is either (a)
+    /// already on-screen from the server push and `Activity.activities`
+    /// will see it, in which case update works — or (b) not on-screen,
+    /// in which case the next cron tick will pick up the new `fire_date`
+    /// from `alarm_schedules` and send a start push.
     private func updateCountdownActivity(alarmID: UUID, fireDate: Date) async {
         let newEntry = CountdownActivityAttributes.Entry(
             alarmID: alarmID.uuidString,
@@ -212,35 +220,22 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             tintHex: "3A6EAA"
         )
 
-        if let existing = Activity<CountdownActivityAttributes>.activities.first {
-            var entries = existing.content.state.entries.filter { $0.alarmID != alarmID.uuidString }
-            entries.append(newEntry)
-            entries.sort { $0.fireDate < $1.fireDate }
-
-            let displayCap = 2
-            let newState = CountdownActivityAttributes.ContentState(
-                entries: Array(entries.prefix(displayCap)),
-                additionalCount: max(0, entries.count - displayCap)
-            )
-            await existing.update(ActivityContent(state: newState, staleDate: nil))
-            print("[SnoozeAlarmIntent] merged entry into existing activity")
-        } else {
-            let attrs = CountdownActivityAttributes(userID: "intent")
-            let state = CountdownActivityAttributes.ContentState(
-                entries: [newEntry],
-                additionalCount: 0
-            )
-            do {
-                _ = try Activity.request(
-                    attributes: attrs,
-                    content: ActivityContent(state: state, staleDate: nil),
-                    pushType: .token
-                )
-                print("[SnoozeAlarmIntent] started new countdown activity")
-            } catch {
-                print("[SnoozeAlarmIntent] activity start failed: \(error)")
-            }
+        guard let existing = Activity<CountdownActivityAttributes>.activities.first else {
+            print("[SnoozeAlarmIntent] no running activity to update — server push will handle start on next tick")
+            return
         }
+
+        var entries = existing.content.state.entries.filter { $0.alarmID != alarmID.uuidString }
+        entries.append(newEntry)
+        entries.sort { $0.fireDate < $1.fireDate }
+
+        let displayCap = 2
+        let newState = CountdownActivityAttributes.ContentState(
+            entries: Array(entries.prefix(displayCap)),
+            additionalCount: max(0, entries.count - displayCap)
+        )
+        await existing.update(ActivityContent(state: newState, staleDate: nil))
+        print("[SnoozeAlarmIntent] updated existing activity")
     }
 
     private func buildTitle(for alarm: AlarmConfiguration) -> LocalizedStringResource {
