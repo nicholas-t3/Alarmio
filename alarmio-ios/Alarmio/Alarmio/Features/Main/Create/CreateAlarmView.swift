@@ -17,6 +17,7 @@ struct CreateAlarmView: View {
     @Environment(\.composerService) private var composerService
     @Environment(\.alertManager) private var alertManager
     @Environment(\.alarmStore) private var alarmStore
+    @Environment(\.subscriptionService) private var subscriptionService
 
     // MARK: - State
 
@@ -31,7 +32,11 @@ struct CreateAlarmView: View {
     @State private var committed = AlarmConfiguration(
         intensity: .gentle
     )
-    @State private var step: Int
+    @State private var step: Step
+    @State private var showPaywall: Bool = false
+    @State private var proPreviewGenerated: String?
+    @State private var proPreviewIsGenerating: Bool = false
+    @State private var proPreviewError: String?
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -65,7 +70,7 @@ struct CreateAlarmView: View {
         previewStatusText: String = "",
         onCreate: @escaping (AlarmConfiguration) -> Void
     ) {
-        self._step = State(initialValue: initialStep)
+        self._step = State(initialValue: Step(legacy: initialStep))
         self._phase = State(initialValue: initialPhase)
         self._generatingStatusText = State(initialValue: previewStatusText)
         self._sunriseProgress = State(initialValue: initialPhase == .configuring ? 0 : 1)
@@ -95,10 +100,10 @@ struct CreateAlarmView: View {
                 // Phase content
                 switch phase {
                 case .configuring:
-                    if step == 1 {
-                        stepOne
-                    } else {
-                        stepTwo
+                    switch step {
+                    case .configure: stepOne
+                    case .customize: stepTwo
+                    case .proPrompt: proPromptStep
                     }
 
                 case .generating:
@@ -133,6 +138,9 @@ struct CreateAlarmView: View {
         .onChange(of: draft.whyContext) { invalidateRegenSuccess() }
         .onChange(of: draft.intensity) { invalidateRegenSuccess() }
         .onChange(of: draft.voicePersona) { invalidateRegenSuccess() }
+        .sheet(isPresented: $showPaywall) {
+            PaywallSheet()
+        }
     }
 
     // MARK: - Subviews
@@ -144,13 +152,16 @@ struct CreateAlarmView: View {
             if phase == .configuring {
                 Button {
                     HapticManager.shared.buttonTap()
-                    if step == 2 {
-                        transitionToStep(1)
-                    } else {
+                    switch step {
+                    case .configure:
                         dismiss()
+                    case .customize:
+                        transitionToStep(.configure)
+                    case .proPrompt:
+                        transitionToStep(.customize)
                     }
                 } label: {
-                    Image(systemName: step == 2 ? "chevron.left" : "xmark")
+                    Image(systemName: step == .configure ? "xmark" : "chevron.left")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
@@ -249,14 +260,14 @@ struct CreateAlarmView: View {
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Customize (tone + reason + intensity + leave time)
+                // Customize (tone + reason + intensity + pro row)
                 CustomizeCard(
                     tone: $draft.tone,
                     whyContext: $draft.whyContext,
                     intensity: $draft.intensity,
-                    leaveTime: $draft.leaveTime,
-                    wakeTime: draft.wakeTime,
-                    showLeaveTime: true
+                    showProRow: true,
+                    proCustomized: draft.approvedScriptText != nil,
+                    onTapPro: handleTapPro
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
@@ -268,6 +279,27 @@ struct CreateAlarmView: View {
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
+        .mask(scrollFadeMask)
+    }
+
+    // MARK: - Step: Pro Prompt
+
+    private var proPromptStep: some View {
+        ProPromptView(
+            prompt: Binding(
+                get: { draft.customPrompt ?? "" },
+                set: { draft.customPrompt = $0.isEmpty ? nil : $0 }
+            ),
+            includes: $draft.customPromptIncludes,
+            leaveTime: $draft.leaveTime,
+            creativeSnoozes: $draft.creativeSnoozes,
+            wakeTime: draft.wakeTime,
+            cardsVisible: cardsVisible,
+            generated: proPreviewGenerated,
+            isGenerating: proPreviewIsGenerating,
+            errorMessage: proPreviewError,
+            onPromptChange: handleProPromptInputChange
+        )
         .mask(scrollFadeMask)
     }
 
@@ -1014,25 +1046,81 @@ struct CreateAlarmView: View {
         }
     }
 
+    @ViewBuilder
     private var configuringBottomBar: some View {
-        let isStep2Complete = draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
-        let isEnabled = step == 1 ? true : isStep2Complete
-
-        return Button {
-            HapticManager.shared.buttonTap()
-            if step == 1 {
-                transitionToStep(2)
-            } else {
-                startGeneration()
+        switch step {
+        case .configure:
+            Button {
+                HapticManager.shared.buttonTap()
+                transitionToStep(.customize)
+            } label: {
+                Text("Next")
             }
-        } label: {
-            Text(step == 1 ? "Next" : "Create Alarm")
+            .primaryButton()
+            .padding(.horizontal, AppButtons.horizontalPadding)
+            .padding(.bottom, AppSpacing.screenBottom)
+            .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
+
+        case .customize:
+            let isEnabled = draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
+            Button {
+                HapticManager.shared.buttonTap()
+                startGeneration()
+            } label: {
+                Text("Create Alarm")
+            }
+            .primaryButton(isEnabled: isEnabled)
+            .disabled(!isEnabled)
+            .padding(.horizontal, AppButtons.horizontalPadding)
+            .padding(.bottom, AppSpacing.screenBottom)
+            .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
+
+        case .proPrompt:
+            proPromptBottomBar
+                .padding(.horizontal, AppButtons.horizontalPadding)
+                .padding(.bottom, AppSpacing.screenBottom)
+                .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
         }
-        .primaryButton(isEnabled: isEnabled)
-        .disabled(!isEnabled)
-        .padding(.horizontal, AppButtons.horizontalPadding)
-        .padding(.bottom, AppSpacing.screenBottom)
-        .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
+    }
+
+    @ViewBuilder
+    private var proPromptBottomBar: some View {
+        if let text = proPreviewGenerated, !proPreviewIsGenerating {
+            HStack(spacing: 12) {
+                Button {
+                    HapticManager.shared.buttonTap()
+                    Task { await runProPreview() }
+                } label: {
+                    Text("Regenerate")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppButtons.height)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+
+                Button {
+                    HapticManager.shared.success()
+                    draft.approvedScriptText = text
+                    transitionToStep(.customize)
+                } label: {
+                    Text("Use This")
+                }
+                .primaryButton()
+            }
+        } else {
+            let promptText = draft.customPrompt ?? ""
+            let canGenerate = !proPreviewIsGenerating && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            Button {
+                HapticManager.shared.buttonTap()
+                Task { await runProPreview() }
+            } label: {
+                Text(proPreviewIsGenerating ? "Generating…" : "Generate Preview")
+            }
+            .primaryButton(isEnabled: canGenerate)
+            .disabled(!canGenerate)
+        }
     }
 
     private var confirmingBottomBar: some View {
@@ -1082,7 +1170,7 @@ struct CreateAlarmView: View {
 
     // MARK: - Private Methods
 
-    private func transitionToStep(_ newStep: Int) {
+    private func transitionToStep(_ newStep: Step) {
         guard !isTransitioning else { return }
         isTransitioning = true
         cardsVisible = false
@@ -1108,12 +1196,88 @@ struct CreateAlarmView: View {
         }
     }
 
+    // MARK: - Pro Prompt Helpers
+
+    private func handleTapPro() {
+        // IAP gating disabled for now — always open the Pro screen while
+        // we're iterating on the UI. Re-enable by swapping the two branches.
+        // if subscriptionService.isPro {
+        //     transitionToStep(.proPrompt)
+        // } else {
+        //     showPaywall = true
+        // }
+        transitionToStep(.proPrompt)
+    }
+
+    private func handleProPromptInputChange() {
+        // Clear the in-screen preview so the user is nudged back to
+        // "Generate preview" after editing inputs. The approved text on
+        // `draft.approvedScriptText` is intentionally retained (verbatim
+        // rule) — this only resets the ephemeral preview state.
+        guard proPreviewGenerated != nil || proPreviewError != nil else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            proPreviewGenerated = nil
+            proPreviewError = nil
+        }
+    }
+
+    private func runProPreview() async {
+        let promptText = draft.customPrompt ?? ""
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !proPreviewIsGenerating else { return }
+        guard let composerService else {
+            proPreviewError = "Composer service unavailable."
+            HapticManager.shared.error()
+            return
+        }
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            proPreviewIsGenerating = true
+            proPreviewError = nil
+            proPreviewGenerated = nil
+        }
+
+        do {
+            let text = try await composerService.previewAlarmText(
+                draft: draft,
+                prompt: promptText,
+                includes: draft.customPromptIncludes
+            )
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                proPreviewGenerated = text
+                proPreviewIsGenerating = false
+            }
+            HapticManager.shared.softTap()
+        } catch {
+            let description = (error as? APIError)?.errorDescription ?? "Please try again."
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                proPreviewError = description
+                proPreviewIsGenerating = false
+            }
+            HapticManager.shared.error()
+        }
+    }
+
     // MARK: - Phase
 
     enum Phase: Equatable {
         case configuring
         case generating
         case confirming
+    }
+
+    enum Step: Equatable {
+        case configure
+        case customize
+        case proPrompt
+
+        init(legacy: Int) {
+            switch legacy {
+            case 1:  self = .configure
+            case 2:  self = .customize
+            default: self = .configure
+            }
+        }
     }
 
     // MARK: - Hero Voice Data

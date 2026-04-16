@@ -82,6 +82,7 @@
 				Features/Alarm/Intents/SnoozeAlarmIntent.swift,
 				Features/Alarm/Intents/StopAlarmIntent.swift,
 				Global/Models/AlarmConfiguration.swift,
+				Global/Models/CustomPromptInclude.swift,
 			);
 			target = E18A8BEF2F8FFD3900F62B7C /* AlarmioWidgetExtension */;
 		};
@@ -603,6 +604,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Alarmio/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -643,6 +645,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Alarmio/Info.plist;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

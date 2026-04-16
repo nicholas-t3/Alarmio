@@ -89,6 +89,19 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     var difficulty: AlarmDifficulty?
     var whyContext: WhyContext?
 
+    /// Include flags for Pro custom-prompt generation. Defaulted empty so
+    /// persisted alarms without this field decode cleanly.
+    var customPromptIncludes: Set<CustomPromptInclude> = []
+
+    /// Exact text the user accepted on the Pro preview screen. When
+    /// non-nil, Composer uses this verbatim for index 0 and skips OpenAI.
+    var approvedScriptText: String?
+
+    /// When false, snoozes reuse a single loop audio file instead of
+    /// generating fresh per-snooze variants. Default true preserves the
+    /// current behavior for existing alarms.
+    var creativeSnoozes: Bool = true
+
     /// Filename in Library/Sounds/ for this alarm's custom audio. Nil = use default.
     var soundFileName: String?
 

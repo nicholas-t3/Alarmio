@@ -15,12 +15,12 @@ struct CustomizeCard: View {
     @Binding var tone: AlarmTone?
     @Binding var whyContext: WhyContext?
     @Binding var intensity: AlarmIntensity?
-    @Binding var leaveTime: Date?
 
     // MARK: - Constants
 
-    let wakeTime: Date?
-    let showLeaveTime: Bool
+    let showProRow: Bool
+    let proCustomized: Bool
+    let onTapPro: (() -> Void)?
     let mode: CardMode
 
     // MARK: - State
@@ -33,17 +33,17 @@ struct CustomizeCard: View {
         tone: Binding<AlarmTone?>,
         whyContext: Binding<WhyContext?>,
         intensity: Binding<AlarmIntensity?>,
-        leaveTime: Binding<Date?> = .constant(nil),
-        wakeTime: Date? = nil,
-        showLeaveTime: Bool = false,
+        showProRow: Bool = false,
+        proCustomized: Bool = false,
+        onTapPro: (() -> Void)? = nil,
         mode: CardMode = .standard
     ) {
         self._tone = tone
         self._whyContext = whyContext
         self._intensity = intensity
-        self._leaveTime = leaveTime
-        self.wakeTime = wakeTime
-        self.showLeaveTime = showLeaveTime
+        self.showProRow = showProRow
+        self.proCustomized = proCustomized
+        self.onTapPro = onTapPro
         self.mode = mode
     }
 
@@ -108,15 +108,11 @@ struct CustomizeCard: View {
                 intensityInlineSlider
             }
 
-            // Leave time (optional)
-            if showLeaveTime {
+            // Pro customization (optional)
+            if showProRow {
                 Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
-                leaveTimeRow
-
-                inlineExpandable(isOpen: leaveTime != nil) {
-                    leaveTimeInlinePicker
-                }
+                proRow
             }
         }
         .frame(maxWidth: .infinity)
@@ -287,151 +283,41 @@ struct CustomizeCard: View {
         .clipShape(Capsule())
     }
 
-    // MARK: - Leave Time
+    // MARK: - Pro Row
 
-    private var leaveTimeRow: some View {
-        let isOn = leaveTime != nil
+    private var proRow: some View {
+        Button {
+            HapticManager.shared.buttonTap()
+            onTapPro?()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "E9C46A"))
+                    .frame(width: 20)
 
-        return HStack(spacing: 12) {
-            Image(systemName: isOn ? "arrow.up.right.circle.fill" : Self.unsetIcon)
-                .font(.system(size: isOn ? 14 : 7))
-                .foregroundStyle(.white.opacity(isOn ? 0.9 : 0.3))
-                .frame(width: 20)
-                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                Text("Pro")
+                    .font(AppTypography.labelLarge)
+                    .foregroundStyle(.white)
 
-            Text("Time to Leave")
-                .font(AppTypography.labelLarge)
-                .foregroundStyle(.white)
+                Spacer(minLength: 0)
 
-            Spacer(minLength: 0)
-
-            Toggle("", isOn: Binding(
-                get: { leaveTime != nil },
-                set: { newValue in
-                    HapticManager.shared.selection()
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        if newValue {
-                            leaveTime = defaultLeaveTime()
-                            expandedFactor = nil
-                        } else {
-                            leaveTime = nil
-                        }
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(Color(hex: "0a1628"))
-        }
-        .padding(.vertical, 14)
-    }
-
-    private var leaveTimeInlinePicker: some View {
-        VStack(spacing: 16) {
-
-            Text("Your alarm will use this to let you know how much time you have before you need to leave.")
-                .font(AppTypography.labelSmall)
-                .foregroundStyle(.white.opacity(0.5))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8)
-
-            HStack(spacing: 16) {
-                Button {
-                    HapticManager.shared.selection()
-                    adjustLeaveTime(minutes: -5)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
-
-                HStack(spacing: 6) {
-                    Text(leaveTimeClockString)
-                        .font(AppTypography.labelLarge)
-                        .foregroundStyle(.white)
+                if proCustomized {
+                    Text("Custom prompt ready")
+                        .font(AppTypography.labelMedium)
+                        .foregroundStyle(.white.opacity(0.7))
                         .contentTransition(.numericText())
-
-                    if let period = leaveTimePeriodString {
-                        Text(period)
-                            .font(AppTypography.labelMedium)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .contentTransition(.numericText())
-                    }
                 }
-                .frame(width: 110)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: leaveTime)
 
-                Button {
-                    HapticManager.shared.selection()
-                    adjustLeaveTime(minutes: 5)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Circle())
-                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.3))
             }
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
-    }
-
-    // MARK: - Leave Time Helpers
-
-    private var leaveTimeClockString: String {
-        let date = leaveTime ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("jm")
-        let full = formatter.string(from: date)
-        let am = formatter.amSymbol ?? ""
-        let pm = formatter.pmSymbol ?? ""
-        return full
-            .replacingOccurrences(of: am, with: "")
-            .replacingOccurrences(of: pm, with: "")
-            .trimmingCharacters(in: .whitespaces)
-    }
-
-    private var leaveTimePeriodString: String? {
-        let date = leaveTime ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("jm")
-        let full = formatter.string(from: date)
-        let am = formatter.amSymbol ?? ""
-        let pm = formatter.pmSymbol ?? ""
-        if !am.isEmpty, full.contains(am) { return am }
-        if !pm.isEmpty, full.contains(pm) { return pm }
-        return nil
-    }
-
-    private func defaultLeaveTime() -> Date {
-        let base = wakeTime ?? Date()
-        let oneHourLater = base.addingTimeInterval(60 * 60)
-        return roundToFiveMinutes(oneHourLater)
-    }
-
-    private func roundToFiveMinutes(_ date: Date) -> Date {
-        let calendar = Calendar.current
-        let minute = calendar.component(.minute, from: date)
-        let rounded = Int((Double(minute) / 5.0).rounded()) * 5
-        let delta = rounded - minute
-        return calendar.date(byAdding: .minute, value: delta, to: date) ?? date
-    }
-
-    private func adjustLeaveTime(minutes: Int) {
-        guard let current = leaveTime else { return }
-        guard let wake = wakeTime else {
-            leaveTime = current.addingTimeInterval(TimeInterval(minutes * 60))
-            return
-        }
-        let proposed = current.addingTimeInterval(TimeInterval(minutes * 60))
-        let minAllowed = wake
-        let maxAllowed = wake.addingTimeInterval(60 * 60 * 12)
-        leaveTime = min(max(proposed, minAllowed), maxAllowed)
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: proCustomized)
     }
 
     // MARK: - Data
@@ -460,16 +346,31 @@ struct CustomizeCard: View {
     }
 }
 
-#Preview("With Leave Time") {
+#Preview("With Pro Row") {
     ZStack {
         Color(hex: "050505").ignoresSafeArea()
         CustomizeCard(
             tone: .constant(.calm),
             whyContext: .constant(nil),
             intensity: .constant(nil),
-            leaveTime: .constant(nil),
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
-            showLeaveTime: true
+            showProRow: true,
+            proCustomized: false,
+            onTapPro: { }
+        )
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+    }
+}
+
+#Preview("Pro Customized") {
+    ZStack {
+        Color(hex: "050505").ignoresSafeArea()
+        CustomizeCard(
+            tone: .constant(.calm),
+            whyContext: .constant(.work),
+            intensity: .constant(.balanced),
+            showProRow: true,
+            proCustomized: true,
+            onTapPro: { }
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
