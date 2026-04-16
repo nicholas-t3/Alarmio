@@ -169,6 +169,13 @@ struct CreateAlarmView: View {
         .onChange(of: draft.whyContext) { invalidateRegenSuccess() }
         .onChange(of: draft.intensity) { invalidateRegenSuccess() }
         .onChange(of: draft.voicePersona) { invalidateRegenSuccess() }
+        // Keep the layout anchored; keyboard draws over instead of pushing
+        // the pinned button up. Applied at root level so it takes effect
+        // across the fullScreenCover boundary.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // Tap anywhere outside a text field to dismiss the keyboard.
+        .contentShape(Rectangle())
+        .onTapGesture { dismissKeyboard() }
         // Debug: print full draft on every change. Uncomment to re-enable.
         // .onChange(of: draft) { _, newValue in
         //     print("[draft] ────────────────────────────────────────────")
@@ -399,6 +406,13 @@ struct CreateAlarmView: View {
             onPromptChange: handleProPromptInputChange
         )
         .mask(scrollFadeMask)
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
     }
 
     // MARK: - Voice Hero Card
@@ -1217,7 +1231,6 @@ struct CreateAlarmView: View {
                 // the same bottom bar the step-machine .proPrompt uses.
                 proPromptBottomBar
                     .padding(.horizontal, AppButtons.horizontalPadding)
-                    .padding(.bottom, AppSpacing.screenBottom)
                     .premiumBlur(isVisible: confirmationCardVisible, delay: 0, duration: 0.4)
             } else {
                 confirmingBottomBar
@@ -1274,7 +1287,6 @@ struct CreateAlarmView: View {
         case .proPrompt:
             proPromptBottomBar
                 .padding(.horizontal, AppButtons.horizontalPadding)
-                .padding(.bottom, AppSpacing.screenBottom)
                 .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
         }
     }
@@ -1339,6 +1351,7 @@ struct CreateAlarmView: View {
         }
         .primaryButton(isEnabled: tappable)
         .disabled(!tappable)
+        .padding(.top, 32)
     }
 
     /// True when the draft differs from the committed config in any way

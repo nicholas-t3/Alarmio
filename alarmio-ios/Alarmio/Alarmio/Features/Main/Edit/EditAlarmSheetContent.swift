@@ -811,8 +811,28 @@ struct EditAlarmSheetContent: View {
             // pattern as CreateAlarmView's proPromptBottomBar.
             proPromptBottomBar
                 .padding(.horizontal, AppButtons.horizontalPadding)
-                .padding(.bottom, AppSpacing.screenBottom)
         }
+        // Keep the VStack anchored to the sheet's safe area; let the
+        // keyboard slide over it instead of pushing the button up.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // Tap anywhere outside a text field to dismiss the keyboard.
+        .contentShape(Rectangle())
+        .onTapGesture { dismissKeyboard() }
+        // Done button on the keyboard toolbar.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { dismissKeyboard() }
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
     }
 
     @ViewBuilder
@@ -866,6 +886,7 @@ struct EditAlarmSheetContent: View {
         }
         .primaryButton(isEnabled: tappable)
         .disabled(!tappable)
+        .padding(.top, 32)
     }
 
     /// Builds a CreateAlarmView.ProPreviewInputs snapshot from the current
