@@ -6,7 +6,9 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
+import AlarmKit
 import SwiftUI
+import UIKit
 
 enum OnboardingPhase {
     case splash
@@ -22,7 +24,7 @@ enum OnboardingStep: Int, CaseIterable {
     case voice
     case time
     case snooze
-    // case permission
+    case permission
     case generating
     case confirmation
 }
@@ -32,8 +34,11 @@ struct OnboardingContainerView: View {
     // MARK: - State
 
     @Environment(\.previewStep) private var previewStep
-    @Environment(\.subscriptionService) private var subscription
-    @State private var showHome = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(AppState.self) private var appState
+    @Environment(\.composerService) private var composerService
+    @Environment(\.alarmStore) private var alarmStore
+    @Environment(\.alertManager) private var alertManager
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
     @State private var splashVisible = true
@@ -49,7 +54,20 @@ struct OnboardingContainerView: View {
     @State private var voiceVisualizerVisible = false
     @State private var sunriseProgress: Double = 0
     @State private var starSpinProgress: Double = 0
-    @State private var showPaywall = false
+    /// Status text rotated through the generating phase. Driven by the
+    /// container while the Composer call is in flight — leaf view just
+    /// renders it. Mirrors CreateAlarmView.generatingStatusText.
+    @State private var generatingStatusText = ""
+    @State private var generatingStatusVisible = false
+    @State private var sunriseTask: Task<Void, Never>?
+    @State private var starSpinTask: Task<Void, Never>?
+    @State private var statusCycleTask: Task<Void, Never>?
+    @State private var isScheduling = false
+    /// Cached AlarmKit authorization state. Refreshed on entry to the
+    /// permission step, after requestAuthorization returns, and whenever
+    /// the scene returns to active (handles the Settings round-trip).
+    @State private var authorizationState: AlarmManager.AuthorizationState = .notDetermined
+    @State private var isRequestingPermission = false
 
     // MARK: - Body
 
@@ -128,20 +146,6 @@ struct OnboardingContainerView: View {
                         .disabled(!backVisible)
 
                         Spacer()
-
-                        // Dev: skip to home (intro only)
-                        if manager.currentStep == .intro {
-                            Button {
-                                HapticManager.shared.buttonTap()
-                                showHome = true
-                            } label: {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.5))
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                        }
                     }
                     .padding(.horizontal, AppSpacing.screenHorizontal - 8)
                     .frame(height: 44)
@@ -160,28 +164,25 @@ struct OnboardingContainerView: View {
         }
         .environment(manager)
         .environment(\.deviceInfo, deviceInfo)
-        .fullScreenCover(isPresented: $showHome) {
-            HomeView()
-                .environment(AppState())
-                .environment(\.deviceInfo, deviceInfo)
-        }
-        .sheet(
-            isPresented: $showPaywall,
-            onDismiss: {
-                // After the paywall dismisses (by close, purchase, or restore),
-                // continue to the confirmation step regardless of subscription
-                // state. Soft/skippable paywall — free tier is allowed.
-                advanceToConfirmationAfterPaywall()
-            }
-        ) {
-            PaywallSheet()
-        }
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
             deviceInfo.updateScreenSize(width: size.width, height: size.height)
         }
+        // Pick up auth changes on return from Settings. If the user
+        // granted permission over there, push them forward immediately.
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else { return }
+            let wasAuthorized = authorizationState == .authorized
+            refreshAuthorizationState()
+            if manager.currentStep == .permission,
+               !wasAuthorized,
+               authorizationState == .authorized {
+                advanceFromPermissionToGenerating()
+            }
+        }
         .task {
+            refreshAuthorizationState()
             await manager.startOnboarding()
 
             // DEV: Skip to a specific step on launch. Comment out for production.
@@ -203,6 +204,7 @@ struct OnboardingContainerView: View {
                     manager.configuration.whyContext = .gym
                     manager.configuration.intensity = .intense
                     manager.configuration.voicePersona = .hardSergeant
+                    startGeneration()
                 }
                 if step == .voice {
                     voiceVisualizerPalette = .blue
@@ -210,6 +212,13 @@ struct OnboardingContainerView: View {
                 }
                 if step == .confirmation {
                     buttonLabel = "Schedule Alarm"
+                    // Dev seed so the confirmation cards render with real data
+                    // even when jumped into directly from a preview.
+                    manager.configuration.tone = .fun
+                    manager.configuration.whyContext = .gym
+                    manager.configuration.intensity = .balanced
+                    manager.configuration.voicePersona = .calmGuide
+                    manager.configuration.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
                     Task {
                         try? await Task.sleep(for: .seconds(3))
                         buttonVisible = true
@@ -258,42 +267,57 @@ struct OnboardingContainerView: View {
         case .snooze:
             OnboardingSnoozeView(onReadyForButton: { showButton() })
 
-//        case .permission:
-//            OnboardingPermissionView(onReadyForButton: { showButton() })
+        case .permission:
+            OnboardingPermissionView(authorizationState: authorizationState)
 
         case .generating:
-            OnboardingGeneratingView(
-                onComplete: { autoAdvanceFromGenerating() },
-                onSunriseProgress: { progress in sunriseProgress = progress },
-                onStarSpinProgress: { progress in starSpinProgress = progress }
-            )
+            OnboardingGeneratingView(statusText: generatingStatusText, isVisible: generatingStatusVisible)
 
         case .confirmation:
-            OnboardingConfirmationView()
+            OnboardingConfirmationView(
+                onSchedule: { scheduleAlarm() },
+                isScheduling: isScheduling
+            )
         }
     }
 
     private var bottomBar: some View {
         VStack(spacing: 12) {
 
-            // Continue / Get Started button
+            // Continue / Get Started / permission button — label and
+            // action swap per-step so the permission screen can show
+            // "Allow Alarms" or "Open Settings" without needing its own
+            // bottom bar.
             Button {
                 guard !isTransitioning else { return }
-                navigateForward()
+                handleBottomButtonTap()
             } label: {
-                if manager.isSyncing {
+                if manager.isSyncing || isRequestingPermission {
                     ProgressView()
                         .tint(.black)
                 } else {
-                    Text(buttonLabel)
+                    Text(resolvedButtonLabel)
+                        .contentTransition(.numericText())
                 }
             }
-            .primaryButton(isEnabled: manager.canContinue && !isTransitioning)
-            .disabled(!manager.canContinue || manager.isSyncing || isTransitioning)
+            .primaryButton(isEnabled: isBottomButtonEnabled)
+            .disabled(!isBottomButtonEnabled)
             .padding(.horizontal, AppButtons.horizontalPadding)
             .opacity(buttonVisible ? 1 : 0)
             .blur(radius: buttonVisible ? 0 : 8)
             .animation(.easeOut(duration: 0.35), value: buttonVisible)
+            // Dev: 3-second hold on the intro's Get Started button skips
+            // onboarding entirely. Intentionally long so a normal tap can
+            // never trigger it. Blurs onboarding out before flipping the
+            // flag so RootView's .premiumBlur transition has something to
+            // cross-dissolve against.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 3.0)
+                    .onEnded { _ in
+                        guard manager.currentStep == .intro, !isTransitioning else { return }
+                        devSkipOnboarding()
+                    }
+            )
         }
         .padding(.bottom, AppSpacing.screenBottom)
     }
@@ -312,6 +336,131 @@ struct OnboardingContainerView: View {
         }
     }
 
+    // MARK: - Bottom Button Routing
+
+    /// Label for the shared primary button, resolved against the current
+    /// step and (on permission) the auth state. `buttonLabel` is the
+    /// legacy "Continue"/"Get Started"/"Schedule Alarm" driver — this
+    /// layers the permission-specific copy on top without disturbing it.
+    private var resolvedButtonLabel: String {
+        if manager.currentStep == .permission {
+            switch authorizationState {
+            case .notDetermined: return "Allow Alarms"
+            case .denied:        return "Open Settings"
+            case .authorized:    return "Continue"
+            @unknown default:    return "Allow Alarms"
+            }
+        }
+        return buttonLabel
+    }
+
+    /// Enabled state for the shared primary button. Permission step is
+    /// always tappable (request / settings / advance all valid); other
+    /// steps defer to the manager's `canContinue` gate.
+    private var isBottomButtonEnabled: Bool {
+        if isTransitioning { return false }
+        if isRequestingPermission { return false }
+        if manager.currentStep == .permission { return true }
+        return manager.canContinue && !manager.isSyncing
+    }
+
+    /// Dispatches the button tap. Permission step branches three ways;
+    /// every other step falls through to `navigateForward()`.
+    private func handleBottomButtonTap() {
+        if manager.currentStep == .permission {
+            switch authorizationState {
+            case .notDetermined: requestAlarmAuthorization()
+            case .denied:        openAppSettings()
+            case .authorized:    navigateForward()
+            @unknown default:    requestAlarmAuthorization()
+            }
+            return
+        }
+        navigateForward()
+    }
+
+    // MARK: - Authorization
+
+    /// Pulls the latest AlarmKit auth state into local `@State`. Called on
+    /// entering the permission step, after `requestAuthorization` returns,
+    /// and every time the scene returns to `.active` (so return-from-
+    /// Settings is picked up).
+    private func refreshAuthorizationState() {
+        authorizationState = AlarmManager.shared.authorizationState
+        manager.alarmPermissionGranted = authorizationState == .authorized
+        manager.alarmPermissionDenied = authorizationState == .denied
+    }
+
+    private func requestAlarmAuthorization() {
+        guard !isRequestingPermission else { return }
+        HapticManager.shared.buttonTap()
+        isRequestingPermission = true
+
+        Task { @MainActor in
+            _ = await alarmStore.scheduler.requestAuthorization()
+            refreshAuthorizationState()
+            isRequestingPermission = false
+
+            // If granted, blur out and jump straight to generating — no
+            // need to make the user tap Continue a second time.
+            if authorizationState == .authorized {
+                advanceFromPermissionToGenerating()
+            }
+        }
+    }
+
+    private func openAppSettings() {
+        HapticManager.shared.buttonTap()
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    /// Called when the user returns to the app with auth granted, or right
+    /// after the system prompt grants it. Mirrors navigateForward's blur
+    /// sequence but always targets `.generating`.
+    private func advanceFromPermissionToGenerating() {
+        guard manager.currentStep == .permission, !isTransitioning else { return }
+        isTransitioning = true
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            manager.currentStep = .generating
+            sunriseProgress = 0
+            starSpinProgress = 0
+            withAnimation(.easeInOut(duration: 0.5)) {
+                starOpacity = starOpacityForStep(.generating)
+            }
+            contentVisible = true
+            backVisible = false
+            buttonVisible = false
+            isTransitioning = false
+            startGeneration()
+        }
+    }
+
+    /// Dev-only: skip directly to HomeView from the intro. Triggered by a
+    /// 3-second long-press on the Get Started button. Follows the standard
+    /// blur-out → flip-flag sequence so RootView's .premiumBlur transition
+    /// has something to cross-dissolve against.
+    private func devSkipOnboarding() {
+        isTransitioning = true
+        HapticManager.shared.success()
+
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
+        voiceVisualizerVisible = false
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            appState.completeOnboarding()
+        }
+    }
+
     private func transitionToHome() {
         isTransitioning = true
         HapticManager.shared.success()
@@ -322,8 +471,11 @@ struct OnboardingContainerView: View {
         backVisible = false
 
         Task {
+            // Hold onboarding on screen during its own blur-out, then flip
+            // the persisted flag. RootView's @AppStorage observes the key
+            // and swaps to HomeView with a .premiumBlur transition.
             try? await Task.sleep(for: .milliseconds(500))
-            showHome = true
+            appState.completeOnboarding()
         }
     }
 
@@ -340,9 +492,9 @@ struct OnboardingContainerView: View {
     }
 
     private func navigateForward() {
-        // On confirmation step, transition to home
+        // On confirmation step, commit the alarm and transition home.
         if manager.currentStep == .confirmation {
-            transitionToHome()
+            scheduleAlarm()
             return
         }
 
@@ -365,6 +517,15 @@ struct OnboardingContainerView: View {
             manager.advanceToNextStep()
             buttonLabel = "Continue"
 
+            // Skip the permission step entirely when AlarmKit has already
+            // granted authorization — no point making the user re-confirm.
+            if manager.currentStep == .permission {
+                refreshAuthorizationState()
+                if authorizationState == .authorized {
+                    manager.currentStep = .generating
+                }
+            }
+
             // Star opacity per step
             withAnimation(.easeInOut(duration: 0.5)) {
                 starOpacity = starOpacityForStep(manager.currentStep)
@@ -373,41 +534,261 @@ struct OnboardingContainerView: View {
             // Show/hide special backgrounds
             voiceVisualizerVisible = manager.currentStep == .voice
 
-            // Reset sunrise + star spin if entering generating step (they animate themselves)
+            // Reset sunrise + star spin if entering generating step — the
+            // container drives both from here.
             if manager.currentStep == .generating {
                 sunriseProgress = 0
                 starSpinProgress = 0
+                startGeneration()
             }
 
             // Show content — the new step's .task handles its own staggered entry
             contentVisible = true
 
-            // Hide back/button on generating and confirmation
+            // Hide back/button on generating and confirmation. Permission
+            // step auto-shows its button (it drives Allow / Open Settings
+            // rather than waiting for a child view's readiness signal).
             let isAutoStep = manager.currentStep == .generating || manager.currentStep == .confirmation
             backVisible = !isAutoStep && manager.canGoBack
             if isAutoStep {
                 buttonVisible = false
+            }
+            if manager.currentStep == .permission {
+                buttonVisible = true
             }
 
             isTransitioning = false
         }
     }
 
-    private func autoAdvanceFromGenerating() {
-        // If the user is already Pro, skip the paywall and go straight to
-        // the confirmation screen. Otherwise present the paywall sheet —
-        // the sheet's onDismiss handler will advance us to confirmation.
-        if subscription.isPro {
-            advanceToConfirmation()
-        } else {
-            showPaywall = true
+    /// Kick off the real Composer call. Mirrors CreateAlarmView.startGeneration.
+    /// Runs the sky animation + status cycle while awaiting the audio file,
+    /// then routes to the paywall (non-pro) or straight to confirmation (pro).
+    /// On failure surfaces an alert and falls back to the snooze step.
+    private func startGeneration() {
+        // Cancel any prior run (dev re-entry, back-and-forth, etc.)
+        sunriseTask?.cancel()
+        starSpinTask?.cancel()
+        statusCycleTask?.cancel()
+
+        animateSunrise(duration: 8.0)
+        animateStarSpin()
+
+        // Cycle personalized status text with blur-in / blur-out.
+        let messages = buildStatusMessages()
+        statusCycleTask = Task { @MainActor in
+            var i = 0
+            while !Task.isCancelled {
+                generatingStatusText = messages[i % messages.count]
+                generatingStatusVisible = true
+                try? await Task.sleep(for: .seconds(2.0))
+                guard !Task.isCancelled else { break }
+                generatingStatusVisible = false
+                try? await Task.sleep(for: .milliseconds(400))
+                i += 1
+            }
+        }
+
+        Task { @MainActor in
+            do {
+                guard let composerService else {
+                    throw NSError(
+                        domain: "ComposerService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
+                    )
+                }
+
+                let fileName = try await composerService.generateAndDownloadAudio(
+                    for: manager.configuration
+                )
+                manager.configuration.soundFileName = fileName
+
+                statusCycleTask?.cancel()
+                generatingStatusVisible = false
+                try? await Task.sleep(for: .milliseconds(300))
+                generatingStatusText = "Almost ready..."
+                generatingStatusVisible = true
+                try? await Task.sleep(for: .milliseconds(600))
+
+                advanceToConfirmation()
+            } catch {
+                statusCycleTask?.cancel()
+                generatingStatusVisible = false
+                print("[OnboardingContainerView] Composer failed: \(error)")
+
+                let errorMessage = (error as? APIError)?.errorDescription
+                    ?? "We'll investigate this issue. Please try again later."
+
+                cancelSkyAnimations()
+                alertManager.showModal(
+                    title: "Something went wrong",
+                    message: errorMessage,
+                    primaryAction: AlertAction(label: "Try Again") { [self] in
+                        // Drop the user back on the snooze step and let them
+                        // hit Continue again to retry.
+                        withAnimation(.easeOut(duration: 0.6)) {
+                            sunriseProgress = 0
+                            starSpinProgress = 0
+                        }
+                        manager.currentStep = .snooze
+                        contentVisible = true
+                        backVisible = manager.canGoBack
+                        buttonVisible = true
+                        buttonLabel = "Continue"
+                    }
+                )
+            }
         }
     }
 
-    /// Called from the paywall sheet's onDismiss. Always proceeds to
-    /// confirmation regardless of whether the user purchased.
-    private func advanceToConfirmationAfterPaywall() {
-        advanceToConfirmation()
+    private func animateStarSpin() {
+        starSpinTask?.cancel()
+        starSpinTask = Task { @MainActor in
+            let steps = 30
+            let duration = 2.0
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
+                let p = Double(i) / Double(steps)
+                starSpinProgress = 1.0 - (1.0 - p) * (1.0 - p)
+            }
+        }
+    }
+
+    private func animateSunrise(duration: Double) {
+        sunriseTask?.cancel()
+        sunriseTask = Task { @MainActor in
+            let steps = 60
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
+                let progress = Double(i) / Double(steps)
+                sunriseProgress = progress * progress * (3.0 - 2.0 * progress)
+            }
+        }
+    }
+
+    private func cancelSkyAnimations() {
+        sunriseTask?.cancel()
+        sunriseTask = nil
+        starSpinTask?.cancel()
+        starSpinTask = nil
+    }
+
+    private func buildStatusMessages() -> [String] {
+        // Always lead with the generic "Creating your alarm" message so the
+        // user sees a clear framing beat before the personalized lines start
+        // rolling. The rest cycle per their configuration choices.
+        var messages: [String] = ["Creating your alarm"]
+        let config = manager.configuration
+
+        if let tone = config.tone {
+            messages.append(toneStatusMessage(tone))
+        }
+        if let why = config.whyContext {
+            messages.append(whyStatusMessage(why))
+        }
+        if let intensity = config.intensity {
+            messages.append(intensityStatusMessage(intensity))
+        }
+        if let voice = config.voicePersona {
+            messages.append(voiceStatusMessage(voice))
+        }
+        messages.append("Writing your wake-up call")
+
+        if messages.count < 3 {
+            messages.append("Almost ready")
+        }
+        return messages
+    }
+
+    private func toneStatusMessage(_ tone: AlarmTone) -> String {
+        switch tone {
+        case .calm: return "Setting a calm tone"
+        case .encourage: return "Adding some encouragement"
+        case .push: return "Turning up the push"
+        case .strict: return "Making it strict"
+        case .fun: return "Making it fun"
+        case .other: return "Adding your personal touch"
+        }
+    }
+
+    private func whyStatusMessage(_ why: WhyContext) -> String {
+        switch why {
+        case .work: return "Getting you ready for work"
+        case .school: return "Prepping for the school day"
+        case .gym: return "Fueling your morning workout"
+        case .family: return "Making time for family"
+        case .personalGoal: return "Aligning with your goals"
+        case .important: return "Locking in on what matters"
+        case .other: return "Personalizing your morning"
+        }
+    }
+
+    private func intensityStatusMessage(_ intensity: AlarmIntensity) -> String {
+        switch intensity {
+        case .gentle: return "Keeping it gentle"
+        case .balanced: return "Finding the right balance"
+        case .intense: return "Cranking up the intensity"
+        }
+    }
+
+    private func voiceStatusMessage(_ voice: VoicePersona) -> String {
+        switch voice {
+        case .calmGuide: return "Calling the calm guide"
+        case .energeticCoach: return "Warming up the coach"
+        case .hardSergeant: return "Calling the drill sergeant"
+        case .evilSpaceLord: return "Summoning the space lord"
+        case .playful: return "Bringing the fun"
+        case .bro: return "Grabbing the bro"
+        case .digitalAssistant: return "Booting the assistant"
+        }
+    }
+
+    /// Persist the configured alarm and finish onboarding. Runs when the
+    /// user taps Schedule Alarm on the confirmation screen.
+    ///
+    /// Sequence: blur-out onboarding content → persist alarm → flip the
+    /// completion flag (RootView reacts with a .premiumBlur transition
+    /// into HomeView, which blurs in). Never snap.
+    private func scheduleAlarm() {
+        guard !isScheduling else { return }
+        isScheduling = true
+        HapticManager.shared.success()
+
+        var config = manager.configuration
+        config.isEnabled = true
+        // Onboarding never uses Pro — strip any lingering fields so nothing
+        // stale gets persisted.
+        config.alarmType = .basic
+        config.approvedScripts = nil
+        config.customPrompt = nil
+        config.customPromptIncludes = []
+
+        // Blur out every layer of onboarding first so the user sees a
+        // proper exit animation before HomeView blurs in.
+        contentVisible = false
+        buttonVisible = false
+        backVisible = false
+        voiceVisualizerVisible = false
+
+        Task { @MainActor in
+            // Persist in parallel with the blur-out so scheduling latency
+            // doesn't show up as a delay between gestures and animation.
+            async let persist: Void = alarmStore.addAlarm(config)
+
+            // Let the premium blur-out run to completion before swapping
+            // the root view. 500ms matches transitionToHome's original
+            // timing and the premium profile's duration.
+            try? await Task.sleep(for: .milliseconds(500))
+            _ = await persist
+
+            isScheduling = false
+            appState.completeOnboarding()
+        }
     }
 
     private func advanceToConfirmation() {
@@ -460,9 +841,14 @@ struct OnboardingContainerView: View {
             // Wait for blur-out
             try? await Task.sleep(for: .milliseconds(400))
 
-            // Go back — skip .generating (it's not a user-navigable step)
+            // Go back — skip .generating (not user-navigable) and .permission
+            // (auto-handled; if the user is authorized it'd be weird to land
+            // them there on a back tap).
             manager.goBack()
             if manager.currentStep == .generating {
+                manager.goBack()
+            }
+            if manager.currentStep == .permission, authorizationState == .authorized {
                 manager.goBack()
             }
             buttonLabel = manager.currentStep == .intro ? "Get Started" : "Continue"
@@ -508,6 +894,7 @@ extension OnboardingContainerView {
     static func preview(step: OnboardingStep) -> some View {
         OnboardingContainerView()
             .environment(\.previewStep, step)
+            .environment(AppState())
     }
 }
 
@@ -524,4 +911,5 @@ extension EnvironmentValues {
 
 #Preview {
     OnboardingContainerView()
+        .environment(AppState())
 }

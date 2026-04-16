@@ -195,6 +195,23 @@ final class AlarmStore {
         await scheduler.requestAuthorization()
     }
 
+    /// Called when the app detects that AlarmKit authorization has been
+    /// revoked (user toggled it off in Settings). Flips every enabled alarm
+    /// to disabled and cancels it in AlarmKit so the UI state matches
+    /// reality. Returns true if at least one alarm was affected — the
+    /// caller uses that to decide whether to surface a user-facing modal.
+    @discardableResult
+    func handlePermissionRevoked() -> Bool {
+        var didChange = false
+        for index in alarms.indices where alarms[index].isEnabled {
+            alarms[index].isEnabled = false
+            try? scheduler.cancelAlarm(id: alarms[index].id)
+            didChange = true
+        }
+        if didChange { save() }
+        return didChange
+    }
+
     // MARK: - Bulk Scheduling
 
     func rescheduleAllEnabled() async {

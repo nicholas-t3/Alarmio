@@ -12,6 +12,10 @@ struct RootView: View {
 
     // MARK: - State
 
+    // Read synchronously on first render so we never flash a loading state
+    // while UserDefaults is consulted. AppState.completeOnboarding() writes
+    // to the same key, which updates this view automatically.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var appState = AppState()
     @State private var alertManager = AlertManager()
     @State private var deviceInfo = DeviceInfo()
@@ -34,14 +38,20 @@ struct RootView: View {
     var body: some View {
         ZStack {
 
-            // Onboarding
-            //OnboardingContainerView()
-
-            HomeView()
+            // Root branch — @AppStorage reads synchronously so the correct
+            // view mounts on first frame, no black-screen flicker.
+            if hasCompletedOnboarding {
+                HomeView()
+                    .transition(.premiumBlur)
+            } else {
+                OnboardingContainerView()
+                    .transition(.premiumBlur)
+            }
 
             // Global alert overlay — always on top
             GlobalAlertOverlay()
         }
+        .animation(.easeInOut(duration: 0.6), value: hasCompletedOnboarding)
         .environment(appState)
         .environment(\.alertManager, alertManager)
         .environment(\.deviceInfo, deviceInfo)
@@ -60,7 +70,6 @@ struct RootView: View {
             alarmStore.audioFileManager.ensureSetup()
             alarmStore.load()
             subscriptionService.configure()
-            await appState.checkOnboardingStatus()
 
             Task {
                 do {

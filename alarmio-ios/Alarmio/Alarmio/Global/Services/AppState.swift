@@ -12,28 +12,16 @@ import SwiftUI
 @MainActor
 final class AppState {
 
-    // MARK: - State
-
-    var hasCompletedOnboarding = false
-    var isLoading = true
-
     // MARK: - Lifecycle
 
-    func checkOnboardingStatus() async {
-        // TODO: Check Supabase for user onboarding completion
-        // For now, read from UserDefaults
-        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-        isLoading = false
-    }
-
+    /// Persist onboarding completion. RootView reads the same UserDefaults
+    /// key via @AppStorage, so the branch updates automatically.
     func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-        hasCompletedOnboarding = true
     }
 
-    /// For development: reset onboarding
+    /// For development: reset onboarding.
     func resetOnboarding() {
         UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-        hasCompletedOnboarding = false
     }
 }

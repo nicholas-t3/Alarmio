@@ -6,7 +6,9 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
+import AlarmKit
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
 
@@ -15,6 +17,8 @@ struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.deviceInfo) private var deviceInfo
     @Environment(\.alarmStore) private var alarmStore
+    @Environment(\.alertManager) private var alertManager
+    @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - State
 
@@ -121,6 +125,17 @@ struct HomeView: View {
                 editingAlarmId = nil
             }
         }
+        // Detect a Settings round-trip that revoked AlarmKit authorization
+        // while the app was backgrounded. Flip every scheduled alarm off to
+        // match reality, then surface the modal so the user sees why.
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else { return }
+            if AlarmManager.shared.authorizationState == .denied {
+                if alarmStore.handlePermissionRevoked() {
+                    showAlarmsDisabledModal()
+                }
+            }
+        }
     }
 
     // MARK: - Subviews
@@ -196,6 +211,13 @@ struct HomeView: View {
                     AlarmCardView(
                         alarm: alarm,
                         onToggle: {
+                            // Only enforce auth when flipping OFF→ON. Turning
+                            // an alarm off doesn't require permission.
+                            let turningOn = !alarm.isEnabled
+                            if turningOn, AlarmManager.shared.authorizationState == .denied {
+                                showAlarmsDisabledModal()
+                                return
+                            }
                             Task { await alarmStore.toggleAlarm(id: alarm.id) }
                         },
                         onEdit: {
@@ -300,6 +322,10 @@ struct HomeView: View {
 
                 Button {
                     HapticManager.shared.buttonTap()
+                    if AlarmManager.shared.authorizationState == .denied {
+                        showAlarmsDisabledModal()
+                        return
+                    }
                     showCreateAlarm = true
                 } label: {
                     Image(systemName: "plus")
@@ -329,6 +355,21 @@ struct HomeView: View {
         guard let date else { return .max }
         let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
         return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+    }
+
+    private func showAlarmsDisabledModal() {
+        HapticManager.shared.warning()
+        alertManager.showModal(
+            title: "Alarms are off",
+            message: "Alarmio can't ring until you turn alarms back on for this app in Settings.",
+            dismissible: true,
+            primaryAction: AlertAction(label: "Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            secondaryAction: AlertAction(label: "Not Now") {}
+        )
     }
 
     private func deleteAlarm(id: UUID) {

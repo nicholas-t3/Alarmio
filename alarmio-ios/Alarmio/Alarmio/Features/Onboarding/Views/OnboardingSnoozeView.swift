@@ -18,11 +18,19 @@ struct OnboardingSnoozeView: View {
     // MARK: - State
 
     @State private var contentVisible = false
-    @State private var snoozeInterval: Double = 5
+    @State private var snoozeCount: Int = 2
+    @State private var snoozeInterval: Int = 5
 
     // MARK: - Constants
 
     let onReadyForButton: () -> Void
+
+    private let minCount: Int = 0
+    private let maxCount: Int = 5
+    private let minInterval: Int = 1
+    private let maxInterval: Int = 15
+
+    private var showsInterval: Bool { snoozeCount > 0 }
 
     // MARK: - Body
 
@@ -44,17 +52,11 @@ struct OnboardingSnoozeView: View {
                 Spacer()
                     .frame(height: AppSpacing.sectionGap(deviceInfo.spacingScale))
 
-                // Snooze interval
-                sliderCard(
-                    label: "SNOOZE DURATION",
-                    description: "Time between each snooze",
-                    value: $snoozeInterval,
-                    range: 1...15,
-                    step: 1,
-                    displayValue: "\(Int(snoozeInterval))",
-                    displayUnit: Int(snoozeInterval) == 1 ? "minute" : "minutes"
-                )
-                .padding(.horizontal, AppSpacing.screenHorizontal)
+                // Single hero card — count is the primary display, duration
+                // collapses in/out as a secondary row when count > 0.
+                snoozeHeroCard
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .premiumBlur(isVisible: contentVisible, delay: 0.1, duration: 0.4)
 
                 Spacer()
                     .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
@@ -63,6 +65,11 @@ struct OnboardingSnoozeView: View {
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
         .task {
+            // Seed the manager so .canContinue is satisfied and the user
+            // sees a real default if they tap Continue immediately.
+            manager.configuration.maxSnoozes = snoozeCount
+            manager.setSnoozeInterval(snoozeInterval)
+
             try? await Task.sleep(for: .milliseconds(100))
             contentVisible = true
 
@@ -73,65 +80,180 @@ struct OnboardingSnoozeView: View {
 
     // MARK: - Subviews
 
-    @ViewBuilder
-    private func sliderCard(
-        label: String,
-        description: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        displayValue: String,
-        displayUnit: String
-    ) -> some View {
+    private var snoozeHeroCard: some View {
+        VStack(spacing: 20) {
+
+            // Count section — the H1 moment
+            countSection
+
+            // Divider + duration section, collapses when count == 0
+            if showsInterval {
+                divider
+                intervalSection
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .offset(y: -8)),
+                            removal: .opacity.combined(with: .offset(y: -8))
+                        )
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .padding(.horizontal, 24)
+        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 28))
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showsInterval)
+    }
+
+    private var countSection: some View {
         VStack(spacing: 16) {
 
             // Label
-            Text(label)
+            Text("SNOOZES")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            // Value display
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(displayValue)
-                    .font(.system(size: 48, weight: .light, design: .rounded))
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayValue)
+            // Big value
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if snoozeCount == 0 {
+                    Text("Off")
+                        .font(.system(size: 50, weight: .light, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                } else {
+                    Text("\(snoozeCount)")
+                        .font(.system(size: 50, weight: .light, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
 
-                if !displayUnit.isEmpty {
-                    Text(displayUnit)
+                    Text(snoozeCount == 1 ? "time" : "times")
                         .font(AppTypography.bodyMedium)
                         .foregroundStyle(.white.opacity(0.4))
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: displayUnit)
                 }
             }
+            .frame(minHeight: 54)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: snoozeCount)
 
-            // Description
-            Text(description)
-                .font(AppTypography.labelSmall)
-                .foregroundStyle(.white.opacity(0.3))
-
-            // Slider
-            Slider(value: value, in: range, step: step)
-                .tint(.white)
-                .padding(.horizontal, 8)
-                .onChange(of: value.wrappedValue) {
-                    HapticManager.shared.selection()
-                    manager.setSnoozeInterval(Int(snoozeInterval))
-                }
+            // Stepper
+            stepper(
+                value: snoozeCount,
+                decrement: {
+                    let next = max(minCount, snoozeCount - 1)
+                    snoozeCount = next
+                    manager.configuration.maxSnoozes = next
+                },
+                increment: {
+                    let next = min(maxCount, snoozeCount + 1)
+                    snoozeCount = next
+                    manager.configuration.maxSnoozes = next
+                },
+                canDecrement: snoozeCount > minCount,
+                canIncrement: snoozeCount < maxCount
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-        .blur(radius: contentVisible ? 0 : 8)
-        .opacity(contentVisible ? 1 : 0)
-        .animation(.easeOut(duration: 0.4), value: contentVisible)
+    }
+
+    private var intervalSection: some View {
+        VStack(spacing: 16) {
+
+            // Label
+            Text("DURATION")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+
+            // Value display — same scale as the count so they read as peers
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("\(snoozeInterval)")
+                    .font(.system(size: 50, weight: .light, design: .rounded))
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+
+                Text(snoozeInterval == 1 ? "minute" : "minutes")
+                    .font(AppTypography.bodyMedium)
+                    .foregroundStyle(.white.opacity(0.4))
+                    .contentTransition(.numericText())
+            }
+            .frame(minHeight: 54)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: snoozeInterval)
+
+            // Stepper
+            stepper(
+                value: snoozeInterval,
+                decrement: {
+                    let next = max(minInterval, snoozeInterval - 1)
+                    snoozeInterval = next
+                    manager.setSnoozeInterval(next)
+                },
+                increment: {
+                    let next = min(maxInterval, snoozeInterval + 1)
+                    snoozeInterval = next
+                    manager.setSnoozeInterval(next)
+                },
+                canDecrement: snoozeInterval > minInterval,
+                canIncrement: snoozeInterval < maxInterval
+            )
+        }
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.08))
+            .frame(height: 1)
+            .padding(.horizontal, -8)
+    }
+
+    private func stepper(
+        value: Int,
+        decrement: @escaping () -> Void,
+        increment: @escaping () -> Void,
+        canDecrement: Bool,
+        canIncrement: Bool
+    ) -> some View {
+        HStack(spacing: 20) {
+
+            Button {
+                HapticManager.shared.selection()
+                decrement()
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(canDecrement ? 1 : 0.3))
+                    .frame(width: 36, height: 36)
+                    .background(.white.opacity(canDecrement ? 0.1 : 0.04))
+                    .clipShape(Circle())
+            }
+            .disabled(!canDecrement)
+
+            Button {
+                HapticManager.shared.selection()
+                increment()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.white.opacity(canIncrement ? 1 : 0.3))
+                    .frame(width: 36, height: 36)
+                    .background(.white.opacity(canIncrement ? 0.1 : 0.04))
+                    .clipShape(Circle())
+            }
+            .disabled(!canIncrement)
+        }
     }
 }
 
-#Preview {
+// MARK: - Previews
+
+#Preview("Snooze Step") {
     OnboardingContainerView.preview(step: .snooze)
+}
+
+#Preview("Card (standalone)") {
+    ZStack {
+        Color(hex: "050505").ignoresSafeArea()
+        OnboardingSnoozeView(onReadyForButton: {})
+            .environment(OnboardingManager())
+            .environment(\.deviceInfo, DeviceInfo())
+    }
 }

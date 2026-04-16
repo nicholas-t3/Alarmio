@@ -204,6 +204,36 @@ extension View {
 // MARK: - Backward Compatibility
 typealias PremiumFadeEffect = PremiumBlurEffectExplicit
 
+// MARK: - AnyTransition Helper
+extension AnyTransition {
+    /// Blur + fade transition matching the app's premium language. Use for
+    /// view swaps where both sides should cross-dissolve through blur
+    /// (e.g. root-level onboarding → home swap).
+    static var premiumBlur: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(
+                active: BlurFadeModifier(blur: 10, opacity: 0),
+                identity: BlurFadeModifier(blur: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: BlurFadeModifier(blur: 10, opacity: 0),
+                identity: BlurFadeModifier(blur: 0, opacity: 1)
+            )
+        )
+    }
+}
+
+private struct BlurFadeModifier: ViewModifier {
+    let blur: CGFloat
+    let opacity: Double
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: blur)
+            .opacity(opacity)
+    }
+}
+
 // MARK: - Previews
 #Preview("Premium Blur In") {
     ZStack {
