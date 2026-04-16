@@ -818,14 +818,6 @@ struct EditAlarmSheetContent: View {
         // Tap anywhere outside a text field to dismiss the keyboard.
         .contentShape(Rectangle())
         .onTapGesture { dismissKeyboard() }
-        // Done button on the keyboard toolbar.
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { dismissKeyboard() }
-                    .foregroundStyle(.white)
-            }
-        }
     }
 
     private func dismissKeyboard() {

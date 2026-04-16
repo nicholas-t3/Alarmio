@@ -114,23 +114,29 @@ struct ProPromptView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            // TextEditor with placeholder
-            ZStack(alignment: .topLeading) {
-                if prompt.isEmpty {
-                    Text("\"Keep it short and fun. Mention that I have a big meeting today and remind me to drink water.\"")
-                        .font(AppTypography.labelMedium)
-                        .foregroundStyle(.white.opacity(0.35))
-                        .padding(.horizontal, 4)
-                        .padding(.top, 8)
-                        .allowsHitTesting(false)
+            // Vertical TextField wraps onto multiple visible lines as the
+            // user types, but return dismisses the keyboard instead of
+            // inserting a newline. We intercept any newline the user
+            // types, strip it, and fire resignFirstResponder.
+            TextField(
+                "\"Keep it short and fun. Mention that I have a big meeting today and remind me to drink water.\"",
+                text: $prompt,
+                axis: .vertical
+            )
+            .font(AppTypography.labelMedium)
+            .foregroundStyle(.white)
+            .tint(.white)
+            .lineLimit(3...6)
+            .submitLabel(.done)
+            .onChange(of: prompt) { _, newValue in
+                if newValue.contains("\n") {
+                    prompt = newValue.replacingOccurrences(of: "\n", with: "")
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
                 }
-
-                TextEditor(text: $prompt)
-                    .font(AppTypography.labelMedium)
-                    .foregroundStyle(.white)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 70, maxHeight: 110)
-                    .onChange(of: prompt) { _, _ in onPromptChange() }
+                onPromptChange()
             }
         }
         .padding(.vertical, 16)
