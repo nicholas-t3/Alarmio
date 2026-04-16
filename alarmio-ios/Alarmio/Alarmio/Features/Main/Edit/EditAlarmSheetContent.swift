@@ -12,7 +12,7 @@ import SwiftUI
 
 struct EditSummaryDetent: CustomPresentationDetent {
     static func height(in context: Context) -> CGFloat? {
-        context.maxDetentValue * 0.65
+        context.maxDetentValue * 0.70
     }
 }
 
