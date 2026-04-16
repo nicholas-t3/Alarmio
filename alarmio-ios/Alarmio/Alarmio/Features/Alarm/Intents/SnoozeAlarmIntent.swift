@@ -192,6 +192,55 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         try? await Task.sleep(nanoseconds: 200_000_000)
 
         _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
+
+        // Update the countdown Live Activity for the new fire date.
+        // Runs inline in the extension so the user sees the snooze
+        // countdown start instantly without waiting for a server push.
+        await updateCountdownActivity(alarmID: alarmID, fireDate: fireDate)
+    }
+
+    /// Update or start the consolidated countdown Activity to include
+    /// this alarm's fresh snooze fire date. If an Activity is already
+    /// running, we merge this alarm in. If not, we start a new one with
+    /// just this alarm. Uses the same `CountdownActivityAttributes`
+    /// registration as the main app's `LiveActivityManager`.
+    private func updateCountdownActivity(alarmID: UUID, fireDate: Date) async {
+        let newEntry = CountdownActivityAttributes.Entry(
+            alarmID: alarmID.uuidString,
+            title: "Wake Up",
+            fireDate: fireDate,
+            tintHex: "3A6EAA"
+        )
+
+        if let existing = Activity<CountdownActivityAttributes>.activities.first {
+            var entries = existing.content.state.entries.filter { $0.alarmID != alarmID.uuidString }
+            entries.append(newEntry)
+            entries.sort { $0.fireDate < $1.fireDate }
+
+            let displayCap = 2
+            let newState = CountdownActivityAttributes.ContentState(
+                entries: Array(entries.prefix(displayCap)),
+                additionalCount: max(0, entries.count - displayCap)
+            )
+            await existing.update(ActivityContent(state: newState, staleDate: nil))
+            print("[SnoozeAlarmIntent] merged entry into existing activity")
+        } else {
+            let attrs = CountdownActivityAttributes(userID: "intent")
+            let state = CountdownActivityAttributes.ContentState(
+                entries: [newEntry],
+                additionalCount: 0
+            )
+            do {
+                _ = try Activity.request(
+                    attributes: attrs,
+                    content: ActivityContent(state: state, staleDate: nil),
+                    pushType: .token
+                )
+                print("[SnoozeAlarmIntent] started new countdown activity")
+            } catch {
+                print("[SnoozeAlarmIntent] activity start failed: \(error)")
+            }
+        }
     }
 
     private func buildTitle(for alarm: AlarmConfiguration) -> LocalizedStringResource {

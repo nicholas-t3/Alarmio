@@ -149,6 +149,7 @@ final class AlarmStore {
         if config.isEnabled {
             try? await scheduler.scheduleAlarm(config)
         }
+        await syncLiveActivitySchedule(for: config)
         HapticManager.shared.success()
     }
 
@@ -157,6 +158,7 @@ final class AlarmStore {
         alarms[index] = config
         save()
         try? await scheduler.toggleAlarm(config)
+        await syncLiveActivitySchedule(for: config)
     }
 
     func deleteAlarm(id: UUID) async {
@@ -168,7 +170,29 @@ final class AlarmStore {
         save()
         try? scheduler.cancelAlarm(id: id)
         audioFileManager.deleteSound(for: id)
+        await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
         HapticManager.shared.warning()
+    }
+
+    /// Keep the Supabase `alarm_schedules` table in sync with this
+    /// alarm's current fire date + Live Activity settings. Removes the
+    /// row whenever the alarm shouldn't appear in the card at all
+    /// (disabled, liveActivity off, no wake time resolvable).
+    private func syncLiveActivitySchedule(for config: AlarmConfiguration) async {
+        guard config.isEnabled,
+              config.liveActivityEnabled,
+              let fireDate = scheduler.buildIntendedFireDate(from: config)
+        else {
+            await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: config.id)
+            return
+        }
+
+        await LiveActivitySync.shared.upsertAlarmSchedule(
+            alarmID: config.id,
+            fireDate: fireDate,
+            leadHours: max(1, min(9, config.liveActivityLeadHours)),
+            title: config.name ?? "Wake Up"
+        )
     }
 
     func toggleAlarm(id: UUID) async {
@@ -176,6 +200,7 @@ final class AlarmStore {
         alarms[index].isEnabled.toggle()
         save()
         try? await scheduler.toggleAlarm(alarms[index])
+        await syncLiveActivitySchedule(for: alarms[index])
         HapticManager.shared.selection()
     }
 

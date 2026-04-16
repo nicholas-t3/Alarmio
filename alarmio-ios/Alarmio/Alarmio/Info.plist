@@ -4,5 +4,7 @@
 <dict>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>Alarmio requires this permission to set alarms for you.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 </dict>
 </plist>

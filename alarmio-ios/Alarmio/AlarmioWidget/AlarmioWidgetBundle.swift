@@ -13,5 +13,6 @@ import WidgetKit
 struct AlarmioWidgetBundle: WidgetBundle {
     var body: some Widget {
         AlarmioWidgetLiveActivity()
+        CountdownLiveActivity()
     }
 }

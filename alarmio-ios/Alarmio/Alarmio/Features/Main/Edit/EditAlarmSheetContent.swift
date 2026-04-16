@@ -76,6 +76,8 @@ struct EditAlarmSheetContent: View {
         _editCustomPromptIncludes = State(initialValue: alarm.customPromptIncludes)
         _editCreativeSnoozes = State(initialValue: alarm.creativeSnoozes)
         _editProPreviewScripts = State(initialValue: alarm.approvedScripts)
+        _editLiveActivityEnabled = State(initialValue: alarm.liveActivityEnabled)
+        _editLiveActivityLeadHours = State(initialValue: alarm.liveActivityLeadHours)
         // Seed the snapshot so on-open state is considered clean (Save,
         // not Regenerate). A nil snapshot would always read as dirty vs
         // any non-nil draft snapshot.
@@ -157,6 +159,10 @@ struct EditAlarmSheetContent: View {
     /// we get "back throws away changes" semantics.
     @State private var proEditRestore: ProEditRestore?
 
+    // Live Activity settings
+    @State private var editLiveActivityEnabled: Bool
+    @State private var editLiveActivityLeadHours: Int
+
     // MARK: - Detent Constants
 
     private static let summaryDetent: PresentationDetent = .custom(EditSummaryDetent.self)
@@ -223,6 +229,18 @@ struct EditAlarmSheetContent: View {
             || editSoundFileName != alarm.soundFileName
             || normalizedEditName != (alarm.name ?? "")
             || hasProChanges
+            || editLiveActivityEnabled != alarm.liveActivityEnabled
+            || editLiveActivityLeadHours != alarm.liveActivityLeadHours
+    }
+
+    private var liveActivitySummary: String {
+        editLiveActivityEnabled ? "On" : "Off"
+    }
+
+    private var liveActivityDetail: String? {
+        guard editLiveActivityEnabled else { return nil }
+        let hours = editLiveActivityLeadHours
+        return "\(hours) hour\(hours == 1 ? "" : "s") before"
     }
 
     private var normalizedEditName: String {
@@ -291,6 +309,7 @@ struct EditAlarmSheetContent: View {
         case .snooze: return Self.compactDetent
         case .style: return Self.fullDetent
         case .proPrompt: return Self.fullDetent
+        case .liveActivity: return Self.detailDetent
         }
     }
 
@@ -335,6 +354,8 @@ struct EditAlarmSheetContent: View {
                         stylePage
                     case .proPrompt:
                         proPromptPage
+                    case .liveActivity:
+                        liveActivityPage
                     default:
                         EmptyView()
                     }
@@ -491,6 +512,16 @@ struct EditAlarmSheetContent: View {
             )
             .contentShape(Rectangle())
             .onTapGesture { navigateTo(.style) }
+
+            // Live Activity row
+            summaryRow(
+                icon: "sparkles.rectangle.stack.fill",
+                label: "Live Activity",
+                value: liveActivitySummary,
+                detail: liveActivityDetail
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { navigateTo(.liveActivity) }
 
             // Save button
             Button {
@@ -669,6 +700,107 @@ struct EditAlarmSheetContent: View {
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
         .padding(.top, 12)
+    }
+
+    // MARK: - Live Activity Page
+
+    private var liveActivityPage: some View {
+        VStack(spacing: 16) {
+
+            // Back row
+            backButton
+
+            // Toggle card
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("SHOW LIVE ACTIVITY")
+                            .font(AppTypography.caption)
+                            .tracking(AppTypography.captionTracking)
+                            .foregroundStyle(.white.opacity(0.4))
+                        Text("A countdown card on your lock screen before this alarm rings.")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Toggle("", isOn: $editLiveActivityEnabled)
+                        .labelsHidden()
+                        .tint(Color(hex: "3A6EAA"))
+                        .onChange(of: editLiveActivityEnabled) { _, _ in
+                            HapticManager.shared.selection()
+                        }
+                }
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+
+            // Hours picker card — only visible when enabled
+            if editLiveActivityEnabled {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("SHOW IT HOW FAR AHEAD")
+                        .font(AppTypography.caption)
+                        .tracking(AppTypography.captionTracking)
+                        .foregroundStyle(.white.opacity(0.4))
+
+                    HStack(spacing: 10) {
+                        ForEach([1, 3, 6, 9], id: \.self) { hours in
+                            leadHourChip(hours)
+                        }
+                    }
+                }
+                .padding(.vertical, 16)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular.tint(Color(hex: "0e2444").opacity(0.35)), in: RoundedRectangle(cornerRadius: 20))
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.top, 12)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: editLiveActivityEnabled)
+    }
+
+    private func leadHourChip(_ hours: Int) -> some View {
+        let selected = editLiveActivityLeadHours == hours
+        return Button {
+            HapticManager.shared.selection()
+            _ = withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                editLiveActivityLeadHours = hours
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Text("\(hours)")
+                    .font(AppTypography.headlineMedium)
+                    .foregroundStyle(selected ? .white : .white.opacity(0.6))
+                Text(hours == 1 ? "hour" : "hours")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.white.opacity(selected ? 0.7 : 0.35))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.white.opacity(selected ? 0.12 : 0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        selected
+                            ? Color(hex: "3A6EAA").opacity(0.7)
+                            : Color.white.opacity(0.05),
+                        lineWidth: selected ? 1.5 : 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Style Page
@@ -1309,6 +1441,8 @@ struct EditAlarmSheetContent: View {
         updated.customPrompt = editCustomPrompt.isEmpty ? nil : editCustomPrompt
         updated.customPromptIncludes = editCustomPromptIncludes
         updated.creativeSnoozes = editCreativeSnoozes
+        updated.liveActivityEnabled = editLiveActivityEnabled
+        updated.liveActivityLeadHours = max(1, min(9, editLiveActivityLeadHours))
         // If the regeneration path reconciled the pro scripts (e.g. snooze
         // count changed, or wake time was rewritten), persist those new
         // scripts so the saved config matches the audio files on disk.
@@ -1365,6 +1499,7 @@ struct EditAlarmSheetContent: View {
         case snooze
         case style
         case proPrompt
+        case liveActivity
     }
 }
 

@@ -121,4 +121,18 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
 
     /// Whether this is a demo alarm for UI testing purposes.
     var isDemo: Bool = false
+
+    /// When true, a pre-alarm Live Activity countdown card appears on
+    /// the lock screen and Dynamic Island `liveActivityLeadHours` hours
+    /// before this alarm fires. Decoupled from AlarmKit scheduling —
+    /// the card is driven by a consolidated `CountdownActivityAttributes`
+    /// Activity, started remotely by the Supabase pg_cron + APNs push
+    /// pipeline (and locally from `SnoozeAlarmIntent` / on foreground).
+    /// Default false preserves Codable back-compat.
+    var liveActivityEnabled: Bool = false
+
+    /// How many hours before the alarm fires the countdown card should
+    /// appear. Clamped to 1...9 at the UI layer. Only meaningful when
+    /// `liveActivityEnabled` is true.
+    var liveActivityLeadHours: Int = 1
 }

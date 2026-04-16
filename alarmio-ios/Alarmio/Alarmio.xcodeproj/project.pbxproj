@@ -81,6 +81,7 @@
 				Features/Alarm/AppGroupDefaults.swift,
 				Features/Alarm/Intents/SnoozeAlarmIntent.swift,
 				Features/Alarm/Intents/StopAlarmIntent.swift,
+				Features/LiveActivity/CountdownActivityAttributes.swift,
 				Global/Models/AlarmConfiguration.swift,
 				Global/Models/CustomPromptInclude.swift,
 			);
@@ -422,6 +423,7 @@
 				INFOPLIST_FILE = AlarmioWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AlarmioWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Parenthood ApS. All rights reserved.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -453,6 +455,7 @@
 				INFOPLIST_FILE = AlarmioWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AlarmioWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Parenthood ApS. All rights reserved.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -599,7 +602,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Alarmio/Alarmio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = WYQSG6G447;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -641,7 +644,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Alarmio/Alarmio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = WYQSG6G447;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
