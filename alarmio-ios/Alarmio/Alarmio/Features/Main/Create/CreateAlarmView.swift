@@ -86,6 +86,8 @@ struct CreateAlarmView: View {
     @State private var showRegenSuccess: Bool = false
     @State private var regenSuccessTask: Task<Void, Never>?
     @State private var showNameSheet: Bool = false
+    @State private var sunriseTask: Task<Void, Never>?
+    @State private var starSpinTask: Task<Void, Never>?
 
     // MARK: - Constants
 
@@ -948,6 +950,7 @@ struct CreateAlarmView: View {
 
         // 4. Blur the hero out + fade the sky back to calm
         confirmationHeroVisible = false
+        cancelSkyAnimations()
         withAnimation(.easeOut(duration: 1.0)) {
             sunriseProgress = 0
             starSpinProgress = 0
@@ -1074,10 +1077,12 @@ struct CreateAlarmView: View {
                 let errorMessage = (error as? APIError)?.errorDescription
                     ?? "We'll investigate this issue. Please try again later."
 
+                cancelSkyAnimations()
                 alertManager.showModal(
                     title: "Something went wrong",
                     message: errorMessage,
                     primaryAction: AlertAction(label: "Continue") { [self] in
+                        cancelSkyAnimations()
                         withAnimation(.easeOut(duration: 0.6)) {
                             sunriseProgress = 0
                             starSpinProgress = 0
@@ -1090,12 +1095,14 @@ struct CreateAlarmView: View {
     }
 
     private func animateStarSpin() {
-        Task { @MainActor in
+        starSpinTask?.cancel()
+        starSpinTask = Task { @MainActor in
             let steps = 30
             let duration = 2.0
             let interval = duration / Double(steps)
             for i in 1...steps {
                 try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
                 let p = Double(i) / Double(steps)
                 // Ease-out
                 starSpinProgress = 1.0 - (1.0 - p) * (1.0 - p)
@@ -1104,16 +1111,25 @@ struct CreateAlarmView: View {
     }
 
     private func animateSunrise(duration: Double) {
-        Task { @MainActor in
+        sunriseTask?.cancel()
+        sunriseTask = Task { @MainActor in
             let steps = 60
             let interval = duration / Double(steps)
             for i in 1...steps {
                 try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
                 let progress = Double(i) / Double(steps)
                 // Smooth ease-in-out
                 sunriseProgress = progress * progress * (3.0 - 2.0 * progress)
             }
         }
+    }
+
+    private func cancelSkyAnimations() {
+        sunriseTask?.cancel()
+        sunriseTask = nil
+        starSpinTask?.cancel()
+        starSpinTask = nil
     }
 
     private func buildStatusMessages() -> [String] {
