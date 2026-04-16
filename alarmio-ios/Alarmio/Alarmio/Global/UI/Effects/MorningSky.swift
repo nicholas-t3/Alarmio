@@ -136,11 +136,9 @@ struct MorningSky: View {
                 }
 
                 // Sunburst rays — light shafts radiating upward from horizon
-                if glow > 0.03 {
-                    SunburstRays(progress: glow)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .ignoresSafeArea()
-                }
+                SunburstRays(progress: glow)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
             }
         }
         .animation(.easeInOut(duration: 0.5), value: sunriseProgress)
@@ -167,9 +165,14 @@ struct MorningSky: View {
 
 // MARK: - Sunburst Rays
 
-private struct SunburstRays: View {
+private struct SunburstRays: View, Animatable {
 
     var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     @State private var rays: [SunburstRay] = []
     @State private var startTime: Date = .now

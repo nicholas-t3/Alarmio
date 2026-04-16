@@ -455,7 +455,7 @@ struct EditAlarmSheetContent: View {
             // Name row
             summaryRow(
                 icon: "tag.fill",
-                label: "Name",
+                label: "Alarm Name",
                 value: normalizedEditName.isEmpty ? "None" : normalizedEditName,
                 detail: nil
             )
@@ -758,12 +758,20 @@ struct EditAlarmSheetContent: View {
     private var proPromptPage: some View {
         VStack(spacing: 0) {
 
-            // Back row — reverts editAlarmType if not saved, then returns
-            // to the style page (not the summary).
+            // Back row — if the user didn't tap Save, revert every
+            // pro-editable field to its value on entry. Matches the create
+            // flow's back-without-save semantics.
             HStack {
                 Button {
-                    if !proEditDidSaveThisVisit {
-                        editAlarmType = proEditOriginalAlarmType
+                    if !proEditDidSaveThisVisit, let restore = proEditRestore {
+                        editAlarmType = restore.alarmType
+                        editApprovedScripts = restore.approvedScripts
+                        editCustomPrompt = restore.customPrompt
+                        editCustomPromptIncludes = restore.customPromptIncludes
+                        editCreativeSnoozes = restore.creativeSnoozes
+                        editLeaveTime = restore.leaveTime
+                        editProPreviewScripts = restore.previewScripts
+                        editProPreviewSnapshot = restore.previewSnapshot
                     }
                     navigateTo(.style)
                 } label: {
@@ -937,19 +945,45 @@ struct EditAlarmSheetContent: View {
 
     // MARK: - Pro Row Handlers
 
+    /// Snapshot of all pro-editable fields on entry to the Pro page.
+    /// Restored on back-without-save so edits are ephemeral until Save.
+    private struct ProEditRestore {
+        let alarmType: AlarmType
+        let approvedScripts: [String]?
+        let customPrompt: String
+        let customPromptIncludes: Set<CustomPromptInclude>
+        let creativeSnoozes: Bool
+        let leaveTime: Date?
+        let previewScripts: [String]?
+        let previewSnapshot: ProPreviewInputs?
+    }
+
+    private func captureProEditRestore(didSave: Bool) {
+        proEditDidSaveThisVisit = didSave
+        proEditRestore = ProEditRestore(
+            alarmType: editAlarmType,
+            approvedScripts: editApprovedScripts,
+            customPrompt: editCustomPrompt,
+            customPromptIncludes: editCustomPromptIncludes,
+            creativeSnoozes: editCreativeSnoozes,
+            leaveTime: editLeaveTime,
+            previewScripts: editProPreviewScripts,
+            previewSnapshot: editProPreviewSnapshot
+        )
+    }
+
     /// Tapping the Pro row (not the toggle). Only navigates when Pro is
-    /// already on — same contract as CreateAlarmView.
+    /// already on. Start every visit with didSave=false — back-without-
+    /// save always discards this visit's edits even if a prior visit saved.
     private func handleEditTapProRow() {
-        proEditDidSaveThisVisit = true
-        proEditOriginalAlarmType = editAlarmType
+        captureProEditRestore(didSave: false)
         navigateTo(.proPrompt)
     }
 
     /// Toggling Pro on via the switch. Auto-navigates to the Pro page so
     /// the user can fill out their prompt without a second tap.
     private func handleEditFlipProOn() {
-        proEditDidSaveThisVisit = false
-        proEditOriginalAlarmType = .basic  // we know they just flipped from basic → pro
+        captureProEditRestore(didSave: false)
         navigateTo(.proPrompt)
     }
 

@@ -59,11 +59,17 @@ struct AlarmCardView: View {
                         .font(AppTypography.labelSmall)
                         .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.85 : 0.35))
 
-                    // Tone + persona
-                    if let tone = alarm.tone, let persona = alarm.voicePersona {
+                    // Tone icon (or crown for pro) + persona name
+                    if let persona = alarm.voicePersona {
                         HStack(spacing: 6) {
-                            Image(systemName: tone.icon)
-                                .font(.system(size: 11))
+                            if alarm.alarmType == .pro {
+                                Image(systemName: "crown.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color(hex: "E9C46A"))
+                            } else if let tone = alarm.tone {
+                                Image(systemName: tone.icon)
+                                    .font(.system(size: 11))
+                            }
 
                             Text(persona.displayName)
                                 .font(AppTypography.caption)

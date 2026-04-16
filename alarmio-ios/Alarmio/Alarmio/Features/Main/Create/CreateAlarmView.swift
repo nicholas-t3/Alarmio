@@ -62,9 +62,10 @@ struct CreateAlarmView: View {
     /// step-machine's `.proPrompt` step but inside the confirmation phase,
     /// which doesn't have a step machine of its own.
     @State private var confirmationProEditMode: Bool = false
-    /// The `alarmType` value at the moment the user entered the Pro editor
-    /// from the confirmation screen. Used to revert on back-without-save.
-    @State private var confirmationProOriginalAlarmType: AlarmType = .basic
+    /// Snapshot of all pro-editable fields at the moment the user enters
+    /// the Pro editor from the confirmation screen. Used to revert every
+    /// field on back-without-save — matches the edit sheet's behavior.
+    @State private var confirmationProRestore: ProFieldsSnapshot?
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -197,11 +198,18 @@ struct CreateAlarmView: View {
                     HapticManager.shared.buttonTap()
                     if onConfirmPro {
                         // Back from Pro editor on confirmation → revert
-                        // alarmType if the user didn't save, then return
-                        // to the confirmation card.
-                        if !proSavedThisVisit {
+                        // every pro-editable field if the user didn't
+                        // save. Matches the edit sheet's behavior.
+                        if !proSavedThisVisit, let restore = confirmationProRestore {
                             withAnimation(.easeInOut(duration: 0.25)) {
-                                draft.alarmType = confirmationProOriginalAlarmType
+                                draft.alarmType = restore.alarmType
+                                draft.approvedScripts = restore.approvedScripts
+                                draft.customPrompt = restore.customPrompt
+                                draft.customPromptIncludes = restore.customPromptIncludes
+                                draft.creativeSnoozes = restore.creativeSnoozes
+                                draft.leaveTime = restore.leaveTime
+                                proPreviewScripts = restore.previewScripts
+                                proPreviewSnapshot = restore.previewSnapshot
                             }
                         }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
@@ -1453,19 +1461,48 @@ struct CreateAlarmView: View {
 
     // MARK: - Pro Prompt Helpers
 
+    /// Snapshot of all pro-editable draft fields. Taken on entry to the
+    /// Pro editor from confirmation so we can revert every change on
+    /// back-without-save (mirrors the edit sheet's ProEditRestore).
+    struct ProFieldsSnapshot: Equatable {
+        let alarmType: AlarmType
+        let approvedScripts: [String]?
+        let customPrompt: String?
+        let customPromptIncludes: Set<CustomPromptInclude>
+        let creativeSnoozes: Bool
+        let leaveTime: Date?
+        let previewScripts: [String]?
+        let previewSnapshot: ProPreviewInputs?
+    }
+
+    private func captureConfirmationProRestore() {
+        confirmationProRestore = ProFieldsSnapshot(
+            alarmType: draft.alarmType,
+            approvedScripts: draft.approvedScripts,
+            customPrompt: draft.customPrompt,
+            customPromptIncludes: draft.customPromptIncludes,
+            creativeSnoozes: draft.creativeSnoozes,
+            leaveTime: draft.leaveTime,
+            previewScripts: proPreviewScripts,
+            previewSnapshot: proPreviewSnapshot
+        )
+    }
+
     /// Tapping the Pro row (not the toggle). Only navigates when Pro is
     /// already on — turning it on is the toggle's job. On the confirmation
     /// phase, swaps the confirmation card for the Pro editor in-place
-    /// instead of using the step machine.
+    /// instead of using the step machine. Always start a visit with
+    /// proSavedThisVisit=false so back-without-save discards this visit's
+    /// edits even if a prior visit saved.
     private func handleTapProRow() {
         if phase == .confirming {
-            confirmationProOriginalAlarmType = draft.alarmType
-            proSavedThisVisit = true
+            captureConfirmationProRestore()
+            proSavedThisVisit = false
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 confirmationProEditMode = true
             }
         } else {
-            proSavedThisVisit = true
+            proSavedThisVisit = false
             transitionToStep(.proPrompt)
         }
     }
@@ -1478,7 +1515,7 @@ struct CreateAlarmView: View {
         // we're iterating on the UI.
         // if subscriptionService.isPro { ... } else { showPaywall = true }
         if phase == .confirming {
-            confirmationProOriginalAlarmType = .basic
+            captureConfirmationProRestore()
             proSavedThisVisit = false
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 confirmationProEditMode = true

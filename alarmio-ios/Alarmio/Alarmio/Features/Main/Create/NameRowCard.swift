@@ -45,7 +45,7 @@ struct NameRowCard: View {
             HStack(spacing: 10) {
 
                 // Left label
-                Text("Name")
+                Text("Alarm Name")
                     .font(AppTypography.labelMedium)
                     .foregroundStyle(.white.opacity(0.5))
 
