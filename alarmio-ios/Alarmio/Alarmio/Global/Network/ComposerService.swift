@@ -85,49 +85,78 @@ final class ComposerService {
         return resultName
     }
 
-    /// Generates just the script text for a Pro custom-prompt preview.
-    /// No TTS, no storage — runs only the OpenAI step on the server.
-    /// The returned text is what the user reviews before accepting; when
-    /// accepted it's stored on `AlarmConfiguration.approvedScriptText` and
-    /// passed back to `compose-alarm` verbatim at audio-generation time.
-    func previewAlarmText(
+    /// Generates Pro custom-alarm scripts (text only — no TTS, no storage).
+    ///
+    /// Two modes, one endpoint:
+    ///   - `baseScript == nil` → returns `1 + snoozeCount` scripts. `scripts[0]`
+    ///     is the main wake-up message shown in the preview; `scripts[1...]`
+    ///     are snoozes that escalate from it.
+    ///   - `baseScript != nil` → returns exactly `snoozeCount` snooze scripts
+    ///     that escalate from the approved main message. Used when snooze
+    ///     count changes without the user wanting to re-pick the main text.
+    func generateCustomAlarmText(
         draft: AlarmConfiguration,
         prompt: String,
-        includes: Set<CustomPromptInclude>
-    ) async throws -> String {
+        includes: Set<CustomPromptInclude>,
+        snoozeCount: Int,
+        baseScript: String? = nil
+    ) async throws -> [String] {
         if DevFlags.skipGeneration {
             try await Task.sleep(nanoseconds: 1_500_000_000)
-            return stubPreviewText(prompt: prompt, includes: includes)
+            return stubCustomAlarmScripts(
+                prompt: prompt,
+                includes: includes,
+                snoozeCount: snoozeCount,
+                baseScript: baseScript
+            )
         }
 
-        let request = PreviewAlarmRequest.from(
+        let request = GenerateCustomAlarmTextRequest.from(
             alarm: draft,
             timezone: TimeZone.current,
             prompt: prompt,
-            includes: includes
+            includes: includes,
+            snoozeCount: snoozeCount,
+            baseScript: baseScript
         )
 
-        print("[Composer] >>> invoking preview-alarm-text (alarmId=\(request.alarm_id), includes=\(request.includes))")
+        print("[Composer] >>> invoking generate-custom-alarm-text (snoozes=\(snoozeCount), base=\(baseScript == nil ? "no" : "yes"), includes=\(request.includes))")
 
-        let response: PreviewAlarmResponse = try await apiClient.invokeFunction(
-            "preview-alarm-text",
+        let response: GenerateCustomAlarmTextResponse = try await apiClient.invokeFunction(
+            "generate-custom-alarm-text",
             body: request
         )
 
-        print("[Composer] <<< preview script length=\(response.script_text.count)")
-        return response.script_text
+        print("[Composer] <<< generated \(response.scripts.count) scripts")
+        return response.scripts
     }
 
-    private func stubPreviewText(prompt: String, includes: Set<CustomPromptInclude>) -> String {
+    private func stubCustomAlarmScripts(
+        prompt: String,
+        includes: Set<CustomPromptInclude>,
+        snoozeCount: Int,
+        baseScript: String?
+    ) -> [String] {
         let includeList = includes.map(\.label).sorted().joined(separator: ", ")
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let promptLine = trimmed.isEmpty ? "(no prompt)" : trimmed
-        return """
+
+        if baseScript != nil {
+            return (0..<snoozeCount).map { i in
+                "Stub snooze \(i + 1). Still time to get up — includes: \(includeList.isEmpty ? "none" : includeList)."
+            }
+        }
+
+        let main = """
         Good morning. This is a stubbed preview while the backend is offline.
         Prompt: \(promptLine)
         Includes: \(includeList.isEmpty ? "(none)" : includeList)
         Time to rise — today is going to be a good one.
         """
+        let snoozes = (0..<snoozeCount).map { i in
+            "Stub snooze \(i + 1). You hit snooze — time to get moving."
+        }
+        return [main] + snoozes
     }
 
     // MARK: - Dev skip path
@@ -199,10 +228,13 @@ struct ComposeRequest: Codable, Sendable {
     let voice_persona: String
     let why_context: String?
     let content_flags: [String]
+    let alarm_type: String
     let custom_prompt: String?
     let custom_prompt_includes: [String]
-    /// When non-nil the server TTSs this verbatim for index 0 and skips OpenAI.
-    let approved_script: String?
+    /// When non-nil the server TTSs these verbatim (index 0 = main, 1..N =
+    /// snoozes) and skips OpenAI entirely. Length must match what the
+    /// caller expects the composition to contain.
+    let approved_scripts: [String]?
     /// When false the server returns only 2 files (initial + loop) regardless of max_snoozes.
     let creative_snoozes: Bool
     let max_snoozes: Int
@@ -240,9 +272,10 @@ struct ComposeRequest: Codable, Sendable {
             voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
             why_context: alarm.whyContext?.rawValue,
             content_flags: alarm.contentFlags.map(\.rawValue),
+            alarm_type: alarm.alarmType.rawValue,
             custom_prompt: alarm.customPrompt,
             custom_prompt_includes: alarm.customPromptIncludes.map(\.rawValue).sorted(),
-            approved_script: alarm.approvedScriptText,
+            approved_scripts: alarm.approvedScripts,
             creative_snoozes: alarm.creativeSnoozes,
             max_snoozes: alarm.maxSnoozes,
             snooze_interval_minutes: alarm.snoozeInterval,
@@ -276,59 +309,62 @@ struct ComposeFile: Codable, Sendable {
     let duration_ms: Int?
 }
 
-// MARK: - Preview (text-only) Types
+// MARK: - Generate Custom Alarm Text Types
 
-struct PreviewAlarmRequest: Codable, Sendable {
-    let alarm_id: String
-    let wake_time_local: String
-    let wake_date_local: String
-    let timezone: String
-    let leave_time_local: String?
+struct GenerateCustomAlarmTextRequest: Codable, Sendable {
+    let voice_persona: String
     let tone: String?
     let intensity: String?
-    let voice_persona: String
     let why_context: String?
-    let content_flags: [String]
     let custom_prompt: String
     let includes: [String]
+    let wake_time_local: String?
+    let leave_time_local: String?
+    let timezone: String
+    let snooze_count: Int
+    let snooze_interval_minutes: Int?
+    let base_script: String?
     let uses_24_hour: Bool
 
     static func from(
         alarm: AlarmConfiguration,
         timezone: TimeZone,
         prompt: String,
-        includes: Set<CustomPromptInclude>
-    ) -> PreviewAlarmRequest {
-        let uses24Hour = ComposeRequest.deviceUses24HourTime()
-
+        includes: Set<CustomPromptInclude>,
+        snoozeCount: Int,
+        baseScript: String?
+    ) -> GenerateCustomAlarmTextRequest {
+        // Use 24h format on the wire — it's unambiguous for the server and
+        // avoids locale-specific AM/PM formatting differences. The backend
+        // echoes the exact string back in scripts if the user asks for it.
         let formatterTime = DateFormatter()
         formatterTime.timeZone = timezone
-        formatterTime.dateFormat = uses24Hour ? "HH:mm" : "h:mm a"
+        formatterTime.dateFormat = "HH:mm"
+        formatterTime.locale = Locale(identifier: "en_US_POSIX")
 
-        let formatterDate = DateFormatter()
-        formatterDate.dateFormat = "yyyy-MM-dd"
-        formatterDate.timeZone = timezone
+        let uses24Hour = ComposeRequest.deviceUses24HourTime()
 
-        let wakeDate = alarm.wakeTime ?? Date()
+        let wakeLocal = alarm.wakeTime.map { formatterTime.string(from: $0) }
+        let leaveLocal = alarm.leaveTime.map { formatterTime.string(from: $0) }
 
-        return PreviewAlarmRequest(
-            alarm_id: alarm.id.uuidString,
-            wake_time_local: formatterTime.string(from: wakeDate),
-            wake_date_local: formatterDate.string(from: wakeDate),
-            timezone: timezone.identifier,
-            leave_time_local: alarm.leaveTime.map { formatterTime.string(from: $0) },
+        return GenerateCustomAlarmTextRequest(
+            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
             tone: alarm.tone?.rawValue,
             intensity: alarm.intensity?.rawValue,
-            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
             why_context: alarm.whyContext?.rawValue,
-            content_flags: alarm.contentFlags.map(\.rawValue),
             custom_prompt: prompt,
             includes: includes.map(\.rawValue).sorted(),
+            wake_time_local: wakeLocal,
+            leave_time_local: leaveLocal,
+            timezone: timezone.identifier,
+            snooze_count: snoozeCount,
+            snooze_interval_minutes: alarm.snoozeInterval,
+            base_script: baseScript,
             uses_24_hour: uses24Hour
         )
     }
 }
 
-struct PreviewAlarmResponse: Codable, Sendable {
-    let script_text: String
+struct GenerateCustomAlarmTextResponse: Codable, Sendable {
+    let scripts: [String]
 }

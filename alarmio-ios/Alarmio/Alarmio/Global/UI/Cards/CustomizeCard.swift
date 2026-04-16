@@ -15,12 +15,20 @@ struct CustomizeCard: View {
     @Binding var tone: AlarmTone?
     @Binding var whyContext: WhyContext?
     @Binding var intensity: AlarmIntensity?
+    /// Optional toggle binding. Nil hides the Pro row. Non-nil drives the
+    /// green switch and dims the other rows when true.
+    @Binding var isProOn: Bool
 
     // MARK: - Constants
 
     let showProRow: Bool
     let proCustomized: Bool
-    let onTapPro: (() -> Void)?
+    /// Called when the row is tapped (not the toggle). Only fires when
+    /// `isProOn` is already true.
+    let onTapProRow: (() -> Void)?
+    /// Called when the toggle flips from off → on. The parent typically
+    /// auto-navigates to the Pro screen from here.
+    let onFlipProOn: (() -> Void)?
     let mode: CardMode
 
     // MARK: - State
@@ -33,17 +41,21 @@ struct CustomizeCard: View {
         tone: Binding<AlarmTone?>,
         whyContext: Binding<WhyContext?>,
         intensity: Binding<AlarmIntensity?>,
+        isProOn: Binding<Bool> = .constant(false),
         showProRow: Bool = false,
         proCustomized: Bool = false,
-        onTapPro: (() -> Void)? = nil,
+        onTapProRow: (() -> Void)? = nil,
+        onFlipProOn: (() -> Void)? = nil,
         mode: CardMode = .standard
     ) {
         self._tone = tone
         self._whyContext = whyContext
         self._intensity = intensity
+        self._isProOn = isProOn
         self.showProRow = showProRow
         self.proCustomized = proCustomized
-        self.onTapPro = onTapPro
+        self.onTapProRow = onTapProRow
+        self.onFlipProOn = onFlipProOn
         self.mode = mode
     }
 
@@ -58,6 +70,31 @@ struct CustomizeCard: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
                 .padding(.bottom, 10)
+
+            // Tone / Reason / Intensity — dimmed + disabled when Pro is on
+            // because these inputs don't feed the Pro generation flow.
+            standardFactorRows
+                .opacity(isProOn ? 0.25 : 1)
+                .allowsHitTesting(!isProOn)
+                .animation(.easeInOut(duration: 0.25), value: isProOn)
+
+            // Pro customization (optional)
+            if showProRow {
+                Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+
+                proRow
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .modifier(CardGlassModifier(mode: mode))
+    }
+
+    // MARK: - Standard Rows
+
+    private var standardFactorRows: some View {
+        VStack(spacing: 0) {
 
             // Tone
             factorRow(
@@ -107,18 +144,7 @@ struct CustomizeCard: View {
             inlineExpandable(isOpen: expandedFactor == .intensity) {
                 intensityInlineSlider
             }
-
-            // Pro customization (optional)
-            if showProRow {
-                Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
-
-                proRow
-            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .modifier(CardGlassModifier(mode: mode))
     }
 
     // MARK: - Factor Logic
@@ -286,37 +312,50 @@ struct CustomizeCard: View {
     // MARK: - Pro Row
 
     private var proRow: some View {
-        Button {
-            HapticManager.shared.buttonTap()
-            onTapPro?()
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "E9C46A"))
-                    .frame(width: 20)
+        HStack(spacing: 12) {
+            Image(systemName: "crown.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "E9C46A"))
+                .frame(width: 20)
 
-                Text("Pro")
-                    .font(AppTypography.labelLarge)
-                    .foregroundStyle(.white)
+            // Row label — tapping this area navigates to the Pro screen
+            // when the toggle is on.
+            Button {
+                guard isProOn else { return }
+                HapticManager.shared.buttonTap()
+                onTapProRow?()
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Pro")
+                        .font(AppTypography.labelLarge)
+                        .foregroundStyle(.white)
 
-                Spacer(minLength: 0)
-
-                if proCustomized {
-                    Text("Custom prompt ready")
-                        .font(AppTypography.labelMedium)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .contentTransition(.numericText())
+                    Spacer(minLength: 0)
                 }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.3))
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            // Toggle — green when on, matches the confirmation-hero green.
+            // Uses an intermediary binding so we can fire `onFlipProOn` on
+            // the off → on transition for auto-navigation.
+            Toggle("", isOn: Binding(
+                get: { isProOn },
+                set: { newValue in
+                    HapticManager.shared.selection()
+                    let wasOff = !isProOn
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        isProOn = newValue
+                    }
+                    if newValue && wasOff {
+                        onFlipProOn?()
+                    }
+                }
+            ))
+            .labelsHidden()
+            .tint(Color(hex: "4AFF8E"))
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 14)
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: proCustomized)
     }
 
@@ -346,31 +385,35 @@ struct CustomizeCard: View {
     }
 }
 
-#Preview("With Pro Row") {
+#Preview("Pro Off") {
     ZStack {
         Color(hex: "050505").ignoresSafeArea()
         CustomizeCard(
             tone: .constant(.calm),
             whyContext: .constant(nil),
             intensity: .constant(nil),
+            isProOn: .constant(false),
             showProRow: true,
             proCustomized: false,
-            onTapPro: { }
+            onTapProRow: { },
+            onFlipProOn: { }
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 }
 
-#Preview("Pro Customized") {
+#Preview("Pro On (dimmed)") {
     ZStack {
         Color(hex: "050505").ignoresSafeArea()
         CustomizeCard(
             tone: .constant(.calm),
             whyContext: .constant(.work),
             intensity: .constant(.balanced),
+            isProOn: .constant(true),
             showProRow: true,
             proCustomized: true,
-            onTapPro: { }
+            onTapProRow: { },
+            onFlipProOn: { }
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }

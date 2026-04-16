@@ -51,6 +51,15 @@ enum VoicePersona: String, CaseIterable, Codable, Sendable {
     case digitalAssistant = "digital_assistant"
 }
 
+/// Whether this alarm uses the standard Composer flow (`.basic`) or the
+/// Pro flow with user-approved scripts (`.pro`). The backend branches on
+/// this to decide whether to run OpenAI at all for index 0 and how to
+/// handle snoozes.
+enum AlarmType: String, CaseIterable, Codable, Sendable {
+    case basic
+    case pro
+}
+
 enum ContentFlag: String, CaseIterable, Codable, Sendable {
     case currentTime = "current_time"
     case timeUntilLeaving = "time_until_leaving"
@@ -89,13 +98,18 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     var difficulty: AlarmDifficulty?
     var whyContext: WhyContext?
 
+    /// Whether this alarm uses the basic flow or the Pro flow. Default
+    /// `.basic` preserves Codable back-compat for existing alarms.
+    var alarmType: AlarmType = .basic
+
     /// Include flags for Pro custom-prompt generation. Defaulted empty so
     /// persisted alarms without this field decode cleanly.
     var customPromptIncludes: Set<CustomPromptInclude> = []
 
-    /// Exact text the user accepted on the Pro preview screen. When
-    /// non-nil, Composer uses this verbatim for index 0 and skips OpenAI.
-    var approvedScriptText: String?
+    /// Exact scripts the user accepted on the Pro preview screen. When
+    /// non-nil, Composer uses these verbatim (index 0 = main, 1..N = snoozes)
+    /// and skips OpenAI entirely. nil for basic alarms.
+    var approvedScripts: [String]?
 
     /// When false, snoozes reuse a single loop audio file instead of
     /// generating fresh per-snooze variants. Default true preserves the

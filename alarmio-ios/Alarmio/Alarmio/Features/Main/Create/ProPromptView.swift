@@ -44,66 +44,66 @@ struct ProPromptView: View {
         ScrollView {
             VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-                // Header title
-                titleBlock
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
+                // Result card — only inserted after a successful generation.
+                // Springs in above the prompt so the user sees their result
+                // and can scroll up to edit the inputs if they want to try
+                // again.
+                if let text = generated, !isGenerating {
+                    resultCard(text: text)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+
+                // Error card — shown in place of the result when generation
+                // failed.
+                if let error = errorMessage, !isGenerating {
+                    errorCard(message: error)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.opacity)
+                }
 
                 // Custom prompt input
                 promptCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.05, duration: 0.4)
 
-                // Include toggles
+                // Include chip cloud
                 includeCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
+
+                // Leave time — dynamically inserted below Include when the
+                // .leaveTime chip is selected
+                if includes.contains(.leaveTime) {
+                    leaveTimeCard
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                        ))
+                }
 
                 // Creative snoozes
                 creativeSnoozesCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.15, duration: 0.4)
 
-                // Generated message + actions
-                if isGenerating || generated != nil || errorMessage != nil {
-                    resultBlock
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .premiumBlur(isVisible: cardsVisible, delay: 0.2, duration: 0.4)
-                }
-
                 Spacer(minLength: 0)
                     .frame(height: 20)
             }
             .padding(.top, 8)
+            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: includes.contains(.leaveTime))
+            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: generated)
+            .animation(.easeInOut(duration: 0.25), value: errorMessage)
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
     }
 
     // MARK: - Subviews
-
-    private var titleBlock: some View {
-        VStack(spacing: 6) {
-            Text("PRO")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(Color(hex: "E9C46A"))
-
-            Text("Custom Prompt")
-                .font(AppTypography.headlineLarge)
-                .tracking(AppTypography.headlineLargeTracking)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.7)
-
-            Text("Tell us what your wake-up message should include.")
-                .font(AppTypography.labelSmall)
-                .foregroundStyle(.white.opacity(0.5))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-        }
-        .frame(maxWidth: .infinity)
-    }
 
     private var promptCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -129,7 +129,7 @@ struct ProPromptView: View {
                     .font(AppTypography.labelMedium)
                     .foregroundStyle(.white)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 110, maxHeight: 180)
+                    .frame(minHeight: 70, maxHeight: 110)
                     .onChange(of: prompt) { _, _ in onPromptChange() }
             }
         }
@@ -139,82 +139,79 @@ struct ProPromptView: View {
     }
 
     private var includeCard: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
 
             // Header
-            HStack {
-                Text("INCLUDE")
-                    .font(AppTypography.caption)
-                    .tracking(AppTypography.captionTracking)
-                    .foregroundStyle(.white.opacity(0.4))
-                Spacer()
-            }
-            .padding(.bottom, 10)
+            Text("INCLUDE")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
 
-            // Toggle rows
-            ForEach(Array(CustomPromptInclude.allCases.enumerated()), id: \.element.id) { pair in
-                let include = pair.element
-                let isLast = pair.offset == CustomPromptInclude.allCases.count - 1
-
-                includeRow(include)
-
-                if include == .leaveTime && includes.contains(.leaveTime) {
-                    LeaveTimePicker(leaveTime: $leaveTime, wakeTime: wakeTime)
-                        .padding(.top, 4)
-                        .padding(.bottom, 14)
-                }
-
-                if !isLast {
-                    Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+            // Chip cloud — flowing wrap of include tags, tap to toggle
+            FlowLayout(spacing: 8, rowSpacing: 8) {
+                ForEach(CustomPromptInclude.allCases) { include in
+                    includeChip(include)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: .standard))
     }
 
-    private func includeRow(_ include: CustomPromptInclude) -> some View {
+    private func includeChip(_ include: CustomPromptInclude) -> some View {
         let isOn = includes.contains(include)
 
-        return HStack(spacing: 12) {
-            Image(systemName: isOn ? include.onIconName : "circle.fill")
-                .font(.system(size: isOn ? 14 : 7))
-                .foregroundStyle(.white.opacity(isOn ? 0.9 : 0.3))
-                .frame(width: 20)
-                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-
-            Text(include.label)
-                .font(AppTypography.labelLarge)
-                .foregroundStyle(.white)
-
-            Spacer(minLength: 0)
-
-            Toggle("", isOn: Binding(
-                get: { includes.contains(include) },
-                set: { newValue in
-                    HapticManager.shared.selection()
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        if newValue {
-                            includes.insert(include)
-                            if include == .leaveTime && leaveTime == nil {
-                                leaveTime = LeaveTimePicker.defaultLeaveTime(wakeTime: wakeTime)
-                            }
-                        } else {
-                            includes.remove(include)
-                            if include == .leaveTime {
-                                leaveTime = nil
-                            }
-                        }
+        return Button {
+            HapticManager.shared.selection()
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                if isOn {
+                    includes.remove(include)
+                    if include == .leaveTime {
+                        leaveTime = nil
                     }
-                    onPromptChange()
+                } else {
+                    includes.insert(include)
+                    if include == .leaveTime && leaveTime == nil {
+                        leaveTime = LeaveTimePicker.defaultLeaveTime(wakeTime: wakeTime)
+                    }
                 }
-            ))
-            .labelsHidden()
-            .tint(Color(hex: "0a1628"))
+            }
+            onPromptChange()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: include.onIconName)
+                    .font(.system(size: 11))
+                Text(include.label)
+                    .font(AppTypography.labelSmall)
+            }
+            .foregroundStyle(isOn ? .black : .white.opacity(0.9))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isOn ? .white : .white.opacity(0.08))
+            .clipShape(Capsule())
         }
-        .padding(.vertical, 14)
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.2), value: isOn)
+    }
+
+    private var leaveTimeCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+
+            // Header
+            Text("TIME TO LEAVE")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+
+            LeaveTimePicker(leaveTime: $leaveTime, wakeTime: wakeTime)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .modifier(CardGlassModifier(mode: .standard))
     }
 
     private var creativeSnoozesCard: some View {
@@ -259,31 +256,6 @@ struct ProPromptView: View {
         .modifier(CardGlassModifier(mode: .standard))
     }
 
-    @ViewBuilder
-    private var resultBlock: some View {
-        if isGenerating {
-            loadingCard
-        } else if let text = generated {
-            resultCard(text: text)
-        } else if let error = errorMessage {
-            errorCard(message: error)
-        }
-    }
-
-    private var loadingCard: some View {
-        HStack(spacing: 12) {
-            ProgressView()
-                .tint(.white)
-            Text("Writing your message…")
-                .font(AppTypography.labelMedium)
-                .foregroundStyle(.white.opacity(0.7))
-            Spacer()
-        }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 16)
-        .modifier(CardGlassModifier(mode: .standard))
-    }
-
     private func resultCard(text: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("PREVIEW")
@@ -291,7 +263,7 @@ struct ProPromptView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            Text(text)
+            Text(Self.stripTTSTags(text))
                 .font(AppTypography.labelMedium)
                 .foregroundStyle(.white.opacity(0.9))
                 .fixedSize(horizontal: false, vertical: true)
@@ -301,6 +273,25 @@ struct ProPromptView: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: .standard))
+    }
+
+    /// Remove ElevenLabs `<break time="..."/>` pronunciation markers for
+    /// user-visible display. The raw text (with tags) is still what goes
+    /// to TTS — we only clean up the preview. Collapses any double-spaces
+    /// left behind so punctuation like `. <break> Next sentence` renders
+    /// as `. Next sentence` rather than `.  Next sentence`.
+    private static func stripTTSTags(_ text: String) -> String {
+        let breakPattern = #"\s*<break\s+time="[^"]+"\s*/?>\s*"#
+        let withoutTags: String
+        if let regex = try? NSRegularExpression(pattern: breakPattern, options: .caseInsensitive) {
+            let range = NSRange(text.startIndex..., in: text)
+            withoutTags = regex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
+        } else {
+            withoutTags = text
+        }
+        return withoutTags
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func errorCard(message: String) -> some View {
@@ -318,6 +309,83 @@ struct ProPromptView: View {
         .modifier(CardGlassModifier(mode: .standard))
     }
 
+}
+
+// MARK: - Flow Layout
+
+/// A simple horizontal-wrapping layout — places children left-to-right and
+/// moves to a new row when the next child would overflow. Used for the
+/// include chip cloud so tags flow like word-cloud pills.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+
+        for size in sizes {
+            if x + size.width > maxWidth && x > 0 {
+                y += rowHeight + rowSpacing
+                x = 0
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            totalWidth = max(totalWidth, x - spacing)
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: totalWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let maxWidth = bounds.width
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+
+        // First pass — group indices into rows so each row can be measured
+        // and centered independently.
+        var rows: [[Int]] = [[]]
+        var rowWidths: [CGFloat] = [0]
+        var rowHeights: [CGFloat] = [0]
+        var cursorX: CGFloat = 0
+
+        for (index, size) in sizes.enumerated() {
+            let additional = rows[rows.count - 1].isEmpty ? size.width : size.width + spacing
+            if cursorX + additional > maxWidth && !rows[rows.count - 1].isEmpty {
+                rows.append([])
+                rowWidths.append(0)
+                rowHeights.append(0)
+                cursorX = 0
+            }
+            let isFirstInRow = rows[rows.count - 1].isEmpty
+            rows[rows.count - 1].append(index)
+            cursorX += isFirstInRow ? size.width : size.width + spacing
+            rowWidths[rowWidths.count - 1] = cursorX
+            rowHeights[rowHeights.count - 1] = max(rowHeights.last ?? 0, size.height)
+        }
+
+        // Second pass — place each row centered within bounds.
+        var y = bounds.minY
+        for (rowIndex, indices) in rows.enumerated() {
+            let rowWidth = rowWidths[rowIndex]
+            var x = bounds.minX + (maxWidth - rowWidth) / 2
+            for (positionInRow, subviewIndex) in indices.enumerated() {
+                let size = sizes[subviewIndex]
+                if positionInRow > 0 { x += spacing }
+                subviews[subviewIndex].place(
+                    at: CGPoint(x: x, y: y),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(size)
+                )
+                x += size.width
+            }
+            y += rowHeights[rowIndex] + rowSpacing
+        }
+    }
 }
 
 // MARK: - Previews

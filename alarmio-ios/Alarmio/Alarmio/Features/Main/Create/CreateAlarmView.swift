@@ -34,9 +34,21 @@ struct CreateAlarmView: View {
     )
     @State private var step: Step
     @State private var showPaywall: Bool = false
-    @State private var proPreviewGenerated: String?
+    /// All scripts returned from the last preview call — `[0]` is the main
+    /// wake-up message shown to the user; `[1...]` are snoozes (if creative
+    /// snoozes are on and snoozes are configured). Saved to
+    /// `draft.approvedScripts` when the user taps "Use This".
+    @State private var proPreviewScripts: [String]?
+    /// Snapshot of the inputs that produced `proPreviewScripts`. Compared
+    /// against live draft values to decide whether the CTA should read
+    /// "Save" (clean) or "Regenerate" (dirty).
+    @State private var proPreviewSnapshot: ProPreviewInputs?
     @State private var proPreviewIsGenerating: Bool = false
     @State private var proPreviewError: String?
+    /// Whether the user pressed Save during the current visit to the Pro
+    /// screen. Reset on entry; consulted on exit to decide whether to revert
+    /// `alarmType` back to `.basic` (if they backed out without saving).
+    @State private var proSavedThisVisit: Bool = false
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
@@ -138,6 +150,11 @@ struct CreateAlarmView: View {
         .onChange(of: draft.whyContext) { invalidateRegenSuccess() }
         .onChange(of: draft.intensity) { invalidateRegenSuccess() }
         .onChange(of: draft.voicePersona) { invalidateRegenSuccess() }
+        // Debug: print full draft on every change. Uncomment to re-enable.
+        // .onChange(of: draft) { _, newValue in
+        //     print("[draft] ────────────────────────────────────────────")
+        //     dump(newValue)
+        // }
         .sheet(isPresented: $showPaywall) {
             PaywallSheet()
         }
@@ -148,8 +165,13 @@ struct CreateAlarmView: View {
     private var header: some View {
         HStack {
 
-            // Back / Close — hidden during generating and confirming
-            if phase == .configuring {
+            // Back / Close — hidden during generating, confirming, and
+            // while the Pro preview is in flight (user shouldn't be able to
+            // back out mid-generation).
+            let hideBack = phase != .configuring
+                || (step == .proPrompt && proPreviewIsGenerating)
+
+            if !hideBack {
                 Button {
                     HapticManager.shared.buttonTap()
                     switch step {
@@ -158,6 +180,14 @@ struct CreateAlarmView: View {
                     case .customize:
                         transitionToStep(.configure)
                     case .proPrompt:
+                        // Back without Save → revert Pro toggle to off.
+                        // If the user pressed Save this visit, alarmType
+                        // was already set to .pro and should be retained.
+                        if !proSavedThisVisit {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                draft.alarmType = .basic
+                            }
+                        }
                         transitionToStep(.customize)
                     }
                 } label: {
@@ -167,19 +197,19 @@ struct CreateAlarmView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
             } else {
                 Color.clear
                     .frame(width: 44, height: 44)
+                    .transition(.opacity)
             }
 
             Spacer()
 
-            // Title — swaps per phase
-            Text(headerTitle)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .contentTransition(.opacity)
+            // Title — swaps per phase / step
+            headerTitleView
                 .animation(.easeInOut(duration: 0.3), value: phase)
+                .animation(.easeInOut(duration: 0.3), value: step)
 
             Spacer()
 
@@ -188,13 +218,29 @@ struct CreateAlarmView: View {
                 .frame(width: 44, height: 44)
         }
         .padding(.horizontal, AppSpacing.screenHorizontal - 8)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: proPreviewIsGenerating)
     }
 
-    private var headerTitle: String {
+    @ViewBuilder
+    private var headerTitleView: some View {
         switch phase {
-        case .configuring: return "New Alarm"
-        case .generating: return ""
-        case .confirming: return "New Alarm"
+        case .generating:
+            Color.clear.frame(height: 22)
+        case .configuring where step == .proPrompt:
+            HStack(spacing: 6) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(hex: "E9C46A"))
+                Text("Pro")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .transition(.opacity)
+        default:
+            Text("New Alarm")
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .transition(.opacity)
         }
     }
 
@@ -265,9 +311,16 @@ struct CreateAlarmView: View {
                     tone: $draft.tone,
                     whyContext: $draft.whyContext,
                     intensity: $draft.intensity,
+                    isProOn: Binding(
+                        get: { draft.alarmType == .pro },
+                        set: { newValue in
+                            draft.alarmType = newValue ? .pro : .basic
+                        }
+                    ),
                     showProRow: true,
-                    proCustomized: draft.approvedScriptText != nil,
-                    onTapPro: handleTapPro
+                    proCustomized: draft.approvedScripts != nil,
+                    onTapProRow: handleTapProRow,
+                    onFlipProOn: handleFlipProOn
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
@@ -295,7 +348,7 @@ struct CreateAlarmView: View {
             creativeSnoozes: $draft.creativeSnoozes,
             wakeTime: draft.wakeTime,
             cardsVisible: cardsVisible,
-            generated: proPreviewGenerated,
+            generated: proPreviewScripts?.first,
             isGenerating: proPreviewIsGenerating,
             errorMessage: proPreviewError,
             onPromptChange: handleProPromptInputChange
@@ -1062,7 +1115,15 @@ struct CreateAlarmView: View {
             .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
 
         case .customize:
-            let isEnabled = draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
+            // Pro alarms only need approvedScripts. Basic alarms still
+            // require tone/why/intensity so the generic Composer prompt
+            // has enough context.
+            let isEnabled: Bool = {
+                if draft.alarmType == .pro {
+                    return draft.approvedScripts?.isEmpty == false
+                }
+                return draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
+            }()
             Button {
                 HapticManager.shared.buttonTap()
                 startGeneration()
@@ -1085,42 +1146,45 @@ struct CreateAlarmView: View {
 
     @ViewBuilder
     private var proPromptBottomBar: some View {
-        if let text = proPreviewGenerated, !proPreviewIsGenerating {
-            HStack(spacing: 12) {
-                Button {
-                    HapticManager.shared.buttonTap()
-                    Task { await runProPreview() }
-                } label: {
-                    Text("Regenerate")
-                        .font(AppTypography.labelMedium)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: AppButtons.height)
-                        .background(.white.opacity(0.1))
-                        .clipShape(Capsule())
-                }
+        let hasResult = !(proPreviewScripts?.isEmpty ?? true)
+        let promptText = draft.customPrompt ?? ""
+        let canGenerate = !proPreviewIsGenerating && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isDirty = hasResult && proPreviewSnapshot != ProPreviewInputs.from(draft)
+        let label: String = {
+            if proPreviewIsGenerating { return "" }
+            if hasResult { return isDirty ? "Regenerate" : "Save" }
+            return "Generate Text"
+        }()
 
-                Button {
-                    HapticManager.shared.success()
-                    draft.approvedScriptText = text
-                    transitionToStep(.customize)
-                } label: {
-                    Text("Use This")
-                }
-                .primaryButton()
-            }
-        } else {
-            let promptText = draft.customPrompt ?? ""
-            let canGenerate = !proPreviewIsGenerating && !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            Button {
+        Button {
+            if proPreviewIsGenerating { return }
+            if hasResult && !isDirty {
+                HapticManager.shared.success()
+                draft.approvedScripts = proPreviewScripts
+                draft.alarmType = .pro
+                proSavedThisVisit = true
+                transitionToStep(.customize)
+            } else {
                 HapticManager.shared.buttonTap()
                 Task { await runProPreview() }
-            } label: {
-                Text(proPreviewIsGenerating ? "Generating…" : "Generate Preview")
             }
-            .primaryButton(isEnabled: canGenerate)
-            .disabled(!canGenerate)
+        } label: {
+            ZStack {
+                if proPreviewIsGenerating {
+                    ProgressView()
+                        .tint(.black)
+                        .transition(.opacity)
+                } else {
+                    Text(label)
+                        .contentTransition(.numericText())
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: proPreviewIsGenerating)
+            .animation(.easeInOut(duration: 0.25), value: label)
         }
+        .primaryButton(isEnabled: hasResult || canGenerate)
+        .disabled(proPreviewIsGenerating || !(hasResult || canGenerate))
     }
 
     private var confirmingBottomBar: some View {
@@ -1130,6 +1194,14 @@ struct CreateAlarmView: View {
 
             var configured = committed
             configured.isEnabled = true
+            // Basic alarms drop any Pro-only fields left over from an
+            // aborted Pro flow so they don't confuse the backend or linger
+            // in persisted state.
+            if configured.alarmType == .basic {
+                configured.approvedScripts = nil
+                configured.customPrompt = nil
+                configured.customPromptIncludes = []
+            }
             onCreate(configured)
             dismiss()
         } label: {
@@ -1198,27 +1270,43 @@ struct CreateAlarmView: View {
 
     // MARK: - Pro Prompt Helpers
 
-    private func handleTapPro() {
+    /// Tapping the Pro row (not the toggle). Only navigates when Pro is
+    /// already on — turning it on is the toggle's job. Since Pro is
+    /// already on, the user has either already saved once or we're
+    /// re-entering an in-progress alarm, so any existing approved scripts
+    /// stand regardless of whether they Save again on this visit.
+    private func handleTapProRow() {
+        proSavedThisVisit = true
+        transitionToStep(.proPrompt)
+    }
+
+    /// Toggling Pro on via the switch. Auto-navigates to the Pro screen so
+    /// the user can fill out their prompt without a second tap.
+    private func handleFlipProOn() {
         // IAP gating disabled for now — always open the Pro screen while
-        // we're iterating on the UI. Re-enable by swapping the two branches.
-        // if subscriptionService.isPro {
-        //     transitionToStep(.proPrompt)
-        // } else {
-        //     showPaywall = true
-        // }
+        // we're iterating on the UI.
+        // if subscriptionService.isPro { ... } else { showPaywall = true }
+        proSavedThisVisit = false
         transitionToStep(.proPrompt)
     }
 
     private func handleProPromptInputChange() {
-        // Clear the in-screen preview so the user is nudged back to
-        // "Generate preview" after editing inputs. The approved text on
-        // `draft.approvedScriptText` is intentionally retained (verbatim
-        // rule) — this only resets the ephemeral preview state.
-        guard proPreviewGenerated != nil || proPreviewError != nil else { return }
-        withAnimation(.easeOut(duration: 0.25)) {
-            proPreviewGenerated = nil
-            proPreviewError = nil
-        }
+        // Intentionally a no-op. Editing inputs does not wipe the generated
+        // preview — the CTA label swaps to "Regenerate" when the inputs
+        // diverge from what produced the current result (see
+        // proPreviewIsDirty). The user has to explicitly regenerate to
+        // replace the text.
+    }
+
+    /// Snooze count the Pro preview should request.
+    ///
+    /// - Creative snoozes off → 0 (compose-alarm will reuse the main audio
+    ///   file for every snooze fire, no extra scripts needed).
+    /// - Unlimited snooze → 1 (a single loop snooze that plays forever).
+    /// - Limited → `maxSnoozes`.
+    private var proPreviewSnoozeCount: Int {
+        guard draft.creativeSnoozes else { return 0 }
+        return draft.unlimitedSnooze ? 1 : draft.maxSnoozes
     }
 
     private func runProPreview() async {
@@ -1234,17 +1322,20 @@ struct CreateAlarmView: View {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
             proPreviewIsGenerating = true
             proPreviewError = nil
-            proPreviewGenerated = nil
+            proPreviewScripts = nil
         }
 
         do {
-            let text = try await composerService.previewAlarmText(
+            let scripts = try await composerService.generateCustomAlarmText(
                 draft: draft,
                 prompt: promptText,
-                includes: draft.customPromptIncludes
+                includes: draft.customPromptIncludes,
+                snoozeCount: proPreviewSnoozeCount,
+                baseScript: nil
             )
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                proPreviewGenerated = text
+                proPreviewScripts = scripts
+                proPreviewSnapshot = ProPreviewInputs.from(draft)
                 proPreviewIsGenerating = false
             }
             HapticManager.shared.softTap()
@@ -1277,6 +1368,29 @@ struct CreateAlarmView: View {
             case 2:  self = .customize
             default: self = .configure
             }
+        }
+    }
+
+    /// Snapshot of the Pro-prompt inputs at the moment a preview was
+    /// generated. If the live draft's values diverge from these, the CTA
+    /// shows "Regenerate" instead of "Save".
+    struct ProPreviewInputs: Equatable {
+        let prompt: String
+        let includes: Set<CustomPromptInclude>
+        let creativeSnoozes: Bool
+        let leaveTime: Date?
+        let maxSnoozes: Int
+        let unlimitedSnooze: Bool
+
+        static func from(_ draft: AlarmConfiguration) -> ProPreviewInputs {
+            ProPreviewInputs(
+                prompt: draft.customPrompt ?? "",
+                includes: draft.customPromptIncludes,
+                creativeSnoozes: draft.creativeSnoozes,
+                leaveTime: draft.leaveTime,
+                maxSnoozes: draft.maxSnoozes,
+                unlimitedSnooze: draft.unlimitedSnooze
+            )
         }
     }
 
