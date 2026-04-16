@@ -42,7 +42,7 @@ struct ProPromptView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
+            VStack(spacing: 16) {
 
                 // Result card — only inserted after a successful generation.
                 // Springs in above the prompt so the user sees their result
@@ -126,7 +126,7 @@ struct ProPromptView: View {
             .font(AppTypography.labelMedium)
             .foregroundStyle(.white)
             .tint(.white)
-            .lineLimit(3...6)
+            .lineLimit(1...6)
             .submitLabel(.done)
             .onChange(of: prompt) { _, newValue in
                 if newValue.contains("\n") {
@@ -271,7 +271,7 @@ struct ProPromptView: View {
 
             Text(Self.stripTTSTags(text))
                 .font(AppTypography.labelMedium)
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }

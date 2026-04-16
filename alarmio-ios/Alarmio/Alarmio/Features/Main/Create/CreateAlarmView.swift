@@ -819,13 +819,25 @@ struct CreateAlarmView: View {
 
     private var regenerateButtonForeground: Color {
         if showRegenSuccess { return Color(hex: "4AFF8E") }
-        let active = hasStyleChanges && !isRegenerating
+        let active = hasStyleChanges && draftIsReadyToGenerate && !isRegenerating
         return .white.opacity(active ? 1 : 0.35)
     }
 
     private var regenerateButtonBackground: Color {
         if showRegenSuccess { return Color(hex: "4AFF8E").opacity(0.15) }
-        return .white.opacity(hasStyleChanges ? 0.1 : 0.04)
+        let active = hasStyleChanges && draftIsReadyToGenerate
+        return .white.opacity(active ? 0.1 : 0.04)
+    }
+
+    /// Whether the draft has the fields needed to generate a new alarm.
+    /// Pro alarms need approved scripts; basic alarms need tone/why/intensity
+    /// so the generic Composer prompt has enough context. Matches the gate
+    /// on step 2's "Create Alarm" button.
+    private var draftIsReadyToGenerate: Bool {
+        if draft.alarmType == .pro {
+            return draft.approvedScripts?.isEmpty == false
+        }
+        return draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
     }
 
     private var regenerateButton: some View {
@@ -863,7 +875,7 @@ struct CreateAlarmView: View {
             }
             .shadow(color: showRegenSuccess ? Color(hex: "4AFF8E").opacity(0.2) : .clear, radius: 12, y: 0)
         }
-        .disabled(!hasStyleChanges || isRegenerating || showRegenSuccess)
+        .disabled(!hasStyleChanges || !draftIsReadyToGenerate || isRegenerating || showRegenSuccess)
         .animation(.easeInOut(duration: 0.35), value: showRegenSuccess)
         .animation(.easeInOut(duration: 0.25), value: isRegenerating)
     }
@@ -1410,16 +1422,20 @@ struct CreateAlarmView: View {
         }
     }
 
+    /// Whether the Schedule/Regen button on confirmation is tappable. If
+    /// the draft is dirty it'll need to regenerate before committing, which
+    /// requires the same fields step 2 checks for.
+    private var canProceedFromConfirmation: Bool {
+        if isRegenerating { return false }
+        if draftDiffersFromCommitted { return draftIsReadyToGenerate }
+        return true
+    }
+
     private var confirmingBottomBar: some View {
         Button {
             HapticManager.shared.buttonTap()
             voicePlayer.stop()
-
             if draftDiffersFromCommitted {
-                // User changed pro/tone/voice on confirmation but didn't
-                // tap Regenerate. Auto-regenerate first, then commit.
-                // `regenerateAlarm()` flips `isRegenerating` while it runs;
-                // we schedule the commit for when it settles.
                 scheduleAfterRegeneration()
             } else {
                 commitAndSchedule()
@@ -1427,8 +1443,8 @@ struct CreateAlarmView: View {
         } label: {
             Text(scheduleButtonLabel)
         }
-        .primaryButton(isEnabled: !isRegenerating)
-        .disabled(isRegenerating)
+        .primaryButton(isEnabled: canProceedFromConfirmation)
+        .disabled(!canProceedFromConfirmation)
         .padding(.horizontal, AppButtons.horizontalPadding)
         .padding(.bottom, AppSpacing.screenBottom)
         .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
