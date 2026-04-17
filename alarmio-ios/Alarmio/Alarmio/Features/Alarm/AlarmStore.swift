@@ -22,6 +22,12 @@ final class AlarmStore {
     let scheduler: AlarmScheduler
     let audioFileManager: AudioFileManager
 
+    /// Weak back-reference wired up from `RootView` once both objects
+    /// exist. Used to trigger a local `reconcile` after any CRUD
+    /// mutation so the card reflects the new state immediately without
+    /// waiting for a foreground return.
+    weak var liveActivityManager: LiveActivityManager?
+
     // MARK: - Constants
 
     private static let storageKey = AppGroup.alarmConfigurationsKey
@@ -149,8 +155,9 @@ final class AlarmStore {
         if config.isEnabled {
             try? await scheduler.scheduleAlarm(config)
         }
-        await syncLiveActivitySchedule(for: config)
         HapticManager.shared.success()
+        // Fire-and-forget — network/reconcile must not block the UI animation.
+        Task { [weak self] in await self?.syncLiveActivitySchedule(for: config) }
     }
 
     func updateAlarm(_ config: AlarmConfiguration) async {
@@ -158,7 +165,7 @@ final class AlarmStore {
         alarms[index] = config
         save()
         try? await scheduler.toggleAlarm(config)
-        await syncLiveActivitySchedule(for: config)
+        Task { [weak self] in await self?.syncLiveActivitySchedule(for: config) }
     }
 
     func deleteAlarm(id: UUID) async {
@@ -170,9 +177,14 @@ final class AlarmStore {
         save()
         try? scheduler.cancelAlarm(id: id)
         audioFileManager.deleteSound(for: id)
-        await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
-        await LiveActivitySync.shared.triggerImmediatePush()
         HapticManager.shared.warning()
+        // Fire-and-forget — swipe-to-delete animation must settle immediately.
+        Task { [weak self] in
+            await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
+            await LiveActivitySync.shared.triggerImmediatePush()
+            guard let self else { return }
+            await self.liveActivityManager?.reconcile(alarms: self.alarms)
+        }
     }
 
     /// Keep the Supabase `alarm_schedules` table in sync with this
@@ -201,6 +213,11 @@ final class AlarmStore {
         // same diff-on-push logic, so this no-ops when nothing should
         // change (user has LA off, out of window, unchanged state).
         await LiveActivitySync.shared.triggerImmediatePush()
+
+        // Local reconcile — belt to the server's suspenders. Ensures the
+        // Activity reflects the new alarm list immediately, without
+        // waiting for APNs delivery or the user backgrounding + returning.
+        await liveActivityManager?.reconcile(alarms: alarms)
     }
 
     func toggleAlarm(id: UUID) async {
@@ -208,7 +225,8 @@ final class AlarmStore {
         alarms[index].isEnabled.toggle()
         save()
         try? await scheduler.toggleAlarm(alarms[index])
-        await syncLiveActivitySchedule(for: alarms[index])
+        let updated = alarms[index]
+        Task { [weak self] in await self?.syncLiveActivitySchedule(for: updated) }
         HapticManager.shared.selection()
     }
 

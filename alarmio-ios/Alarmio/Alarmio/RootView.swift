@@ -32,9 +32,15 @@ struct RootView: View {
         // Share the same AudioFileManager instance with the AlarmStore so
         // files ComposerService writes are visible to AlarmScheduler.
         let store = AlarmStore.create()
+        let manager = LiveActivityManager(scheduler: store.scheduler)
+
+        // Back-reference so CRUD mutations can reconcile the card locally
+        // without waiting for a foreground return.
+        store.liveActivityManager = manager
+
         _alarmStore = State(initialValue: store)
         _composerService = State(initialValue: ComposerService(audioFileManager: store.audioFileManager))
-        _liveActivityManager = State(initialValue: LiveActivityManager(scheduler: store.scheduler))
+        _liveActivityManager = State(initialValue: manager)
     }
 
     // MARK: - Body
