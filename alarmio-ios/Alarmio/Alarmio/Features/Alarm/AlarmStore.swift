@@ -171,6 +171,7 @@ final class AlarmStore {
         try? scheduler.cancelAlarm(id: id)
         audioFileManager.deleteSound(for: id)
         await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
+        await LiveActivitySync.shared.triggerImmediatePush()
         HapticManager.shared.warning()
     }
 
@@ -179,20 +180,27 @@ final class AlarmStore {
     /// row whenever the alarm shouldn't appear in the card at all
     /// (disabled, liveActivity off, no wake time resolvable).
     private func syncLiveActivitySchedule(for config: AlarmConfiguration) async {
-        guard config.isEnabled,
-              config.liveActivityEnabled,
-              let fireDate = scheduler.buildIntendedFireDate(from: config)
-        else {
+        print("[AlarmStore] syncLiveActivitySchedule id=\(config.id) enabled=\(config.isEnabled) laEnabled=\(config.liveActivityEnabled) leadHours=\(config.liveActivityLeadHours)")
+        if config.isEnabled,
+           config.liveActivityEnabled,
+           let fireDate = scheduler.buildIntendedFireDate(from: config) {
+            print("[AlarmStore] → upsertAlarmSchedule fireDate=\(fireDate)")
+            await LiveActivitySync.shared.upsertAlarmSchedule(
+                alarmID: config.id,
+                fireDate: fireDate,
+                leadHours: max(1, min(9, config.liveActivityLeadHours)),
+                title: config.name ?? "Wake Up"
+            )
+        } else {
+            print("[AlarmStore] → deleteAlarmSchedule (disabled or LA off or no fireDate)")
             await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: config.id)
-            return
         }
 
-        await LiveActivitySync.shared.upsertAlarmSchedule(
-            alarmID: config.id,
-            fireDate: fireDate,
-            leadHours: max(1, min(9, config.liveActivityLeadHours)),
-            title: config.name ?? "Wake Up"
-        )
+        // Kick the server to recompute + push immediately rather than
+        // waiting for the next cron tick. The Edge Function re-runs the
+        // same diff-on-push logic, so this no-ops when nothing should
+        // change (user has LA off, out of window, unchanged state).
+        await LiveActivitySync.shared.triggerImmediatePush()
     }
 
     func toggleAlarm(id: UUID) async {

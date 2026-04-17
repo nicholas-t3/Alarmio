@@ -160,7 +160,7 @@ final class LiveActivityManager {
 
                 return CountdownActivityAttributes.Entry(
                     alarmID: alarm.id.uuidString,
-                    title: alarm.name ?? "Wake Up",
+                    title: alarm.name ?? "Alarmio Alarm",
                     fireDate: fireDate,
                     tintHex: "3A6EAA"
                 )
