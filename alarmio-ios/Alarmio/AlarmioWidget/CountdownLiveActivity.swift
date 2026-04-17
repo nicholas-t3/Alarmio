@@ -344,81 +344,60 @@ private struct ExpandedContent: View {
 
     var body: some View {
 
-        // Single owner of the expanded layout — same row semantics for
-        // primary and secondary alarms so sizes stay consistent.
-        VStack(alignment: .leading, spacing: 8) {
+        // Three-column HStack: countdown half, divider, name half.
+        // Each half owns equal flex via Spacer — divider lands at true midpoint
+        // regardless of text width, and padding controls gap to the divider.
+        if let first = state.entries.first {
+            HStack(spacing: 0) {
 
-            if let first = state.entries.first {
-                AlarmRowExpanded(
-                    entry: first,
-                    titleFont: .headline,
-                    countdownFont: .headline.monospacedDigit().weight(.semibold),
-                    iconSize: 18,
-                    titleOpacity: 1.0,
-                    countdownOpacity: 1.0
-                )
+                // Left half — countdown pushed toward the divider
+                HStack(spacing: 0) {
+                    Spacer()
+                    Text(timerInterval: Date()...first.fireDate,
+                         countsDown: true,
+                         showsHours: true)
+                        .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.trailing, 14)
+
+                // Centered vertical divider
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.15),
+                                Color.white.opacity(0.45),
+                                Color.white.opacity(0.15)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 1.5, height: 52)
+
+                // Right half — name pushed toward the divider
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(first.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Rings at \(first.fireDate, format: .dateTime.hour().minute())")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.55))
+                            .tracking(0.2)
+                    }
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.leading, 14)
             }
-
-            if state.entries.count > 1 {
-                AlarmRowExpanded(
-                    entry: state.entries[1],
-                    titleFont: .subheadline,
-                    countdownFont: .subheadline.monospacedDigit(),
-                    iconSize: 14,
-                    titleOpacity: 0.85,
-                    countdownOpacity: 0.72
-                )
-            }
-
-            if state.additionalCount > 0 {
-                Text("+ \(state.additionalCount) more \(state.additionalCount == 1 ? "alarm" : "alarms")")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.55))
-                    .tracking(0.3)
-                    .padding(.leading, 26) // align with titles after icon+gap
-            }
-        }
-        .padding(.top, 4)
-    }
-}
-
-/// One alarm row for the expanded Dynamic Island.
-///
-/// Primary and secondary rows use the same structure, just with different
-/// font and opacity values. Keeps visual rhythm predictable.
-private struct AlarmRowExpanded: View {
-
-    let entry: CountdownActivityAttributes.Entry
-    let titleFont: Font
-    let countdownFont: Font
-    let iconSize: CGFloat
-    let titleOpacity: Double
-    let countdownOpacity: Double
-
-    private var tint: Color { LiveActivityTheme.tint(from: entry.tintHex) }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "alarm.fill")
-                .font(.system(size: iconSize, weight: .medium))
-                .foregroundStyle(tint)
-                .frame(width: 18)
-
-            Text(entry.title)
-                .font(titleFont)
-                .foregroundStyle(.white.opacity(titleOpacity))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-
-            Spacer(minLength: 8)
-
-            Text(timerInterval: Date()...entry.fireDate,
-                 countsDown: true,
-                 showsHours: true)
-                .font(countdownFont)
-                .foregroundStyle(.white.opacity(countdownOpacity))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+            .padding(.vertical, 4)
         }
     }
 }

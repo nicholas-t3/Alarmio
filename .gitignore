@@ -3,6 +3,11 @@
 docs/
 alarm-test/
 
+# Secrets
+.env
+.env.*
+!.env.example
+
 # Xcode
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
