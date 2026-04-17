@@ -215,7 +215,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     private func updateCountdownActivity(alarmID: UUID, fireDate: Date) async {
         let newEntry = CountdownActivityAttributes.Entry(
             alarmID: alarmID.uuidString,
-            title: "Wake Up",
+            title: "Alarmio Alarm",
             fireDate: fireDate,
             tintHex: "3A6EAA"
         )
@@ -248,8 +248,8 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             case .fun: "Fun"
             case .other: "Custom"
             }
-            return "\(toneLabel) Wake Up"
+            return "Alarmio Alarm"
         }
-        return "Wake Up"
+        return "Alarmio Alarm"
     }
 }

@@ -10,46 +10,88 @@ import SwiftUI
 
 private let voiceEntries: [VoiceEntry] = [
     VoiceEntry(
-        persona: .calmGuide,
-        name: "Calm Guide",
-        description: "A soothing, gentle voice that eases you awake",
-        palette: .blue
+        persona: .darkSpaceLord,
+        name: "Dark Space Lord",
+        description: "A dark, commanding voice from across the galaxy",
+        palette: .purple
     ),
     VoiceEntry(
-        persona: .energeticCoach,
-        name: "Energetic Coach",
-        description: "An upbeat, motivating voice to get you moving",
-        palette: .green
-    ),
-    VoiceEntry(
-        persona: .hardSergeant,
-        name: "Hard Sergeant",
+        persona: .drillSergeant,
+        name: "Drill Sergeant",
         description: "A firm, no-nonsense voice that demands action",
         palette: .red
     ),
     VoiceEntry(
-        persona: .evilSpaceLord,
-        name: "Evil Space Lord",
-        description: "A dramatic, commanding voice from beyond",
-        palette: .purple
+        persona: .asmrWhisper,
+        name: "ASMR Whisper",
+        description: "A soft, tingly whisper that coaxes you awake",
+        palette: .blue
     ),
     VoiceEntry(
-        persona: .playful,
-        name: "Playful",
-        description: "A fun, lighthearted voice that makes mornings bright",
+        persona: .strongAussie,
+        name: "Strong Aussie",
+        description: "A warm, laid-back Aussie drawl to start the day",
         palette: .gold
     ),
     VoiceEntry(
-        persona: .bro,
+        persona: .playfulFemmeFatale,
+        name: "Playful Femme Fatale",
+        description: "A flirty, mischievous voice with a wink",
+        palette: .red
+    ),
+    VoiceEntry(
+        persona: .princeOfTheNorth,
+        name: "Prince of the North",
+        description: "A noble, regal voice that rouses the realm",
+        palette: .purple
+    ),
+    VoiceEntry(
+        persona: .movieTrailer,
+        name: "Movie Trailer",
+        description: "An epic, cinematic voice that makes every morning a premiere",
+        palette: .gold
+    ),
+    VoiceEntry(
+        persona: .theBro,
         name: "The Bro",
         description: "A casual, easygoing voice that keeps it chill",
         palette: .gold
     ),
     VoiceEntry(
-        persona: .digitalAssistant,
-        name: "Digital",
-        description: "A robotic, helpful voice for the pragmatic wake-up",
+        persona: .rythmicSinger,
+        name: "Rythmic Singer",
+        description: "A melodic voice that sings you out of bed",
+        palette: .green
+    ),
+    VoiceEntry(
+        persona: .theDad,
+        name: "The Dad",
+        description: "A caring, grounded voice that's already made coffee",
+        palette: .gold
+    ),
+    VoiceEntry(
+        persona: .meditationGuru,
+        name: "Meditation Guru",
+        description: "A calm, grounded voice that eases you into the day",
+        palette: .green
+    ),
+    VoiceEntry(
+        persona: .smoothBoyfriend,
+        name: "Smooth Boyfriend",
+        description: "A tender, confident voice that makes mornings ours",
+        palette: .red
+    ),
+    VoiceEntry(
+        persona: .soothingSarah,
+        name: "Soothing Sarah",
+        description: "A gentle, reassuring voice that lets the day wait for you",
         palette: .blue
+    ),
+    VoiceEntry(
+        persona: .reptilianMonster,
+        name: "Reptilian Monster",
+        description: "An unsettling, hissing voice — if you can handle it",
+        palette: .green
     ),
 ]
 

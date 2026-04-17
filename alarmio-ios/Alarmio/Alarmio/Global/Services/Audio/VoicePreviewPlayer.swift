@@ -72,7 +72,7 @@ final class VoicePreviewPlayer {
             isPlaying = true
 
             // Generate unique band character
-            generateBandProfile(for: persona ?? .calmGuide)
+            generateBandProfile(for: persona ?? .soothingSarah)
             startMetering()
         } catch {
             print("[VoicePreviewPlayer] Playback error: \(error.localizedDescription)")

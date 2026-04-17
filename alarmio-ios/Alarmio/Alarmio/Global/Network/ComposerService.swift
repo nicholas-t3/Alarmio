@@ -318,7 +318,7 @@ struct ComposeRequest: Codable, Sendable {
             leave_time_local: alarm.leaveTime.map { formatterTime.string(from: $0) },
             tone: alarm.tone?.rawValue,
             intensity: alarm.intensity?.rawValue,
-            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
+            voice_persona: alarm.voicePersona?.rawValue ?? VoicePersona.soothingSarah.rawValue,
             why_context: alarm.whyContext?.rawValue,
             content_flags: alarm.contentFlags.map(\.rawValue),
             alarm_type: alarm.alarmType.rawValue,
@@ -397,7 +397,7 @@ struct GenerateCustomAlarmTextRequest: Codable, Sendable {
         let leaveLocal = alarm.leaveTime.map { formatterTime.string(from: $0) }
 
         return GenerateCustomAlarmTextRequest(
-            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
+            voice_persona: alarm.voicePersona?.rawValue ?? VoicePersona.soothingSarah.rawValue,
             tone: alarm.tone?.rawValue,
             intensity: alarm.intensity?.rawValue,
             why_context: alarm.whyContext?.rawValue,
@@ -463,7 +463,7 @@ struct RewriteAlarmTimesRequest: Codable, Sendable {
         let newLeaveLocal = (newLeave ?? alarm.leaveTime).map { f.string(from: $0) }
 
         return RewriteAlarmTimesRequest(
-            voice_persona: alarm.voicePersona?.rawValue ?? "calm_guide",
+            voice_persona: alarm.voicePersona?.rawValue ?? VoicePersona.soothingSarah.rawValue,
             tone: alarm.tone?.rawValue,
             intensity: alarm.intensity?.rawValue,
             why_context: alarm.whyContext?.rawValue,

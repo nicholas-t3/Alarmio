@@ -15,13 +15,20 @@ extension VoicePersona {
     /// Short display name shown in summary rows and selection lists.
     var displayName: String {
         switch self {
-        case .calmGuide: return "Calm Guide"
-        case .energeticCoach: return "Coach"
-        case .hardSergeant: return "Sergeant"
-        case .evilSpaceLord: return "Space Lord"
-        case .playful: return "Playful"
-        case .bro: return "The Bro"
-        case .digitalAssistant: return "Digital"
+        case .darkSpaceLord: return "Dark Space Lord"
+        case .drillSergeant: return "Drill Sergeant"
+        case .asmrWhisper: return "ASMR Whisper"
+        case .strongAussie: return "Strong Aussie"
+        case .playfulFemmeFatale: return "Femme Fatale"
+        case .princeOfTheNorth: return "Prince of the North"
+        case .movieTrailer: return "Movie Trailer"
+        case .theBro: return "The Bro"
+        case .rythmicSinger: return "Rythmic Singer"
+        case .theDad: return "The Dad"
+        case .meditationGuru: return "Meditation Guru"
+        case .smoothBoyfriend: return "Smooth Boyfriend"
+        case .soothingSarah: return "Soothing Sarah"
+        case .reptilianMonster: return "Reptilian Monster"
         }
     }
 
@@ -29,26 +36,60 @@ extension VoicePersona {
     /// Used everywhere a one-line subtitle is needed.
     var descriptor: String {
         switch self {
-        case .calmGuide: return "Soothing · Gentle"
-        case .energeticCoach: return "Upbeat · Motivating"
-        case .hardSergeant: return "Firm · Direct"
-        case .evilSpaceLord: return "Dramatic · Commanding"
-        case .playful: return "Bright · Lighthearted"
-        case .bro: return "Casual · Vibes"
-        case .digitalAssistant: return "Robotic · Helpful"
+        case .darkSpaceLord: return "Dramatic · Commanding"
+        case .drillSergeant: return "Firm · Unrelenting"
+        case .asmrWhisper: return "Soft · Tingly"
+        case .strongAussie: return "Warm · Laid-Back"
+        case .playfulFemmeFatale: return "Flirty · Mischievous"
+        case .princeOfTheNorth: return "Noble · Regal"
+        case .movieTrailer: return "Epic · Cinematic"
+        case .theBro: return "Casual · Vibes"
+        case .rythmicSinger: return "Melodic · Breezy"
+        case .theDad: return "Caring · Grounded"
+        case .meditationGuru: return "Calm · Grounded"
+        case .smoothBoyfriend: return "Tender · Confident"
+        case .soothingSarah: return "Gentle · Reassuring"
+        case .reptilianMonster: return "Unsettling · Hissing"
         }
     }
 
     /// SF Symbol icon used in row and pill UIs.
     var icon: String {
         switch self {
-        case .calmGuide: return "leaf.fill"
-        case .energeticCoach: return "flame.fill"
-        case .hardSergeant: return "bolt.fill"
-        case .evilSpaceLord: return "sparkles"
-        case .playful: return "face.smiling.fill"
-        case .bro: return "hand.wave.fill"
-        case .digitalAssistant: return "cpu"
+        case .darkSpaceLord: return "moon.stars.fill"
+        case .drillSergeant: return "figure.strengthtraining.traditional"
+        case .asmrWhisper: return "waveform.path"
+        case .strongAussie: return "sun.max.fill"
+        case .playfulFemmeFatale: return "heart.fill"
+        case .princeOfTheNorth: return "crown.fill"
+        case .movieTrailer: return "film.fill"
+        case .theBro: return "hand.wave.fill"
+        case .rythmicSinger: return "music.note"
+        case .theDad: return "figure.and.child.holdinghands"
+        case .meditationGuru: return "leaf.fill"
+        case .smoothBoyfriend: return "sparkles"
+        case .soothingSarah: return "cloud.fill"
+        case .reptilianMonster: return "ant.fill"
+        }
+    }
+
+    /// Loading-line shown during alarm generation — in-character for each voice.
+    var loadingMessage: String {
+        switch self {
+        case .darkSpaceLord: return "Summoning the dark lord"
+        case .drillSergeant: return "Calling the drill sergeant"
+        case .asmrWhisper: return "Softening the whisper"
+        case .strongAussie: return "Waking up the Aussie"
+        case .playfulFemmeFatale: return "Setting the stage for her entrance"
+        case .princeOfTheNorth: return "Summoning the prince"
+        case .movieTrailer: return "Rolling the trailer"
+        case .theBro: return "Grabbing the bro"
+        case .rythmicSinger: return "Warming up the singer"
+        case .theDad: return "Waking up the dad"
+        case .meditationGuru: return "Centering the guru"
+        case .smoothBoyfriend: return "Charming up the boyfriend"
+        case .soothingSarah: return "Calling Sarah over"
+        case .reptilianMonster: return "Awakening the monster"
         }
     }
 }

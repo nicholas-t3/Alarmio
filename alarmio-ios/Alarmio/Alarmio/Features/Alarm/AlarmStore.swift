@@ -189,7 +189,7 @@ final class AlarmStore {
                 alarmID: config.id,
                 fireDate: fireDate,
                 leadHours: max(1, min(9, config.liveActivityLeadHours)),
-                title: config.name ?? "Wake Up"
+                title: config.name ?? "Alarmio Alarm"
             )
         } else {
             print("[AlarmStore] → deleteAlarmSchedule (disabled or LA off or no fireDate)")

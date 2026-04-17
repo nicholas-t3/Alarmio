@@ -203,7 +203,7 @@ struct OnboardingContainerView: View {
                     manager.configuration.tone = .fun
                     manager.configuration.whyContext = .gym
                     manager.configuration.intensity = .intense
-                    manager.configuration.voicePersona = .hardSergeant
+                    manager.configuration.voicePersona = .drillSergeant
                     startGeneration()
                 }
                 if step == .voice {
@@ -217,7 +217,7 @@ struct OnboardingContainerView: View {
                     manager.configuration.tone = .fun
                     manager.configuration.whyContext = .gym
                     manager.configuration.intensity = .balanced
-                    manager.configuration.voicePersona = .calmGuide
+                    manager.configuration.voicePersona = .soothingSarah
                     manager.configuration.wakeTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
                     Task {
                         try? await Task.sleep(for: .seconds(3))
@@ -737,15 +737,7 @@ struct OnboardingContainerView: View {
     }
 
     private func voiceStatusMessage(_ voice: VoicePersona) -> String {
-        switch voice {
-        case .calmGuide: return "Calling the calm guide"
-        case .energeticCoach: return "Warming up the coach"
-        case .hardSergeant: return "Calling the drill sergeant"
-        case .evilSpaceLord: return "Summoning the space lord"
-        case .playful: return "Bringing the fun"
-        case .bro: return "Grabbing the bro"
-        case .digitalAssistant: return "Booting the assistant"
-        }
+        voice.loadingMessage
     }
 
     /// Persist the configured alarm and finish onboarding. Runs when the

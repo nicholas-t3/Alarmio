@@ -1216,15 +1216,7 @@ struct CreateAlarmView: View {
     }
 
     private func voiceStatusMessage(_ voice: VoicePersona) -> String {
-        switch voice {
-        case .calmGuide: return "Calling the calm guide"
-        case .energeticCoach: return "Warming up the coach"
-        case .hardSergeant: return "Calling the drill sergeant"
-        case .evilSpaceLord: return "Summoning the space lord"
-        case .playful: return "Bringing the fun"
-        case .bro: return "Grabbing the bro"
-        case .digitalAssistant: return "Booting the assistant"
-        }
+        voice.loadingMessage
     }
 
     // MARK: - Bottom Bar
@@ -1708,28 +1700,7 @@ struct CreateAlarmView: View {
 
     // MARK: - Hero Voice Data
 
-    private struct HeroVoice {
-        let persona: VoicePersona
-        let name: String
-        let descriptor: String
-    }
-
-    /// The 8 hero voices shown in the voice card. Seven are real personas
-    /// backed by distinct ElevenLabs voices; one ("Morning Sun") remains a
-    /// placeholder reusing `calmGuide` until an eighth voice is chosen.
-    private var heroVoices: [HeroVoice] {
-        [
-            HeroVoice(persona: .calmGuide,        name: "Calm Guide",    descriptor: "Soothing · Gentle"),
-            HeroVoice(persona: .energeticCoach,   name: "Coach",         descriptor: "Upbeat · Motivating"),
-            HeroVoice(persona: .hardSergeant,     name: "Sergeant",      descriptor: "Firm · Direct"),
-            HeroVoice(persona: .evilSpaceLord,    name: "Space Lord",    descriptor: "Dramatic · Commanding"),
-            HeroVoice(persona: .playful,          name: "Playful",       descriptor: "Bright · Lighthearted"),
-            HeroVoice(persona: .bro,              name: "The Bro",       descriptor: "Casual · Vibes"),
-            HeroVoice(persona: .digitalAssistant, name: "Digital",       descriptor: "Robotic · Helpful"),
-            // Placeholder — reuses calmGuide until an eighth voice is chosen.
-            HeroVoice(persona: .calmGuide,        name: "Morning Sun",   descriptor: "Warm · Optimistic"),
-        ]
-    }
+    private var heroVoices: [HeroVoice] { VoiceCatalog.all }
 
     private var scheduleSummary: String {
         if selectedDays.isEmpty {

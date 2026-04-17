@@ -35,7 +35,7 @@ struct AlarmStoreTests {
             wakeTime: cal.date(from: DateComponents(hour: hour, minute: minute)),
             repeatDays: repeatDays,
             tone: .calm,
-            voicePersona: .calmGuide,
+            voicePersona: .soothingSarah,
             snoozeInterval: 5,
             isDemo: isDemo
         )
@@ -107,7 +107,7 @@ struct AlarmStoreTests {
             leaveTime: cal.date(from: DateComponents(hour: 8, minute: 0)),
             tone: .push,
             intensity: .intense,
-            voicePersona: .energeticCoach,
+            voicePersona: .theDad,
             contentFlags: [.currentTime, .motivation],
             snoozeInterval: 10,
             customPrompt: "Test prompt",

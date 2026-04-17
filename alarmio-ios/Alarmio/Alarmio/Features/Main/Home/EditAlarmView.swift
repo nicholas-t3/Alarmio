@@ -319,7 +319,7 @@ struct EditAlarmView: View {
                         wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
                         repeatDays: [1, 2, 3, 4, 5],
                         tone: .calm,
-                        voicePersona: .calmGuide,
+                        voicePersona: .soothingSarah,
                         snoozeInterval: 5
                     ),
                     onSave: { _ in showEdit = false },

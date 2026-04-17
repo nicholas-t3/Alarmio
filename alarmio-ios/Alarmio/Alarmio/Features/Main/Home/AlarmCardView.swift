@@ -140,7 +140,7 @@ struct AlarmCardView: View {
                 wakeTime: Calendar.current.date(from: DateComponents(hour: 6, minute: 30)),
                 repeatDays: [1, 2, 3, 4, 5],
                 tone: .calm,
-                voicePersona: .calmGuide
+                voicePersona: .soothingSarah
             ),
             onToggle: {},
             onEdit: {}
@@ -149,21 +149,21 @@ struct AlarmCardView: View {
     }
 }
 
-#Preview("Disabled") {
-    ZStack {
-        MorningSky(starOpacity: 0.35)
-
-        AlarmCardView(
-            alarm: AlarmConfiguration(
-                isEnabled: false,
-                wakeTime: Calendar.current.date(from: DateComponents(hour: 9, minute: 0)),
-                repeatDays: [0, 6],
-                tone: .fun,
-                voicePersona: .playful
-            ),
-            onToggle: {},
-            onEdit: {}
-        )
-        .padding(.horizontal, AppSpacing.screenHorizontal)
-    }
-}
+//#Preview("Disabled") {
+//    ZStack {
+//        MorningSky(starOpacity: 0.35)
+//
+//        AlarmCardView(
+//            alarm: AlarmConfiguration(
+//                isEnabled: false,
+//                wakeTime: Calendar.current.date(from: DateComponents(hour: 9, minute: 0)),
+//                repeatDays: [0, 6],
+//                tone: .fun,
+//                voicePersona: .playful
+//            ),
+//            onToggle: {},
+//            onEdit: {}
+//        )
+//        .padding(.horizontal, AppSpacing.screenHorizontal)
+//    }
+//}

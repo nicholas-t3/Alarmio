@@ -12,7 +12,7 @@ import SwiftUI
 
 struct EditSummaryDetent: CustomPresentationDetent {
     static func height(in context: Context) -> CGFloat? {
-        context.maxDetentValue * 0.70
+        context.maxDetentValue * 0.75
     }
 }
 
@@ -1556,7 +1556,7 @@ private struct AlarmWaveform: View {
                         repeatDays: [1, 2, 3, 4, 5],
                         tone: .calm,
                         intensity: .gentle,
-                        voicePersona: .calmGuide,
+                        voicePersona: .soothingSarah,
                         snoozeInterval: 5,
                         maxSnoozes: 2
                     ),

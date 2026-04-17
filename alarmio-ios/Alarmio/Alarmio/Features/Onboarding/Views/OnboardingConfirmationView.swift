@@ -478,26 +478,9 @@ struct OnboardingConfirmationView: View {
         }
     }
 
-    // MARK: - Hero Voice Data (mirrors CreateAlarmView.heroVoices)
+    // MARK: - Hero Voice Data
 
-    private struct HeroVoice {
-        let persona: VoicePersona
-        let name: String
-        let descriptor: String
-    }
-
-    private var heroVoices: [HeroVoice] {
-        [
-            HeroVoice(persona: .calmGuide,        name: "Calm Guide",  descriptor: "Soothing · Gentle"),
-            HeroVoice(persona: .energeticCoach,   name: "Coach",       descriptor: "Upbeat · Motivating"),
-            HeroVoice(persona: .hardSergeant,     name: "Sergeant",    descriptor: "Firm · Direct"),
-            HeroVoice(persona: .evilSpaceLord,    name: "Space Lord",  descriptor: "Dramatic · Commanding"),
-            HeroVoice(persona: .playful,          name: "Playful",     descriptor: "Bright · Lighthearted"),
-            HeroVoice(persona: .bro,              name: "The Bro",     descriptor: "Casual · Vibes"),
-            HeroVoice(persona: .digitalAssistant, name: "Digital",     descriptor: "Robotic · Helpful"),
-            HeroVoice(persona: .calmGuide,        name: "Morning Sun", descriptor: "Warm · Optimistic"),
-        ]
-    }
+    private var heroVoices: [HeroVoice] { VoiceCatalog.all }
 }
 
 // MARK: - Voice Waveform (shared shape used by CreateAlarmView)

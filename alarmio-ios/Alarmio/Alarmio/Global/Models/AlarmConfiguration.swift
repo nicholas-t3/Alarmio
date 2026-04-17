@@ -42,13 +42,20 @@ enum AlarmDifficulty: String, CaseIterable, Codable, Sendable {
 }
 
 enum VoicePersona: String, CaseIterable, Codable, Sendable {
-    case calmGuide = "calm_guide"
-    case energeticCoach = "energetic_coach"
-    case hardSergeant = "hard_sergeant"
-    case evilSpaceLord = "evil_space_lord"
-    case playful
-    case bro
-    case digitalAssistant = "digital_assistant"
+    case darkSpaceLord = "dark_space_lord"
+    case drillSergeant = "drill_sergeant"
+    case asmrWhisper = "asmr_whisper"
+    case strongAussie = "strong_aussie"
+    case playfulFemmeFatale = "playful_femme_fatale"
+    case princeOfTheNorth = "prince_of_the_north"
+    case movieTrailer = "movie_trailer"
+    case theBro = "the_bro"
+    case rythmicSinger = "rythmic_singer"
+    case theDad = "the_dad"
+    case meditationGuru = "meditation_guru"
+    case smoothBoyfriend = "smooth_boyfriend"
+    case soothingSarah = "soothing_sarah"
+    case reptilianMonster = "reptilian_monster"
 }
 
 /// Whether this alarm uses the standard Composer flow (`.basic`) or the
@@ -129,10 +136,10 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     /// Activity, started remotely by the Supabase pg_cron + APNs push
     /// pipeline (and locally from `SnoozeAlarmIntent` / on foreground).
     /// Default false preserves Codable back-compat.
-    var liveActivityEnabled: Bool = false
+    var liveActivityEnabled: Bool = true
 
     /// How many hours before the alarm fires the countdown card should
     /// appear. Clamped to 1...9 at the UI layer. Only meaningful when
     /// `liveActivityEnabled` is true.
-    var liveActivityLeadHours: Int = 1
+    var liveActivityLeadHours: Int = 9
 }

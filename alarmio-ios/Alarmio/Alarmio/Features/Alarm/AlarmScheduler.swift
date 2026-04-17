@@ -287,18 +287,10 @@ final class AlarmScheduler {
     }
 
     func buildAlarmTitle(from config: AlarmConfiguration) -> LocalizedStringResource {
-        if let tone = config.tone {
-            let toneLabel = switch tone {
-            case .calm: "Calm"
-            case .encourage: "Encouraging"
-            case .push: "Motivating"
-            case .strict: "Strict"
-            case .fun: "Fun"
-            case .other: "Custom"
-            }
-            return "\(toneLabel) Wake Up"
+        if let name = config.name, !name.isEmpty {
+            return "\(name)"
         }
-        return "Wake Up"
+        return "Alarmio Alarm"
     }
 
     func mapDayIndexToWeekday(_ index: Int) -> Locale.Weekday? {
