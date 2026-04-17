@@ -40,6 +40,7 @@ struct CountdownLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: "alarm.fill")
                     .foregroundStyle(LiveActivityTheme.accent(for: context.state.entries.first))
+                    .padding(.leading, 8)
             } compactTrailing: {
                 if let first = context.state.entries.first {
                     Text(timerInterval: Date()...first.fireDate,
