@@ -36,7 +36,6 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
-    @State private var deletingAlarmIds: Set<UUID> = []
     @State private var emptyStateOpacity: Double = 0
 
     // MARK: - Body
@@ -128,10 +127,7 @@ struct HomeView: View {
                     onDelete: {
                         let id = alarmId
                         showEditModal = false
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(500))
-                            deleteAlarm(id: id)
-                        }
+                        deleteAlarm(id: id)
                     }
                 )
             }
@@ -243,8 +239,8 @@ struct HomeView: View {
                         }
                     )
                     .premiumBlur(
-                        isVisible: alarmsVisible && !deletingAlarmIds.contains(alarm.id),
-                        delay: deletingAlarmIds.contains(alarm.id) ? 0 : Double(sortedAlarms.firstIndex(where: { $0.id == alarm.id }) ?? 0) * 0.08 + 0.1,
+                        isVisible: alarmsVisible,
+                        delay: Double(sortedAlarms.firstIndex(where: { $0.id == alarm.id }) ?? 0) * 0.08 + 0.1,
                         duration: 0.4
                     )
                     .listRowBackground(Color.clear)
@@ -400,15 +396,7 @@ struct HomeView: View {
     }
 
     private func deleteAlarm(id: UUID) {
-        Task {
-            deletingAlarmIds.insert(id)
-            try? await Task.sleep(for: .milliseconds(400))
-            _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                Task { await alarmStore.deleteAlarm(id: id) }
-            }
-            try? await Task.sleep(for: .milliseconds(400))
-            deletingAlarmIds.remove(id)
-        }
+        Task { await alarmStore.deleteAlarm(id: id) }
     }
 }
 

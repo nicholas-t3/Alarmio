@@ -177,7 +177,9 @@ final class AlarmStore {
         save()
         try? scheduler.cancelAlarm(id: id)
         audioFileManager.deleteSound(for: id)
-        HapticManager.shared.warning()
+        // No explicit haptic — iOS already fires one for role: .destructive
+        // swipe commit and for the delete button in the edit sheet.
+
         // Fire-and-forget — swipe-to-delete animation must settle immediately.
         Task { [weak self] in
             await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
