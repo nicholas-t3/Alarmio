@@ -690,11 +690,22 @@ struct CustomizeCard: View {
         .font(AppTypography.labelMedium)
         .foregroundStyle(.white)
         .tint(.white)
-        .lineLimit(3...6)
+        .lineLimit(4...)
         .submitLabel(.done)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // `maxHeight: .infinity` + `.topLeading` alignment makes the text
+        // stick to the top-left instead of vertically centering. `minHeight`
+        // reserves enough vertical room for the full placeholder on
+        // narrower screens (iPhone SE/17 wrap it to ~3 lines), so nothing
+        // gets truncated and the box is tall enough to feel like a prompt
+        // input rather than a single-line field.
+        .frame(
+            maxWidth: .infinity,
+            minHeight: 92,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.white.opacity(0.06))
