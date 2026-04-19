@@ -155,6 +155,10 @@ struct OnboardingConfirmationView: View {
                     tone: Bindable(manager).configuration.tone,
                     whyContext: Bindable(manager).configuration.whyContext,
                     intensity: Bindable(manager).configuration.intensity,
+                    leaveTime: Bindable(manager).configuration.leaveTime,
+                    customPromptIncludes: Bindable(manager).configuration.customPromptIncludes,
+                    wakeTime: manager.configuration.wakeTime,
+                    showLeaveTime: true,
                     isProOn: $proToggle,
                     showProRow: false
                 )

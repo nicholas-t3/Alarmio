@@ -24,13 +24,15 @@ struct CreateAlarmView: View {
     // Local draft — what the user is currently editing. Never passed
     // straight to onCreate; the audio may not yet reflect these values.
     @State private var draft = AlarmConfiguration(
-        intensity: .gentle
+        intensity: .gentle,
+        customPromptIncludes: [.alarmTime]
     )
     // Committed config — promoted from draft only after a successful
     // generation, so it always matches the audio file that exists on disk.
     // This is what gets persisted when the user taps Schedule.
     @State private var committed = AlarmConfiguration(
-        intensity: .gentle
+        intensity: .gentle,
+        customPromptIncludes: [.alarmTime]
     )
     @State private var step: Step
     @State private var showPaywall: Bool = false
@@ -69,6 +71,10 @@ struct CreateAlarmView: View {
     @State private var cardsVisible = false
     @State private var buttonVisible = false
     @State private var isTransitioning = false
+    /// Guards `flipPro` against double-taps while the coordinated blur-out-
+    /// then-blur-in is in flight, otherwise a second toggle could swap the
+    /// voice card mid-fade and look glitchy.
+    @State private var proTransitioning = false
     @State private var selectedDays: Set<Int> = []
     @State private var voiceIndex: Int = 0
     @State private var voicePlayer = VoicePreviewPlayer()
@@ -134,7 +140,6 @@ struct CreateAlarmView: View {
                     switch step {
                     case .configure: stepOne
                     case .customize: stepTwo
-                    case .proPrompt: proPromptStep
                     }
 
                 case .generating:
@@ -199,7 +204,6 @@ struct CreateAlarmView: View {
             let onConfirmPro = phase == .confirming && confirmationProEditMode
             let hideBack = (phase == .generating)
                 || (phase == .confirming && !confirmationProEditMode)
-                || (step == .proPrompt && proPreviewIsGenerating)
                 || (onConfirmPro && proPreviewIsGenerating)
 
             if !hideBack {
@@ -216,7 +220,6 @@ struct CreateAlarmView: View {
                                 draft.customPrompt = restore.customPrompt
                                 draft.customPromptIncludes = restore.customPromptIncludes
                                 draft.creativeSnoozes = restore.creativeSnoozes
-                                draft.leaveTime = restore.leaveTime
                                 proPreviewScripts = restore.previewScripts
                                 proPreviewSnapshot = restore.previewSnapshot
                             }
@@ -231,16 +234,6 @@ struct CreateAlarmView: View {
                         dismiss()
                     case .customize:
                         transitionToStep(.configure)
-                    case .proPrompt:
-                        // Back without Save → revert Pro toggle to off.
-                        // If the user pressed Save this visit, alarmType
-                        // was already set to .pro and should be retained.
-                        if !proSavedThisVisit {
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                draft.alarmType = .basic
-                            }
-                        }
-                        transitionToStep(.customize)
                     }
                 } label: {
                     Image(systemName: (step == .configure && !onConfirmPro) ? "xmark" : "chevron.left")
@@ -278,16 +271,6 @@ struct CreateAlarmView: View {
         switch phase {
         case .generating:
             Color.clear.frame(height: 22)
-        case .configuring where step == .proPrompt:
-            HStack(spacing: 6) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(hex: "E9C46A"))
-                Text("Pro")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-            }
-            .transition(.opacity)
         default:
             Text("New Alarm")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -353,59 +336,148 @@ struct CreateAlarmView: View {
         ScrollView {
             VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
-                // Voice (hero)
-                voiceHeroCard
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
+                // Voice — hero when Pro off, compact playable when Pro on.
+                // Swapped via if/else so the VStack tracks the visible
+                // card's intrinsic height (ZStack would reserve the hero's
+                // full height and leave a dead gap above CustomizeCard).
+                // `flipPro` blurs `cardsVisible` out before mutating
+                // `alarmType`, so the actual swap happens while both
+                // halves are invisible — no visible jump.
+                Group {
+                    if draft.alarmType == .pro {
+                        compactPlayableVoiceCard
+                    } else {
+                        voiceHeroCard
+                    }
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
-                // Customize (tone + reason + intensity + pro row)
+                // Customize (tone + reason + intensity + leave time + pro
+                // row + inline Pro rows when Pro is on).
                 CustomizeCard(
                     tone: $draft.tone,
                     whyContext: $draft.whyContext,
                     intensity: $draft.intensity,
+                    leaveTime: $draft.leaveTime,
+                    customPromptIncludes: $draft.customPromptIncludes,
+                    customPrompt: Binding(
+                        get: { draft.customPrompt ?? "" },
+                        set: { draft.customPrompt = $0.isEmpty ? nil : $0 }
+                    ),
+                    creativeSnoozes: $draft.creativeSnoozes,
+                    wakeTime: draft.wakeTime,
+                    showLeaveTime: true,
                     isProOn: Binding(
                         get: { draft.alarmType == .pro },
-                        set: { newValue in
-                            draft.alarmType = newValue ? .pro : .basic
-                        }
+                        set: { _ in /* write goes through onFlipPro */ }
                     ),
                     showProRow: true,
+                    showProInlineRows: true,
                     proCustomized: draft.approvedScripts != nil,
                     onTapProRow: handleTapProRow,
-                    onFlipProOn: handleFlipProOn
+                    onFlipProOn: nil,
+                    onFlipPro: { newValue in flipPro(to: newValue) }
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
+
+                // Pro text preview — only when Pro and we have a result.
+                if draft.alarmType == .pro,
+                   !proPreviewIsGenerating,
+                   let first = proPreviewScripts?.first {
+                    proResultCard(text: first)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+
+                // Pro error card — shown in place of the preview on failure.
+                if draft.alarmType == .pro,
+                   !proPreviewIsGenerating,
+                   let err = proPreviewError {
+                    proErrorCard(message: err)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.opacity)
+                }
 
                 Spacer()
                     .frame(height: 20)
             }
             .padding(.top, 8)
+            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: proPreviewScripts)
+            .animation(.easeInOut(duration: 0.25), value: proPreviewError)
         }
         .scrollIndicators(.hidden)
         .scrollBounceBehavior(.basedOnSize)
         .mask(scrollFadeMask)
     }
 
-    // MARK: - Step: Pro Prompt
-
-    private var proPromptStep: some View {
-        ProPromptView(
-            prompt: Binding(
-                get: { draft.customPrompt ?? "" },
-                set: { draft.customPrompt = $0.isEmpty ? nil : $0 }
-            ),
-            includes: $draft.customPromptIncludes,
-            leaveTime: $draft.leaveTime,
-            creativeSnoozes: $draft.creativeSnoozes,
-            wakeTime: draft.wakeTime,
-            cardsVisible: cardsVisible,
-            generated: proPreviewScripts?.first,
-            isGenerating: proPreviewIsGenerating,
-            errorMessage: proPreviewError,
-            onPromptChange: handleProPromptInputChange
+    private var compactPlayableVoiceCard: some View {
+        let voice = heroVoices[voiceIndex]
+        let isPlayingThis = voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona
+        return CompactPlayableVoiceCard(
+            voice: voice,
+            isPlayingThis: isPlayingThis,
+            onPrev: { cycleVoice(by: -1) },
+            onNext: { cycleVoice(by: 1) },
+            onTogglePlay: { togglePreview() }
         )
-        .mask(scrollFadeMask)
+    }
+
+    /// Mirror of `ProPromptView.resultCard` — inline copy so step 2 can show
+    /// the pro text preview without pulling in the whole ProPromptView.
+    /// Intentionally near-duplicate; will de-dup after the confirmation
+    /// phase is redesigned to match.
+    private func proResultCard(text: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("PREVIEW")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.white.opacity(0.4))
+
+            Text(Self.stripTTSTags(text))
+                .font(AppTypography.labelMedium)
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .modifier(CardGlassModifier(mode: .standard))
+    }
+
+    private func proErrorCard(message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(hex: "FF6B6B"))
+            Text(message)
+                .font(AppTypography.labelMedium)
+                .foregroundStyle(.white.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .modifier(CardGlassModifier(mode: .standard))
+    }
+
+    /// Strip `<break time="..."/>` ElevenLabs tags from a TTS script so the
+    /// in-app preview reads cleanly. Raw (tagged) text is still what goes
+    /// to the audio endpoint.
+    private static func stripTTSTags(_ text: String) -> String {
+        let pattern = #"\s*<break\s+time="[^"]+"\s*/?>\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        let stripped = regex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
+        return stripped
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func dismissKeyboard() {
@@ -594,9 +666,7 @@ struct CreateAlarmView: View {
                 set: { draft.customPrompt = $0.isEmpty ? nil : $0 }
             ),
             includes: $draft.customPromptIncludes,
-            leaveTime: $draft.leaveTime,
             creativeSnoozes: $draft.creativeSnoozes,
-            wakeTime: draft.wakeTime,
             cardsVisible: confirmationCardVisible,
             generated: proPreviewScripts?.first,
             isGenerating: proPreviewIsGenerating,
@@ -661,11 +731,15 @@ struct CreateAlarmView: View {
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: confirmationCardVisible, delay: 0.15, duration: 0.5)
 
-                // Customize (tone + reason + intensity + Pro)
+                // Customize (tone + reason + intensity + leave time + Pro)
                 CustomizeCard(
                     tone: $draft.tone,
                     whyContext: $draft.whyContext,
                     intensity: $draft.intensity,
+                    leaveTime: $draft.leaveTime,
+                    customPromptIncludes: $draft.customPromptIncludes,
+                    wakeTime: draft.wakeTime,
+                    showLeaveTime: true,
                     isProOn: Binding(
                         get: { draft.alarmType == .pro },
                         set: { draft.alarmType = $0 ? .pro : .basic }
@@ -1267,32 +1341,111 @@ struct CreateAlarmView: View {
             .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
 
         case .customize:
-            // Pro alarms only need approvedScripts. Basic alarms still
-            // require tone/why/intensity so the generic Composer prompt
-            // has enough context.
-            let isEnabled: Bool = {
-                if draft.alarmType == .pro {
-                    return draft.approvedScripts?.isEmpty == false
-                }
-                return draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
-            }()
-            Button {
-                HapticManager.shared.buttonTap()
-                startGeneration()
-            } label: {
-                Text("Create Alarm")
-            }
-            .primaryButton(isEnabled: isEnabled)
-            .disabled(!isEnabled)
-            .padding(.horizontal, AppButtons.horizontalPadding)
-            .padding(.bottom, AppSpacing.screenBottom)
-            .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
-
-        case .proPrompt:
-            proPromptBottomBar
+            stepTwoBottomButton
                 .padding(.horizontal, AppButtons.horizontalPadding)
+                .padding(.bottom, AppSpacing.screenBottom)
                 .premiumBlur(isVisible: buttonVisible, delay: 0, duration: 0.4)
         }
+    }
+
+    /// Step 2's single merged CTA. Label depends on Pro state + whether a
+    /// preview exists + whether the current inputs are dirty against the
+    /// snapshot that produced the preview.
+    ///
+    /// - Pro off: "Create Alarm" (basic path)
+    /// - Pro on + no preview: "Generate Text" (kicks off `runProPreview`)
+    /// - Pro on + generating: spinner
+    /// - Pro on + preview exists + dirty: "Regenerate"
+    /// - Pro on + preview exists + clean: "Generate Alarm" (promotes
+    ///   `approvedScripts`, freezes `lastProSnapshot`, calls `startGeneration`)
+    @ViewBuilder
+    private var stepTwoBottomButton: some View {
+        let state = stepTwoButtonState
+
+        Button {
+            guard state.enabled else { return }
+            HapticManager.shared.buttonTap()
+            state.action()
+        } label: {
+            ZStack {
+                if state.showSpinner {
+                    ProgressView().tint(.black).transition(.opacity)
+                } else {
+                    Text(state.label)
+                        .contentTransition(.numericText())
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: state.showSpinner)
+            .animation(.easeInOut(duration: 0.25), value: state.label)
+        }
+        .primaryButton(isEnabled: state.enabled)
+        .disabled(!state.enabled)
+    }
+
+    private struct StepTwoButtonState {
+        let label: String
+        let enabled: Bool
+        let showSpinner: Bool
+        let action: () -> Void
+    }
+
+    private var stepTwoButtonState: StepTwoButtonState {
+        let isPro = draft.alarmType == .pro
+        let promptOK = !(draft.customPrompt ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasResult = !(proPreviewScripts?.isEmpty ?? true)
+        let isDirty = hasResult && proPreviewSnapshot != ProPreviewInputs.from(draft)
+        let basicReady = draft.tone != nil && draft.whyContext != nil && draft.intensity != nil
+
+        if !isPro {
+            return StepTwoButtonState(
+                label: "Create Alarm",
+                enabled: basicReady,
+                showSpinner: false,
+                action: { startGeneration() }
+            )
+        }
+
+        if proPreviewIsGenerating {
+            return StepTwoButtonState(
+                label: "",
+                enabled: false,
+                showSpinner: true,
+                action: {}
+            )
+        }
+
+        if !hasResult {
+            return StepTwoButtonState(
+                label: "Generate Text",
+                enabled: promptOK,
+                showSpinner: false,
+                action: { Task { await runProPreview() } }
+            )
+        }
+
+        if isDirty {
+            return StepTwoButtonState(
+                label: "Regenerate",
+                enabled: promptOK,
+                showSpinner: false,
+                action: { Task { await runProPreview() } }
+            )
+        }
+
+        return StepTwoButtonState(
+            label: "Generate Alarm",
+            enabled: true,
+            showSpinner: false,
+            action: {
+                draft.approvedScripts = proPreviewScripts
+                draft.alarmType = .pro
+                proSavedThisVisit = true
+                lastProSnapshot = draft
+                startGeneration()
+            }
+        )
     }
 
     @ViewBuilder
@@ -1507,7 +1660,6 @@ struct CreateAlarmView: View {
         let customPrompt: String?
         let customPromptIncludes: Set<CustomPromptInclude>
         let creativeSnoozes: Bool
-        let leaveTime: Date?
         let previewScripts: [String]?
         let previewSnapshot: ProPreviewInputs?
     }
@@ -1519,18 +1671,16 @@ struct CreateAlarmView: View {
             customPrompt: draft.customPrompt,
             customPromptIncludes: draft.customPromptIncludes,
             creativeSnoozes: draft.creativeSnoozes,
-            leaveTime: draft.leaveTime,
             previewScripts: proPreviewScripts,
             previewSnapshot: proPreviewSnapshot
         )
     }
 
-    /// Tapping the Pro row (not the toggle). Only navigates when Pro is
-    /// already on — turning it on is the toggle's job. On the confirmation
-    /// phase, swaps the confirmation card for the Pro editor in-place
-    /// instead of using the step machine. Always start a visit with
-    /// proSavedThisVisit=false so back-without-save discards this visit's
-    /// edits even if a prior visit saved.
+    /// Tapping the Pro row (not the toggle). In the confirmation phase this
+    /// still swaps the confirmation card for the full-screen Pro editor —
+    /// confirmation was intentionally left on the old surface while step 2
+    /// is piloted with inline Pro rows. In the configuring phase there's
+    /// nowhere to navigate; the inline rows are already visible.
     private func handleTapProRow() {
         if phase == .confirming {
             captureConfirmationProRestore()
@@ -1538,28 +1688,71 @@ struct CreateAlarmView: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 confirmationProEditMode = true
             }
-        } else {
-            proSavedThisVisit = false
-            transitionToStep(.proPrompt)
         }
     }
 
-    /// Toggling Pro on via the switch. Auto-navigates to the Pro editor.
-    /// On confirmation phase this swaps the confirmation card for the
-    /// editor in-place; on configuring phase it triggers a step transition.
+    /// Toggling Pro on via the switch, confirmation-phase only. Swaps the
+    /// confirmation card for the full-screen Pro editor. Step 2 uses
+    /// `flipPro(to:)` via `CustomizeCard.onFlipPro` instead.
     private func handleFlipProOn() {
-        // IAP gating disabled for now — always open the Pro screen while
-        // we're iterating on the UI.
-        // if subscriptionService.isPro { ... } else { showPaywall = true }
-        if phase == .confirming {
-            captureConfirmationProRestore()
-            proSavedThisVisit = false
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                confirmationProEditMode = true
+        guard phase == .confirming else { return }
+        captureConfirmationProRestore()
+        proSavedThisVisit = false
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            confirmationProEditMode = true
+        }
+    }
+
+    /// Coordinated Pro on/off transition for step 2. Uses the same
+    /// `cardsVisible` → `premiumBlur` envelope that drives the initial
+    /// mount: blur everything out, wait for the blur-out to complete,
+    /// mutate the model and the expanded row with animations suppressed
+    /// (so the card reshapes instantly behind a fully-invisible screen),
+    /// then blur everything back in with the new layout.
+    ///
+    /// Timings match `premiumBlur`'s default ~0.4s envelope.
+    private func flipPro(to newValue: Bool) {
+        guard !proTransitioning else { return }
+        guard phase == .configuring else {
+            // Confirmation phase still uses the full-screen editor; let its
+            // handler take over.
+            if newValue {
+                captureConfirmationProRestore()
+                proSavedThisVisit = false
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    confirmationProEditMode = true
+                }
             }
-        } else {
-            proSavedThisVisit = false
-            transitionToStep(.proPrompt)
+            return
+        }
+
+        proTransitioning = true
+
+        // Step 1: blur everything out via the existing envelope.
+        cardsVisible = false
+
+        Task { @MainActor in
+            // Step 2: wait for the blur-out to fully complete. premiumBlur's
+            // default duration is ~0.4s; add a small buffer to be safe.
+            try? await Task.sleep(for: .milliseconds(450))
+
+            // Step 3: reshape the card with ALL implicit animations
+            // disabled, so the Toggle thumb, inline-row insert/remove, and
+            // any downstream onChange handlers pop instantly behind the
+            // invisible blur envelope instead of animating through it.
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                draft.alarmType = newValue ? .pro : .basic
+            }
+
+            // Step 4: one layout tick so SwiftUI finishes sizing the new
+            // card height before we start the blur-in.
+            try? await Task.sleep(for: .milliseconds(60))
+
+            // Step 5: blur everything back in with the new layout.
+            cardsVisible = true
+            proTransitioning = false
         }
     }
 
@@ -1687,7 +1880,6 @@ struct CreateAlarmView: View {
     enum Step: Equatable {
         case configure
         case customize
-        case proPrompt
 
         init(legacy: Int) {
             switch legacy {

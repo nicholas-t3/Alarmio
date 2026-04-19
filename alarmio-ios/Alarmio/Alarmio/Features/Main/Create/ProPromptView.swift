@@ -26,12 +26,10 @@ struct ProPromptView: View {
 
     @Binding var prompt: String
     @Binding var includes: Set<CustomPromptInclude>
-    @Binding var leaveTime: Date?
     @Binding var creativeSnoozes: Bool
 
     // MARK: - Constants
 
-    let wakeTime: Date?
     let cardsVisible: Bool
     let generated: String?
     let isGenerating: Bool
@@ -75,17 +73,6 @@ struct ProPromptView: View {
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
 
-                // Leave time — dynamically inserted below Include when the
-                // .leaveTime chip is selected
-                if includes.contains(.leaveTime) {
-                    leaveTimeCard
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.95).combined(with: .opacity),
-                            removal: .scale(scale: 0.95).combined(with: .opacity)
-                        ))
-                }
-
                 // Creative snoozes
                 creativeSnoozesCard
                     .padding(.horizontal, AppSpacing.screenHorizontal)
@@ -95,7 +82,6 @@ struct ProPromptView: View {
                     .frame(height: 20)
             }
             .padding(.top, 8)
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: includes.contains(.leaveTime))
             .animation(.spring(response: 0.5, dampingFraction: 0.82), value: generated)
             .animation(.easeInOut(duration: 0.25), value: errorMessage)
         }
@@ -153,9 +139,12 @@ struct ProPromptView: View {
                 .tracking(AppTypography.captionTracking)
                 .foregroundStyle(.white.opacity(0.4))
 
-            // Chip cloud — flowing wrap of include tags, tap to toggle
+            // Chip cloud — flowing wrap of include tags, tap to toggle.
+            // `.leaveTime` is intentionally excluded: Time to Leave is owned
+            // by the Customize card's toggle, and the composer auto-reads
+            // draft.leaveTime; no user-facing chip needed here.
             FlowLayout(spacing: 8, rowSpacing: 8) {
-                ForEach(CustomPromptInclude.allCases) { include in
+                ForEach(CustomPromptInclude.allCases.filter { $0 != .leaveTime }) { include in
                     includeChip(include)
                 }
             }
@@ -175,14 +164,8 @@ struct ProPromptView: View {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 if isOn {
                     includes.remove(include)
-                    if include == .leaveTime {
-                        leaveTime = nil
-                    }
                 } else {
                     includes.insert(include)
-                    if include == .leaveTime && leaveTime == nil {
-                        leaveTime = LeaveTimePicker.defaultLeaveTime(wakeTime: wakeTime)
-                    }
                 }
             }
             onPromptChange()
@@ -201,23 +184,6 @@ struct ProPromptView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.2), value: isOn)
-    }
-
-    private var leaveTimeCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-
-            // Header
-            Text("TIME TO LEAVE")
-                .font(AppTypography.caption)
-                .tracking(AppTypography.captionTracking)
-                .foregroundStyle(.white.opacity(0.4))
-
-            LeaveTimePicker(leaveTime: $leaveTime, wakeTime: wakeTime)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 16)
-        .padding(.horizontal, 16)
-        .modifier(CardGlassModifier(mode: .standard))
     }
 
     private var creativeSnoozesCard: some View {
@@ -317,90 +283,12 @@ struct ProPromptView: View {
 
 }
 
-// MARK: - Flow Layout
-
-/// A simple horizontal-wrapping layout — places children left-to-right and
-/// moves to a new row when the next child would overflow. Used for the
-/// include chip cloud so tags flow like word-cloud pills.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-    var rowSpacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
-
-        for size in sizes {
-            if x + size.width > maxWidth && x > 0 {
-                y += rowHeight + rowSpacing
-                x = 0
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            totalWidth = max(totalWidth, x - spacing)
-            rowHeight = max(rowHeight, size.height)
-        }
-        return CGSize(width: totalWidth, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let maxWidth = bounds.width
-        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
-
-        // First pass — group indices into rows so each row can be measured
-        // and centered independently.
-        var rows: [[Int]] = [[]]
-        var rowWidths: [CGFloat] = [0]
-        var rowHeights: [CGFloat] = [0]
-        var cursorX: CGFloat = 0
-
-        for (index, size) in sizes.enumerated() {
-            let additional = rows[rows.count - 1].isEmpty ? size.width : size.width + spacing
-            if cursorX + additional > maxWidth && !rows[rows.count - 1].isEmpty {
-                rows.append([])
-                rowWidths.append(0)
-                rowHeights.append(0)
-                cursorX = 0
-            }
-            let isFirstInRow = rows[rows.count - 1].isEmpty
-            rows[rows.count - 1].append(index)
-            cursorX += isFirstInRow ? size.width : size.width + spacing
-            rowWidths[rowWidths.count - 1] = cursorX
-            rowHeights[rowHeights.count - 1] = max(rowHeights.last ?? 0, size.height)
-        }
-
-        // Second pass — place each row centered within bounds.
-        var y = bounds.minY
-        for (rowIndex, indices) in rows.enumerated() {
-            let rowWidth = rowWidths[rowIndex]
-            var x = bounds.minX + (maxWidth - rowWidth) / 2
-            for (positionInRow, subviewIndex) in indices.enumerated() {
-                let size = sizes[subviewIndex]
-                if positionInRow > 0 { x += spacing }
-                subviews[subviewIndex].place(
-                    at: CGPoint(x: x, y: y),
-                    anchor: .topLeading,
-                    proposal: ProposedViewSize(size)
-                )
-                x += size.width
-            }
-            y += rowHeights[rowIndex] + rowSpacing
-        }
-    }
-}
-
 // MARK: - Previews
 
 #Preview("Empty") {
     struct PreviewContainer: View {
         @State var prompt: String = ""
         @State var includes: Set<CustomPromptInclude> = []
-        @State var leaveTime: Date? = nil
         @State var creativeSnoozes: Bool = true
 
         var body: some View {
@@ -409,9 +297,7 @@ private struct FlowLayout: Layout {
                 ProPromptView(
                     prompt: $prompt,
                     includes: $includes,
-                    leaveTime: $leaveTime,
                     creativeSnoozes: $creativeSnoozes,
-                    wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
                     cardsVisible: true,
                     generated: nil,
                     isGenerating: false,
@@ -428,8 +314,7 @@ private struct FlowLayout: Layout {
 #Preview("With Preview") {
     struct PreviewContainer: View {
         @State var prompt: String = "Include a quote from Spaceballs and keep it short"
-        @State var includes: Set<CustomPromptInclude> = [.alarmTime, .humor, .leaveTime]
-        @State var leaveTime: Date? = Calendar.current.date(from: DateComponents(hour: 8, minute: 30))
+        @State var includes: Set<CustomPromptInclude> = [.alarmTime, .humor]
         @State var creativeSnoozes: Bool = false
 
         var body: some View {
@@ -438,9 +323,7 @@ private struct FlowLayout: Layout {
                 ProPromptView(
                     prompt: $prompt,
                     includes: $includes,
-                    leaveTime: $leaveTime,
                     creativeSnoozes: $creativeSnoozes,
-                    wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
                     cardsVisible: true,
                     generated: "Good morning. It's 7 AM — time to rise and shine. May the Schwartz be with you today.",
                     isGenerating: false,

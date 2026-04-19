@@ -226,6 +226,7 @@ struct EditAlarmSheetContent: View {
             || editTone != alarm.tone
             || editIntensity != alarm.intensity
             || editWhyContext != alarm.whyContext
+            || editLeaveTime != alarm.leaveTime
             || editSoundFileName != alarm.soundFileName
             || normalizedEditName != (alarm.name ?? "")
             || hasProChanges
@@ -252,6 +253,7 @@ struct EditAlarmSheetContent: View {
             || editTone != alarm.tone
             || editIntensity != alarm.intensity
             || editWhyContext != alarm.whyContext
+            || editLeaveTime != alarm.leaveTime
     }
 
     private var hasTimeChanges: Bool {
@@ -378,6 +380,7 @@ struct EditAlarmSheetContent: View {
         .onChange(of: editTone) { invalidateRegenerationFlag() }
         .onChange(of: editIntensity) { invalidateRegenerationFlag() }
         .onChange(of: editWhyContext) { invalidateRegenerationFlag() }
+        .onChange(of: editLeaveTime) { invalidateRegenerationFlag() }
         .onChange(of: editAlarmType) { invalidateRegenerationFlag() }
         .onChange(of: editApprovedScripts) { invalidateRegenerationFlag() }
         .onChange(of: editCustomPrompt) { invalidateRegenerationFlag() }
@@ -818,11 +821,15 @@ struct EditAlarmSheetContent: View {
                 // Compact voice selector
                 compactVoiceCard
 
-                // Customize card (tone / reason / intensity / Pro)
+                // Customize card (tone / reason / intensity / leave time / Pro)
                 CustomizeCard(
                     tone: $editTone,
                     whyContext: $editWhyContext,
                     intensity: $editIntensity,
+                    leaveTime: $editLeaveTime,
+                    customPromptIncludes: $editCustomPromptIncludes,
+                    wakeTime: editTime,
+                    showLeaveTime: true,
                     isProOn: Binding(
                         get: { editAlarmType == .pro },
                         set: { newValue in
@@ -901,7 +908,6 @@ struct EditAlarmSheetContent: View {
                         editCustomPrompt = restore.customPrompt
                         editCustomPromptIncludes = restore.customPromptIncludes
                         editCreativeSnoozes = restore.creativeSnoozes
-                        editLeaveTime = restore.leaveTime
                         editProPreviewScripts = restore.previewScripts
                         editProPreviewSnapshot = restore.previewSnapshot
                     }
@@ -929,9 +935,7 @@ struct EditAlarmSheetContent: View {
                     set: { editCustomPrompt = $0 }
                 ),
                 includes: $editCustomPromptIncludes,
-                leaveTime: $editLeaveTime,
                 creativeSnoozes: $editCreativeSnoozes,
-                wakeTime: editTime,
                 cardsVisible: true,
                 generated: editProPreviewScripts?.first,
                 isGenerating: editProPreviewIsGenerating,
@@ -1098,7 +1102,6 @@ struct EditAlarmSheetContent: View {
         let customPrompt: String
         let customPromptIncludes: Set<CustomPromptInclude>
         let creativeSnoozes: Bool
-        let leaveTime: Date?
         let previewScripts: [String]?
         let previewSnapshot: ProPreviewInputs?
     }
@@ -1111,7 +1114,6 @@ struct EditAlarmSheetContent: View {
             customPrompt: editCustomPrompt,
             customPromptIncludes: editCustomPromptIncludes,
             creativeSnoozes: editCreativeSnoozes,
-            leaveTime: editLeaveTime,
             previewScripts: editProPreviewScripts,
             previewSnapshot: editProPreviewSnapshot
         )
