@@ -87,7 +87,10 @@ struct EditAlarmSheetContent: View {
             creativeSnoozes: alarm.creativeSnoozes,
             leaveTime: alarm.leaveTime,
             maxSnoozes: alarm.maxSnoozes,
-            unlimitedSnooze: false
+            unlimitedSnooze: false,
+            tone: alarm.tone,
+            whyContext: alarm.whyContext,
+            intensity: alarm.intensity
         ))
 
         let initialIndex: Int
@@ -1027,7 +1030,10 @@ struct EditAlarmSheetContent: View {
             creativeSnoozes: editCreativeSnoozes,
             leaveTime: editLeaveTime,
             maxSnoozes: editMaxSnoozes,
-            unlimitedSnooze: false
+            unlimitedSnooze: false,
+            tone: editTone,
+            whyContext: editWhyContext,
+            intensity: editIntensity
         )
     }
 

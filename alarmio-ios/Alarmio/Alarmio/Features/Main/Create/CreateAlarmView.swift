@@ -393,17 +393,7 @@ struct CreateAlarmView: View {
                    let first = proPreviewScripts?.first {
                     proResultCard(text: first)
                         .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .opacity(proPreviewIsGenerating ? 0.55 : 1)
-                        .animation(
-                            proPreviewIsGenerating
-                                ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                : .easeInOut(duration: 0.25),
-                            value: proPreviewIsGenerating
-                        )
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.95).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                        .premiumBlur(isVisible: cardsVisible, delay: 0.05, duration: 0.4)
                 }
 
                 // Pro error card — shown in place of the preview on failure.
@@ -413,6 +403,7 @@ struct CreateAlarmView: View {
                     proErrorCard(message: err)
                         .padding(.horizontal, AppSpacing.screenHorizontal)
                         .transition(.opacity)
+                        .premiumBlur(isVisible: cardsVisible, delay: 0.05, duration: 0.4)
                 }
 
                 // Customize (tone + reason + intensity + leave time + pro
@@ -1497,7 +1488,7 @@ struct CreateAlarmView: View {
         if !hasResult {
             return StepTwoButtonState(
                 label: "Generate Text",
-                enabled: promptOK,
+                enabled: promptOK && basicReady,
                 showSpinner: false,
                 action: { Task { await runProPreview() } }
             )
@@ -1506,7 +1497,7 @@ struct CreateAlarmView: View {
         if isDirty {
             return StepTwoButtonState(
                 label: "Regenerate",
-                enabled: promptOK,
+                enabled: promptOK && basicReady,
                 showSpinner: false,
                 action: { Task { await runProPreview() } }
             )
@@ -1514,7 +1505,7 @@ struct CreateAlarmView: View {
 
         return StepTwoButtonState(
             label: "Generate Alarm",
-            enabled: true,
+            enabled: basicReady,
             showSpinner: false,
             action: {
                 draft.approvedScripts = proPreviewScripts

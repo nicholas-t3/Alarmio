@@ -260,6 +260,7 @@ struct CustomizeCard: View {
         value: String,
         hasSelection: Bool,
         isExpanded: Bool? = nil,
+        pulseWhenUnset: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         let usesExpandChevron = isExpanded != nil
@@ -284,7 +285,7 @@ struct CustomizeCard: View {
                     .font(AppTypography.labelMedium)
                     .foregroundStyle(.white.opacity(hasSelection ? 0.7 : 0.45))
                     .contentTransition(.numericText())
-                    .modifier(UnsetValuePulse(isActive: !hasSelection))
+                    .modifier(UnsetValuePulse(isActive: pulseWhenUnset && !hasSelection))
 
                 Image(systemName: chevronName)
                     .font(.system(size: 11, weight: .semibold))
@@ -623,13 +624,14 @@ struct CustomizeCard: View {
 
             Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
-            // Include
+            // Include — optional; no pulse when unset.
             factorRow(
                 icon: includeChipsSelected.isEmpty ? Self.unsetIcon : "checklist",
                 label: "Include",
                 value: includeSummary,
                 hasSelection: !includeChipsSelected.isEmpty,
-                isExpanded: expandedFactor == .includeTags
+                isExpanded: expandedFactor == .includeTags,
+                pulseWhenUnset: false
             ) {
                 toggleFactor(.includeTags)
             }
@@ -673,7 +675,7 @@ struct CustomizeCard: View {
     private var includeSummary: String {
         let selected = includeChipsSelected
         switch selected.count {
-        case 0:  return "Tap to select"
+        case 0:  return "Optional"
         case 1:  return selected[0].label
         default: return "\(selected.count) selections"
         }
