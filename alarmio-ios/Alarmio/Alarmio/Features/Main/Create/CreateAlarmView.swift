@@ -1125,7 +1125,7 @@ struct CreateAlarmView: View {
     /// - Pro on + no preview: "Generate Text" (kicks off `runProPreview`)
     /// - Pro on + generating: spinner
     /// - Pro on + preview exists + dirty: "Regenerate"
-    /// - Pro on + preview exists + clean: "Generate Alarm" (promotes
+    /// - Pro on + preview exists + clean: "Generate Now" (promotes
     ///   `approvedScripts`, freezes `lastProSnapshot`, calls `startGeneration`)
     @ViewBuilder
     private var stepTwoBottomButton: some View {
@@ -1229,7 +1229,7 @@ struct CreateAlarmView: View {
         }
 
         return StepTwoButtonState(
-            label: "Generate Alarm",
+            label: "Generate Now",
             enabled: basicReady,
             showSpinner: false,
             action: {

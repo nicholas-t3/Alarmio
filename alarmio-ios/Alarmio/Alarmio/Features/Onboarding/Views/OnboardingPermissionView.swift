@@ -48,6 +48,10 @@ struct OnboardingPermissionView: View {
                     .tracking(AppTypography.headlineLargeTracking)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: heroVisible, delay: 0.1, duration: 0.5)
             }
 
