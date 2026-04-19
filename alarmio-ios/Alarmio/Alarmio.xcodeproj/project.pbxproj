@@ -81,7 +81,6 @@
 				Features/Alarm/AppGroupDefaults.swift,
 				Features/Alarm/Intents/SnoozeAlarmIntent.swift,
 				Features/Alarm/Intents/StopAlarmIntent.swift,
-				Features/LiveActivity/CountdownActivityAttributes.swift,
 				Global/Models/AlarmConfiguration.swift,
 				Global/Models/CustomPromptInclude.swift,
 			);

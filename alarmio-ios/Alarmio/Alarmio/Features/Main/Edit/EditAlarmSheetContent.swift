@@ -718,7 +718,7 @@ struct EditAlarmSheetContent: View {
                             .font(AppTypography.caption)
                             .tracking(AppTypography.captionTracking)
                             .foregroundStyle(.white.opacity(0.4))
-                        Text("A countdown card on your lock screen before this alarm rings.")
+                        Text("A countdown card on your lock screen before this alarm rings. Window may shorten for alarms set sooner than the selected lead.")
                             .font(AppTypography.caption)
                             .foregroundStyle(.white.opacity(0.55))
                             .fixedSize(horizontal: false, vertical: true)

@@ -21,5 +21,5 @@ enum DevFlags {
     /// Indices 0..2 map to alarm1/alarm2/alarm3; index ≥3 falls back to
     /// alarm1. All filename/nonce plumbing matches the production path
     /// so `AudioFileManager.soundFileName(for:)` resolves normally.
-    static let skipGeneration: Bool = false
+    static let skipGeneration: Bool = true
 }

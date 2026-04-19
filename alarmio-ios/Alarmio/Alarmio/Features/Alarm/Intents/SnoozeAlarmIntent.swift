@@ -6,8 +6,8 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
-import AlarmKit
 import ActivityKit
+import AlarmKit
 import AppIntents
 import Foundation
 import SwiftUI
@@ -162,21 +162,27 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             secondaryIntent = nil
         }
 
-        // Fire the rescheduled alarm at `now + snoozeDuration + buffer`.
-        // The buffer protects against AlarmKit dropping a date that lands
-        // at-or-before "now" after IPC latency.
+        // H2 + H3: schedule IS the countdown start for .fixed + preAlert.
+        // Ring time = schedule + preAlert. We want ring = now + snoozeDuration,
+        // so schedule = now + buffer, preAlert = snoozeDuration - buffer.
+        // Gives the user a countdown LA for the whole snooze window.
         let schedulingBuffer: TimeInterval = 3
-        let fireDate = Date().addingTimeInterval(snoozeDurationSeconds + schedulingBuffer)
+        let scheduleDate = Date().addingTimeInterval(schedulingBuffer)
+        let preAlert = max(1, snoozeDurationSeconds - schedulingBuffer)
 
-        // No `countdownDuration` / `AlarmPresentation.Countdown`: we don't
-        // want a pre-alert Live Activity card between snoozes. AlarmKit
-        // still fires the alert sheet at `fireDate` via `.fixed` schedule.
-        let sound: AlertConfiguration.AlertSound = soundName.map { .named($0) } ?? .default
+        // H5: Countdown presentation must match countdownDuration. Both
+        // always set here — snooze always has a countdown window.
+        let presentation = AlarmPresentation(
+            alert: alert,
+            countdown: AlarmPresentation.Countdown(title: title, pauseButton: nil)
+        )
+
+        let sound: ActivityKit.AlertConfiguration.AlertSound = soundName.map { .named($0) } ?? .default
         let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: nil,
-            schedule: .fixed(fireDate),
+            countdownDuration: Alarm.CountdownDuration(preAlert: preAlert, postAlert: nil),
+            schedule: .fixed(scheduleDate),
             attributes: AlarmAttributes<AlarmioMetadata>(
-                presentation: AlarmPresentation(alert: alert),
+                presentation: presentation,
                 tintColor: .blue
             ),
             stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
@@ -184,58 +190,17 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             sound: sound
         )
 
-        // Calling `schedule()` with the same UUID immediately after
-        // `stop()` sometimes throws `com.apple.AlarmKit.Alarm Code=0` —
-        // `alarmd` hasn't finished releasing the prior slot. Cancel + a
-        // short sleep gives the daemon time to settle.
+        // H6: cancel + 200ms sleep before schedule — `alarmd` hasn't
+        // released the UUID slot after the `stop()` in perform(). Silent
+        // `Code=0` otherwise.
         try? AlarmManager.shared.cancel(id: alarmID)
         try? await Task.sleep(nanoseconds: 200_000_000)
 
         _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
 
-        // Update the countdown Live Activity for the new fire date.
-        // Runs inline in the extension so the user sees the snooze
-        // countdown start instantly without waiting for a server push.
-        await updateCountdownActivity(alarmID: alarmID, fireDate: fireDate)
-    }
-
-    /// Update the consolidated countdown Activity to reflect this alarm's
-    /// fresh snooze fire date. UPDATE ONLY — does not start a new one.
-    ///
-    /// Background: `Activity.request` from a `LiveActivityIntent` running
-    /// on the lock screen fails with `ActivityAuthorizationError.visibility`
-    /// because the extension process isn't considered foreground. That's
-    /// an iOS rule, not something we can route around from here.
-    ///
-    /// Update-only is correct for snooze: the Activity is either (a)
-    /// already on-screen from the server push and `Activity.activities`
-    /// will see it, in which case update works — or (b) not on-screen,
-    /// in which case the next cron tick will pick up the new `fire_date`
-    /// from `alarm_schedules` and send a start push.
-    private func updateCountdownActivity(alarmID: UUID, fireDate: Date) async {
-        let newEntry = CountdownActivityAttributes.Entry(
-            alarmID: alarmID.uuidString,
-            title: "Alarmio Alarm",
-            fireDate: fireDate,
-            tintHex: "3A6EAA"
-        )
-
-        guard let existing = Activity<CountdownActivityAttributes>.activities.first else {
-            print("[SnoozeAlarmIntent] no running activity to update — server push will handle start on next tick")
-            return
-        }
-
-        var entries = existing.content.state.entries.filter { $0.alarmID != alarmID.uuidString }
-        entries.append(newEntry)
-        entries.sort { $0.fireDate < $1.fireDate }
-
-        let displayCap = 2
-        let newState = CountdownActivityAttributes.ContentState(
-            entries: Array(entries.prefix(displayCap)),
-            additionalCount: max(0, entries.count - displayCap)
-        )
-        await existing.update(ActivityContent(state: newState, staleDate: nil))
-        print("[SnoozeAlarmIntent] updated existing activity")
+        // AlarmKit manages the native countdown Live Activity itself —
+        // no ActivityKit call needed here. The LA appears automatically
+        // from the countdownDuration set above.
     }
 
     private func buildTitle(for alarm: AlarmConfiguration) -> LocalizedStringResource {

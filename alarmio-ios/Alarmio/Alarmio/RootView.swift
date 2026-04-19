@@ -22,9 +22,6 @@ struct RootView: View {
     @State private var alarmStore: AlarmStore
     @State private var composerService: ComposerService
     @State private var subscriptionService = SubscriptionService()
-    @State private var liveActivityManager: LiveActivityManager
-
-    @Environment(\.scenePhase) private var scenePhase
 
     // MARK: - Init
 
@@ -32,15 +29,9 @@ struct RootView: View {
         // Share the same AudioFileManager instance with the AlarmStore so
         // files ComposerService writes are visible to AlarmScheduler.
         let store = AlarmStore.create()
-        let manager = LiveActivityManager(scheduler: store.scheduler)
-
-        // Back-reference so CRUD mutations can reconcile the card locally
-        // without waiting for a foreground return.
-        store.liveActivityManager = manager
 
         _alarmStore = State(initialValue: store)
         _composerService = State(initialValue: ComposerService(audioFileManager: store.audioFileManager))
-        _liveActivityManager = State(initialValue: manager)
     }
 
     // MARK: - Body
@@ -68,7 +59,6 @@ struct RootView: View {
         .environment(\.alarmStore, alarmStore)
         .environment(\.composerService, composerService)
         .environment(\.subscriptionService, subscriptionService)
-        .environment(\.liveActivityManager, liveActivityManager)
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in
@@ -94,18 +84,6 @@ struct RootView: View {
             }
             Task { await alarmStore.rescheduleAllEnabled() }
             Task { await alarmStore.startObserving() }
-
-            // Start token observers + reconcile the Live Activity against
-            // the current alarm list. Belt-and-suspenders for the server
-            // push pipeline — if a push was missed, foreground entry
-            // brings the card into sync immediately.
-            liveActivityManager.start()
-            Task { await liveActivityManager.reconcile(alarms: alarmStore.alarms) }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await liveActivityManager.reconcile(alarms: alarmStore.alarms) }
-            }
         }
     }
 }

@@ -22,12 +22,6 @@ final class AlarmStore {
     let scheduler: AlarmScheduler
     let audioFileManager: AudioFileManager
 
-    /// Weak back-reference wired up from `RootView` once both objects
-    /// exist. Used to trigger a local `reconcile` after any CRUD
-    /// mutation so the card reflects the new state immediately without
-    /// waiting for a foreground return.
-    weak var liveActivityManager: LiveActivityManager?
-
     // MARK: - Constants
 
     private static let storageKey = AppGroup.alarmConfigurationsKey
@@ -156,8 +150,6 @@ final class AlarmStore {
             try? await scheduler.scheduleAlarm(config)
         }
         HapticManager.shared.success()
-        // Fire-and-forget — network/reconcile must not block the UI animation.
-        Task { [weak self] in await self?.syncLiveActivitySchedule(for: config) }
     }
 
     func updateAlarm(_ config: AlarmConfiguration) async {
@@ -165,7 +157,6 @@ final class AlarmStore {
         alarms[index] = config
         save()
         try? await scheduler.toggleAlarm(config)
-        Task { [weak self] in await self?.syncLiveActivitySchedule(for: config) }
     }
 
     func deleteAlarm(id: UUID) async {
@@ -179,47 +170,6 @@ final class AlarmStore {
         audioFileManager.deleteSound(for: id)
         // No explicit haptic — iOS already fires one for role: .destructive
         // swipe commit and for the delete button in the edit sheet.
-
-        // Fire-and-forget — swipe-to-delete animation must settle immediately.
-        Task { [weak self] in
-            await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: id)
-            await LiveActivitySync.shared.triggerImmediatePush()
-            guard let self else { return }
-            await self.liveActivityManager?.reconcile(alarms: self.alarms)
-        }
-    }
-
-    /// Keep the Supabase `alarm_schedules` table in sync with this
-    /// alarm's current fire date + Live Activity settings. Removes the
-    /// row whenever the alarm shouldn't appear in the card at all
-    /// (disabled, liveActivity off, no wake time resolvable).
-    private func syncLiveActivitySchedule(for config: AlarmConfiguration) async {
-        print("[AlarmStore] syncLiveActivitySchedule id=\(config.id) enabled=\(config.isEnabled) laEnabled=\(config.liveActivityEnabled) leadHours=\(config.liveActivityLeadHours)")
-        if config.isEnabled,
-           config.liveActivityEnabled,
-           let fireDate = scheduler.buildIntendedFireDate(from: config) {
-            print("[AlarmStore] → upsertAlarmSchedule fireDate=\(fireDate)")
-            await LiveActivitySync.shared.upsertAlarmSchedule(
-                alarmID: config.id,
-                fireDate: fireDate,
-                leadHours: max(1, min(9, config.liveActivityLeadHours)),
-                title: config.name ?? "Alarmio Alarm"
-            )
-        } else {
-            print("[AlarmStore] → deleteAlarmSchedule (disabled or LA off or no fireDate)")
-            await LiveActivitySync.shared.deleteAlarmSchedule(alarmID: config.id)
-        }
-
-        // Kick the server to recompute + push immediately rather than
-        // waiting for the next cron tick. The Edge Function re-runs the
-        // same diff-on-push logic, so this no-ops when nothing should
-        // change (user has LA off, out of window, unchanged state).
-        await LiveActivitySync.shared.triggerImmediatePush()
-
-        // Local reconcile — belt to the server's suspenders. Ensures the
-        // Activity reflects the new alarm list immediately, without
-        // waiting for APNs delivery or the user backgrounding + returning.
-        await liveActivityManager?.reconcile(alarms: alarms)
     }
 
     func toggleAlarm(id: UUID) async {
@@ -227,8 +177,6 @@ final class AlarmStore {
         alarms[index].isEnabled.toggle()
         save()
         try? await scheduler.toggleAlarm(alarms[index])
-        let updated = alarms[index]
-        Task { [weak self] in await self?.syncLiveActivitySchedule(for: updated) }
         HapticManager.shared.selection()
     }
 

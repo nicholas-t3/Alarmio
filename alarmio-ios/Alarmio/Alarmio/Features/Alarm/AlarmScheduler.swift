@@ -59,9 +59,6 @@ final class AlarmScheduler {
     // MARK: - Scheduling
 
     func scheduleAlarm(_ config: AlarmConfiguration) async throws {
-        // Cancel existing first to prevent duplicates
-        try? cancelAlarm(id: config.id)
-
         let wakeDesc: String = {
             guard let w = config.wakeTime else { return "nil" }
             let f = DateFormatter(); f.dateFormat = "HH:mm"
@@ -79,8 +76,24 @@ final class AlarmScheduler {
         print("[AlarmScheduler.schedule] intendedFireDate=\(intendedFormatter.string(from: intendedFireDate))")
 
         let isRepeating = !(config.repeatDays?.isEmpty ?? true)
-        let headroom = intendedFireDate.timeIntervalSince(Date())
+        let now = Date()
+        let headroom = intendedFireDate.timeIntervalSince(now)
         print("[AlarmScheduler] headroom=\(Int(headroom))s isRepeating=\(isRepeating)")
+
+        // H1 + H3: pick largest minute-aligned preAlert ≤ desired such that
+        // the resulting registered time is safely in the future (.relative)
+        // or the shifted fixed date is ≥ now + schedulingBuffer (.fixed).
+        // See plan hazards H1/H3 for the defer-to-next-week history.
+        let desiredPreAlert: TimeInterval = config.liveActivityEnabled
+            ? TimeInterval(max(1, min(9, config.liveActivityLeadHours)) * 3600)
+            : 0
+        let safePreAlert = pickSafePreAlert(
+            intendedFireDate: intendedFireDate,
+            desired: desiredPreAlert,
+            isRepeating: isRepeating,
+            now: now
+        )
+        print("[AlarmScheduler] desiredPreAlert=\(Int(desiredPreAlert))s safePreAlert=\(Int(safePreAlert))s")
 
         let maxSnoozes = config.maxSnoozes
         let currentCount = config.currentSnoozeCount ?? 0
@@ -92,9 +105,18 @@ final class AlarmScheduler {
             : max(0, maxSnoozes - currentCount)
         print("[AlarmScheduler] scheduling alarm=\(config.id) snoozesRemaining=\(snoozesRemaining) (count=\(currentCount)/\(maxSnoozes), unlimited=\(config.unlimitedSnooze))")
 
+        // H5: both nil or both non-nil — single `safePreAlert > 0` source
+        // gates both countdownDuration and the Countdown presentation so
+        // they can never disagree (would throw Code=0).
+        let includeCountdown = safePreAlert > 0
+        let countdownDuration: Alarm.CountdownDuration? = includeCountdown
+            ? Alarm.CountdownDuration(preAlert: safePreAlert, postAlert: nil)
+            : nil
+
         let attributes = buildAttributes(
             from: config,
-            snoozesRemaining: snoozesRemaining
+            snoozesRemaining: snoozesRemaining,
+            includeCountdown: includeCountdown
         )
 
         // Resolve the initial-fire sound from AudioFileManager. For
@@ -117,18 +139,19 @@ final class AlarmScheduler {
             secondaryIntent = nil
         }
 
-        // No preAlert — we register the user's intended hour:minute
-        // directly for repeating `.relative` alarms, and the absolute
-        // intended date for one-time `.fixed` alarms. This avoids the
-        // same-day defer dead-zone the shift math creates.
-        let schedule = buildScheduleShifted(
+        // H2: registered time is shifted back by preAlert so the alert still
+        // rings at the user's intended wake time (ring = time + preAlert).
+        // When safePreAlert == 0 the shift is zero and we fall back to the
+        // proven no-Countdown shape.
+        let schedule = buildSchedule(
             intendedFireDate: intendedFireDate,
-            config: config,
-            shiftSeconds: 0
+            isRepeating: isRepeating,
+            repeatDays: config.repeatDays ?? [],
+            shiftSeconds: safePreAlert
         )
 
         let alarmConfig = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: nil,
+            countdownDuration: countdownDuration,
             schedule: schedule,
             attributes: attributes,
             stopIntent: StopAlarmIntent(alarmID: config.id.uuidString),
@@ -136,8 +159,24 @@ final class AlarmScheduler {
             sound: sound
         )
 
-        _ = try await manager.schedule(id: config.id, configuration: alarmConfig)
+        // H6: race-safe reschedule. Any live edit during an active countdown
+        // hits the UUID-release race unless we sleep 200ms between cancel
+        // and schedule. Silent `Code=0` otherwise.
+        try await performSafeReschedule(id: config.id, configuration: alarmConfig)
         print("[AlarmScheduler] scheduled successfully")
+    }
+
+    /// H6: `AlarmManager.schedule(id:)` immediately after `cancel(id:)` or
+    /// `stop(id:)` throws `Code=0` because `alarmd` hasn't released the UUID
+    /// slot. 200ms sleep fixes it. Used by the main scheduling path AND by
+    /// `SnoozeAlarmIntent.scheduleNext`.
+    func performSafeReschedule(
+        id: UUID,
+        configuration: AlarmManager.AlarmConfiguration<AlarmioMetadata>
+    ) async throws {
+        try? manager.cancel(id: id)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        _ = try await manager.schedule(id: id, configuration: configuration)
     }
 
     func cancelAlarm(id: UUID) throws {
@@ -207,14 +246,71 @@ final class AlarmScheduler {
         )
     }
 
+    /// H1 + H3 + H4: pick largest minute-aligned preAlert ≤ desired that
+    /// produces a safe schedule.
+    ///
+    /// For `.relative`: registered time (intended - candidate) must be
+    ///   ≥ now + 60s AND on the same calendar day as the intended fire
+    ///   (avoids the weekday-crossing complexity entirely).
+    /// For `.fixed`: shifted date must be ≥ now + schedulingBufferSeconds.
+    ///
+    /// Walks down from desired in 60s steps. Returns 0 when nothing fits —
+    /// caller omits Countdown presentation entirely and the first fire
+    /// simply has no Live Activity window. The alarm still rings correctly
+    /// at the intended time via the unshifted schedule.
+    func pickSafePreAlert(
+        intendedFireDate: Date,
+        desired: TimeInterval,
+        isRepeating: Bool,
+        now: Date
+    ) -> TimeInterval {
+        guard desired > 0 else { return 0 }
+
+        let safetyBuffer: TimeInterval = isRepeating ? 60 : Self.schedulingBufferSeconds
+        let headroom = intendedFireDate.timeIntervalSince(now)
+
+        // Can't fit even a 1-minute countdown? Give up — alarm still rings.
+        if headroom < safetyBuffer + 60 { return 0 }
+
+        // Start at the largest minute-aligned value ≤ desired.
+        let maxCandidate = floor(desired / 60) * 60
+        var candidate = maxCandidate
+
+        let calendar = Calendar.current
+        let intendedDay = calendar.startOfDay(for: intendedFireDate)
+
+        while candidate >= 60 {
+            let shiftedTime = intendedFireDate.addingTimeInterval(-candidate)
+            let fitsHeadroom = shiftedTime >= now.addingTimeInterval(safetyBuffer)
+            // .fixed tolerates crossing midnight (one-time alarms don't
+            // pattern-match on weekdays). .relative must stay same-day to
+            // avoid needing weekday adjustment math.
+            let sameDayOK = isRepeating
+                ? calendar.startOfDay(for: shiftedTime) == intendedDay
+                : true
+            if fitsHeadroom && sameDayOK { return candidate }
+            candidate -= 60
+        }
+        return 0
+    }
+
     /// Build the AlarmKit schedule. For repeating `.relative` alarms the
     /// registered hour/minute is shifted back by `shiftSeconds` so that
     /// ring time (`time + preAlertSeconds`) equals the user's intended
-    /// time. `shiftSeconds` MUST be a whole number of minutes — AlarmKit
-    /// drops seconds from the registered `time`, so a non-minute-aligned
-    /// shift introduces drift.
-    func buildScheduleShifted(intendedFireDate: Date, config: AlarmConfiguration, shiftSeconds: TimeInterval) -> Alarm.Schedule {
-        if let repeatDays = config.repeatDays, !repeatDays.isEmpty {
+    /// time. `shiftSeconds` MUST come from `pickSafePreAlert` (minute-
+    /// aligned, keeps shifted time same-day) — AlarmKit drops seconds from
+    /// the registered `time`.
+    ///
+    /// For `.fixed` (one-time), the shifted date is clamped to at least
+    /// `now + schedulingBufferSeconds` so we can't feed `alarmd` a past
+    /// date (which it silently drops — H3).
+    func buildSchedule(
+        intendedFireDate: Date,
+        isRepeating: Bool,
+        repeatDays: [Int],
+        shiftSeconds: TimeInterval
+    ) -> Alarm.Schedule {
+        if isRepeating {
             let weekdays = repeatDays.compactMap { mapDayIndexToWeekday($0) }
             let shifted = intendedFireDate.addingTimeInterval(-shiftSeconds)
             let calendar = Calendar.current
@@ -226,25 +322,38 @@ final class AlarmScheduler {
                 repeats: .weekly(weekdays)
             ))
         }
-        print("[AlarmScheduler.buildSchedule] ONE-TIME fixed=\(intendedFireDate)")
-        return .fixed(intendedFireDate)
+        let shifted = intendedFireDate.addingTimeInterval(-shiftSeconds)
+        let earliest = Date().addingTimeInterval(Self.schedulingBufferSeconds)
+        let fireDate = max(shifted, earliest)
+        print("[AlarmScheduler.buildSchedule] ONE-TIME fixed=\(fireDate) (shifted=\(shifted), shift=\(Int(shiftSeconds))s)")
+        return .fixed(fireDate)
     }
 
-    /// Legacy entry point kept for tests.
+    /// Legacy entry point kept for tests. Returns the unshifted schedule
+    /// (no preAlert) — useful for asserting the raw intended hour/minute.
+    /// Returns nil when the alarm can't be scheduled (no wake time, or
+    /// repeatDays non-empty but every index is out of range).
     func buildSchedule(from config: AlarmConfiguration, referenceDate: Date = Date()) -> Alarm.Schedule? {
         guard let intended = buildIntendedFireDate(from: config, referenceDate: referenceDate) else {
             return nil
         }
-        return buildScheduleShifted(
+        let isRepeating = !(config.repeatDays?.isEmpty ?? true)
+        if isRepeating {
+            let validDays = (config.repeatDays ?? []).compactMap { mapDayIndexToWeekday($0) }
+            if validDays.isEmpty { return nil }
+        }
+        return buildSchedule(
             intendedFireDate: intended,
-            config: config,
+            isRepeating: isRepeating,
+            repeatDays: config.repeatDays ?? [],
             shiftSeconds: 0
         )
     }
 
     private func buildAttributes(
         from config: AlarmConfiguration,
-        snoozesRemaining: Int
+        snoozesRemaining: Int,
+        includeCountdown: Bool
     ) -> AlarmAttributes<AlarmioMetadata> {
         let title = buildAlarmTitle(from: config)
 
@@ -275,8 +384,17 @@ final class AlarmScheduler {
             )
         }
 
+        // H5: Countdown presentation exists IFF countdownDuration is non-nil
+        // on the paired config. Caller gates both with `safePreAlert > 0`.
+        let presentation: AlarmPresentation = includeCountdown
+            ? AlarmPresentation(
+                alert: alert,
+                countdown: AlarmPresentation.Countdown(title: title, pauseButton: nil)
+              )
+            : AlarmPresentation(alert: alert)
+
         return AlarmAttributes<AlarmioMetadata>(
-            presentation: AlarmPresentation(alert: alert),
+            presentation: presentation,
             tintColor: Color(hex: "3A6EAA")
         )
     }

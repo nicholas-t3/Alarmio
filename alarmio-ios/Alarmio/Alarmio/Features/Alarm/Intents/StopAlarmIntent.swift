@@ -6,7 +6,6 @@
 //  Copyright © 2026 Parenthood ApS. All rights reserved.
 //
 
-import ActivityKit
 import AppIntents
 import Foundation
 
@@ -48,32 +47,10 @@ struct StopAlarmIntent: LiveActivityIntent {
             print("[StopAlarmIntent] reset snooze count for alarm")
         }
 
-        // Drop this alarm's entry from the countdown Activity. If it was
-        // the only entry, end the Activity entirely.
-        await removeFromCountdownActivity(alarmID: uuid)
+        // AlarmKit manages the native Live Activity lifecycle — when the
+        // alarm is stopped, iOS tears down the Activity automatically.
+        // No ActivityKit call needed here.
 
         return .result()
-    }
-
-    private func removeFromCountdownActivity(alarmID: UUID) async {
-        guard let existing = Activity<CountdownActivityAttributes>.activities.first else {
-            return
-        }
-
-        let remaining = existing.content.state.entries.filter { $0.alarmID != alarmID.uuidString }
-
-        if remaining.isEmpty {
-            await existing.end(nil, dismissalPolicy: .immediate)
-            print("[StopAlarmIntent] ended activity — no entries left")
-            return
-        }
-
-        let displayCap = 2
-        let newState = CountdownActivityAttributes.ContentState(
-            entries: Array(remaining.prefix(displayCap)),
-            additionalCount: max(0, remaining.count - displayCap)
-        )
-        await existing.update(ActivityContent(state: newState, staleDate: nil))
-        print("[StopAlarmIntent] dropped entry, \(remaining.count) remain")
     }
 }
