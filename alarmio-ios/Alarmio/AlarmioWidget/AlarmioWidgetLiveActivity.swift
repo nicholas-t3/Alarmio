@@ -49,12 +49,29 @@ struct AlarmioWidgetLiveActivity: Widget {
                     .padding(.leading, 8)
             } compactTrailing: {
                 if case let .countdown(countdown) = context.state.mode {
-                    Text(timerInterval: Date()...countdown.fireDate,
-                         countsDown: true,
-                         showsHours: true)
+                    // `Text(timerInterval:)` greedily reserves space for its
+                    // widest possible rendering (HH:MM:SS), so even "0:42"
+                    // stretches the pill across the island. The fix is a
+                    // hidden placeholder sized to the template we actually
+                    // want, with the live timer overlaid on top. The pill
+                    // is then sized by the placeholder, not the timer's
+                    // runaway ideal width.
+                    // (Apple dev forum thread 723316 / 757140)
+                    let remaining = countdown.fireDate.timeIntervalSinceNow
+                    let showHours = remaining >= 3600
+                    Text(showHours ? "00:00:00" : "00:00")
                         .monospacedDigit()
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: 80)
+                        .hidden()
+                        .overlay(alignment: .trailing) {
+                            Text(timerInterval: Date()...countdown.fireDate,
+                                 countsDown: true,
+                                 showsHours: showHours)
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        .padding(.trailing, 4)
                 } else {
                     Text("Ring")
                         .font(.caption)

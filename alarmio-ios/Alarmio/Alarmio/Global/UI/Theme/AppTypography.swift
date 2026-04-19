@@ -41,7 +41,7 @@ enum AppTypography {
     /// generating phase (create flow + onboarding). Slightly larger than
     /// bodyMedium so it reads as the focal point while the sky animates
     /// behind it.
-    static let generatingStatus = Font.system(size: 21, weight: .regular)
+    static let generatingStatus = Font.system(size: 20, weight: .regular)
 
     // MARK: - Labels
 

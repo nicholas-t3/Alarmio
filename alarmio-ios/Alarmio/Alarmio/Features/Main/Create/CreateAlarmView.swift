@@ -408,7 +408,10 @@ struct CreateAlarmView: View {
 
     private var compactPlayableVoiceCard: some View {
         let voice = heroVoices[voiceIndex]
-        let isPlayingThis = voicePlayer.isPlaying && voicePlayer.currentPersona == voice.persona
+        // Play/Stop reflects the player's state, not a per-persona
+        // binding. Cycling voices while playing hands off (see
+        // `cycleVoice`) so the button stays "Stop" across voice changes.
+        let isPlayingThis = voicePlayer.isPlaying
         return CompactPlayableVoiceCard(
             voice: voice,
             isPlayingThis: isPlayingThis,

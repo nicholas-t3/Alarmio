@@ -24,6 +24,10 @@ struct CompactPlayableVoiceCard: View {
     let onPrev: () -> Void
     let onNext: () -> Void
     let onTogglePlay: () -> Void
+    /// Glass tint — `.standard` (clear) in the create flow, `.edit`
+    /// (dark blue tint) inside the edit sheet so it matches the rest of
+    /// the edit surfaces.
+    var mode: CardMode = .standard
 
     // MARK: - Body
 
@@ -103,7 +107,7 @@ struct CompactPlayableVoiceCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+        .modifier(CardGlassModifier(mode: mode))
     }
 }
 
@@ -132,6 +136,21 @@ struct CompactPlayableVoiceCard: View {
             onPrev: {},
             onNext: {},
             onTogglePlay: {}
+        )
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+    }
+}
+
+#Preview("Edit Mode") {
+    ZStack {
+        Color(hex: "0f1a2e").ignoresSafeArea()
+        CompactPlayableVoiceCard(
+            voice: VoiceCatalog.all.first!,
+            isPlayingThis: false,
+            onPrev: {},
+            onNext: {},
+            onTogglePlay: {},
+            mode: .edit
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }

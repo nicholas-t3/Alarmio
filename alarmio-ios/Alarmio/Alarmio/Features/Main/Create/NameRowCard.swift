@@ -9,8 +9,8 @@
 import SwiftUI
 
 /// Single-line row showing an alarm's name. "Name" label on the left,
-/// current value (or "None") on the right. Matches `compactVoiceCard` /
-/// edit `summaryRow` dimensions so it stacks cleanly alongside them.
+/// current value (or "None") on the right. Matches the compact voice
+/// card + edit `summaryRow` dimensions so it stacks cleanly alongside them.
 struct NameRowCard: View {
 
     // MARK: - Style
