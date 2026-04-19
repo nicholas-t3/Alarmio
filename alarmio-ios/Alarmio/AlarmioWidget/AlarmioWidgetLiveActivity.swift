@@ -51,10 +51,10 @@ struct AlarmioWidgetLiveActivity: Widget {
                 if case let .countdown(countdown) = context.state.mode {
                     Text(timerInterval: Date()...countdown.fireDate,
                          countsDown: true,
-                         showsHours: false)
+                         showsHours: true)
                         .monospacedDigit()
                         .foregroundStyle(.white)
-                        .frame(maxWidth: 60)
+                        .frame(maxWidth: 80)
                 } else {
                     Text("Ring")
                         .font(.caption)
@@ -243,9 +243,10 @@ private struct ExpandedIslandContent: View {
                     Text(timerInterval: Date()...countdown.fireDate,
                          countsDown: true,
                          showsHours: true)
-                        .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 32, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.trailing, 14)
