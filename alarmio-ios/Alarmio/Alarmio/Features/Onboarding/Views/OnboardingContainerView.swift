@@ -63,6 +63,13 @@ struct OnboardingContainerView: View {
     @State private var starSpinTask: Task<Void, Never>?
     @State private var statusCycleTask: Task<Void, Never>?
     @State private var isScheduling = false
+    /// Regeneration state for the onboarding confirmation screen. When
+    /// the user cycles voice (or otherwise drifts from the committed
+    /// snapshot), the bottom button flips to "Regenerate". After a
+    /// successful re-run we bump `regenerationNonce` so the confirmation
+    /// view knows to pulse its Play button.
+    @State private var isRegeneratingAudio = false
+    @State private var regenerationNonce: Int = 0
     /// Cached AlarmKit authorization state. Refreshed on entry to the
     /// permission step, after requestAuthorization returns, and whenever
     /// the scene returns to active (handles the Settings round-trip).
@@ -276,7 +283,9 @@ struct OnboardingContainerView: View {
         case .confirmation:
             OnboardingConfirmationView(
                 onSchedule: { scheduleAlarm() },
-                isScheduling: isScheduling
+                isScheduling: isScheduling,
+                isRegenerating: isRegeneratingAudio,
+                regenerationNonce: regenerationNonce
             )
         }
     }
@@ -292,12 +301,19 @@ struct OnboardingContainerView: View {
                 guard !isTransitioning else { return }
                 handleBottomButtonTap()
             } label: {
-                if manager.isSyncing || isRequestingPermission {
+                if manager.isSyncing || isRequestingPermission || isRegeneratingAudio {
                     ProgressView()
                         .tint(.black)
                 } else {
-                    Text(resolvedButtonLabel)
-                        .contentTransition(.numericText())
+                    HStack(spacing: 8) {
+                        Text(resolvedButtonLabel)
+                            .contentTransition(.numericText())
+                        if showsScheduleArrow {
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .transition(.opacity)
+                        }
+                    }
                 }
             }
             .primaryButton(isEnabled: isBottomButtonEnabled)
@@ -351,7 +367,29 @@ struct OnboardingContainerView: View {
             @unknown default:    return "Allow Alarms"
             }
         }
+        if manager.currentStep == .confirmation {
+            if isRegeneratingAudio { return "Regenerating…" }
+            if isConfirmationDirty { return "Regenerate" }
+        }
         return buttonLabel
+    }
+
+    /// True when the confirmation screen has drift against the audio that
+    /// was generated — typically from cycling voice. Flips the bottom
+    /// button to "Regenerate" until re-run.
+    private var isConfirmationDirty: Bool {
+        guard let committed = manager.committedConfiguration else { return false }
+        return manager.configuration != committed
+    }
+
+    /// Show the up-right arrow next to the button label only when the
+    /// user is about to schedule (matches AlarmReadyView's affordance).
+    /// Hidden during Regenerate / Regenerating… on the confirmation step
+    /// and for all other steps (Continue / Get Started / etc.).
+    private var showsScheduleArrow: Bool {
+        guard manager.currentStep == .confirmation else { return false }
+        if isRegeneratingAudio { return false }
+        return !isConfirmationDirty
     }
 
     /// Enabled state for the shared primary button. Permission step is
@@ -360,6 +398,7 @@ struct OnboardingContainerView: View {
     private var isBottomButtonEnabled: Bool {
         if isTransitioning { return false }
         if isRequestingPermission { return false }
+        if isRegeneratingAudio { return false }
         if manager.currentStep == .permission { return true }
         return manager.canContinue && !manager.isSyncing
     }
@@ -376,7 +415,50 @@ struct OnboardingContainerView: View {
             }
             return
         }
+        if manager.currentStep == .confirmation, isConfirmationDirty {
+            regenerateConfirmationAlarm()
+            return
+        }
         navigateForward()
+    }
+
+    /// Re-runs the Composer audio call with the current (dirty) manager
+    /// configuration and promotes it into `committedConfiguration`.
+    /// Bumps `regenerationNonce` so the confirmation view pulses its
+    /// alarm-preview Play button.
+    private func regenerateConfirmationAlarm() {
+        guard !isRegeneratingAudio else { return }
+        isRegeneratingAudio = true
+        HapticManager.shared.buttonTap()
+
+        Task { @MainActor in
+            do {
+                guard let composerService else {
+                    throw NSError(
+                        domain: "ComposerService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Composer service unavailable"]
+                    )
+                }
+                let newFileName = try await composerService.generateAndDownloadAudio(
+                    for: manager.configuration
+                )
+                manager.configuration.soundFileName = newFileName
+                manager.committedConfiguration = manager.configuration
+                regenerationNonce &+= 1
+                isRegeneratingAudio = false
+                HapticManager.shared.success()
+            } catch {
+                isRegeneratingAudio = false
+                let errorMessage = (error as? APIError)?.errorDescription
+                    ?? "Please try again."
+                alertManager.showModal(
+                    title: "Regeneration failed",
+                    message: errorMessage,
+                    primaryAction: AlertAction(label: "OK") {}
+                )
+            }
+        }
     }
 
     // MARK: - Authorization
@@ -603,6 +685,9 @@ struct OnboardingContainerView: View {
                     for: manager.configuration
                 )
                 manager.configuration.soundFileName = fileName
+                // Freeze the committed snapshot so the confirmation screen
+                // can compare against it to detect dirty state.
+                manager.committedConfiguration = manager.configuration
 
                 statusCycleTask?.cancel()
                 generatingStatusVisible = false

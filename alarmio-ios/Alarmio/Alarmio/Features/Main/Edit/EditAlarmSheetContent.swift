@@ -832,7 +832,6 @@ struct EditAlarmSheetContent: View {
                     leaveTime: $editLeaveTime,
                     customPromptIncludes: $editCustomPromptIncludes,
                     wakeTime: editTime,
-                    showLeaveTime: true,
                     isProOn: Binding(
                         get: { editAlarmType == .pro },
                         set: { newValue in

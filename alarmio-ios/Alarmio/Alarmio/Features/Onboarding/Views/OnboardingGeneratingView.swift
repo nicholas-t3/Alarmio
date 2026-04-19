@@ -27,7 +27,7 @@ struct OnboardingGeneratingView: View {
             Spacer()
 
             Text(statusText)
-                .font(AppTypography.bodyMedium)
+                .font(AppTypography.generatingStatus)
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)

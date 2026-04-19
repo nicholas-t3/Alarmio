@@ -31,7 +31,6 @@ struct CustomizeCard: View {
     // MARK: - Constants
 
     let wakeTime: Date?
-    let showLeaveTime: Bool
     let showProRow: Bool
     let proCustomized: Bool
     /// When true the card grows three extra rows (Guidelines, Include,
@@ -68,7 +67,6 @@ struct CustomizeCard: View {
         customPrompt: Binding<String> = .constant(""),
         creativeSnoozes: Binding<Bool> = .constant(true),
         wakeTime: Date? = nil,
-        showLeaveTime: Bool = false,
         isProOn: Binding<Bool> = .constant(false),
         showProRow: Bool = false,
         showProInlineRows: Bool = false,
@@ -86,7 +84,6 @@ struct CustomizeCard: View {
         self._customPrompt = customPrompt
         self._creativeSnoozes = creativeSnoozes
         self.wakeTime = wakeTime
-        self.showLeaveTime = showLeaveTime
         self._isProOn = isProOn
         self.showProRow = showProRow
         self.showProInlineRows = showProInlineRows
@@ -209,7 +206,7 @@ struct CustomizeCard: View {
 
             // Leave time — shown here in the basic flow. In Pro mode it's
             // reordered below Include (see `proInlineRows`), so skip here.
-            if showLeaveTime && !(showProInlineRows && isProOn) {
+            if !(showProInlineRows && isProOn) {
                 Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
                 leaveTimeRow
@@ -642,14 +639,12 @@ struct CustomizeCard: View {
 
             // Leave Time — reordered here in Pro mode so it sits with the
             // other content-shaping toggles.
-            if showLeaveTime {
-                Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
+            Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
 
-                leaveTimeRow
+            leaveTimeRow
 
-                inlineExpandable(isOpen: leaveTime != nil) {
-                    leaveTimeInlinePicker
-                }
+            inlineExpandable(isOpen: leaveTime != nil) {
+                leaveTimeInlinePicker
             }
 
             Divider().overlay(.white.opacity(0.08)).padding(.horizontal, 4)
@@ -888,8 +883,7 @@ private struct UnsetValuePulse: ViewModifier {
             whyContext: .constant(nil),
             intensity: .constant(nil),
             leaveTime: .constant(nil),
-            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
-            showLeaveTime: true
+            wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0))
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
@@ -953,7 +947,6 @@ private struct UnsetValuePulse: ViewModifier {
                         customPrompt: $prompt,
                         creativeSnoozes: $creative,
                         wakeTime: Calendar.current.date(from: DateComponents(hour: 7, minute: 0)),
-                        showLeaveTime: true,
                         isProOn: $isPro,
                         showProRow: true,
                         showProInlineRows: true,

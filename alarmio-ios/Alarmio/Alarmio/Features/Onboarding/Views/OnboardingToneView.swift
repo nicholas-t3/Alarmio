@@ -43,7 +43,7 @@ struct OnboardingToneView: View {
                     .frame(height: AppSpacing.itemGap(deviceInfo.spacingScale))
 
                 // Header
-                Text("What gets you\nout of bed?")
+                Text("What 'why' gets you\nout of bed?")
                     .font(AppTypography.headlineLarge)
                     .tracking(AppTypography.headlineLargeTracking)
                     .foregroundStyle(.white)

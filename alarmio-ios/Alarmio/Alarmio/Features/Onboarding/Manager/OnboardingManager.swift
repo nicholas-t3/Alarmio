@@ -17,6 +17,11 @@ final class OnboardingManager {
     var currentStep: OnboardingStep = .intro
     var phase: OnboardingPhase = .splash
     var configuration = AlarmConfiguration()
+    /// Snapshot of the configuration at the moment audio was last
+    /// generated. Used on the confirmation screen to detect whether the
+    /// user has made changes since (e.g. cycled voice) that would require
+    /// regeneration. `nil` before the first generation completes.
+    var committedConfiguration: AlarmConfiguration?
     var isCompleted = false
     var isSyncing = false
     var syncError: String?

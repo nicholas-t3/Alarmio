@@ -37,6 +37,12 @@ enum AppTypography {
     static let bodyMedium = Font.system(size: 17, weight: .regular)
     static let bodySmall = Font.system(size: 15, weight: .regular)
 
+    /// Used for the cycling "Setting a calm tone…" status text on the
+    /// generating phase (create flow + onboarding). Slightly larger than
+    /// bodyMedium so it reads as the focal point while the sky animates
+    /// behind it.
+    static let generatingStatus = Font.system(size: 21, weight: .regular)
+
     // MARK: - Labels
 
     static let labelLarge = Font.system(size: 18, weight: .medium)
