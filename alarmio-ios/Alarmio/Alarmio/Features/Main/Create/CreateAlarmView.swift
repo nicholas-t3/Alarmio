@@ -75,6 +75,15 @@ struct CreateAlarmView: View {
     /// then-blur-in is in flight, otherwise a second toggle could swap the
     /// voice card mid-fade and look glitchy.
     @State private var proTransitioning = false
+    /// Bumped after a successful `runProPreview` so step 2's
+    /// `ScrollViewReader` animates back to the top. Any monotonic value
+    /// works — we just need `onChange` to fire.
+    @State private var stepTwoScrollToTopToken: Int = 0
+    /// Briefly flips the step-2 primary button to its green "Success"
+    /// state after a successful Generate Text / Regenerate. Cleared by a
+    /// timed task and by any further input edits.
+    @State private var showProPreviewSuccess: Bool = false
+    @State private var proPreviewSuccessTask: Task<Void, Never>?
     @State private var selectedDays: Set<Int> = []
     @State private var voiceIndex: Int = 0
     @State private var voicePlayer = VoicePreviewPlayer()
@@ -333,8 +342,29 @@ struct CreateAlarmView: View {
     // MARK: - Step 2: Style
 
     private var stepTwo: some View {
-        ScrollView {
-            VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                stepTwoContent
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .mask(scrollFadeMask)
+            .onChange(of: stepTwoScrollToTopToken) { _, _ in
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
+                    proxy.scrollTo(Self.stepTwoTopAnchor, anchor: .top)
+                }
+            }
+        }
+    }
+
+    /// Anchor ID attached to the voice card (top of step 2). Bumping
+    /// `stepTwoScrollToTopToken` in `onChange` tells `ScrollViewReader`
+    /// to animate back up to this ID.
+    private static let stepTwoTopAnchor = "stepTwoTop"
+
+    @ViewBuilder
+    private var stepTwoContent: some View {
+        VStack(spacing: AppSpacing.itemGap(deviceInfo.spacingScale)) {
 
                 // Voice — hero when Pro off, compact playable when Pro on.
                 // Swapped via if/else so the VStack tracks the visible
@@ -352,16 +382,24 @@ struct CreateAlarmView: View {
                 }
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
+                .id(Self.stepTwoTopAnchor)
 
                 // Pro text preview — sits BETWEEN the voice card and
                 // CustomizeCard so it reads as the primary artifact of
-                // "Generate Text". Same spring-scale-in / opacity-out
-                // transition the old ProPromptView used.
+                // "Generate Text". Stays mounted across regenerations so
+                // the old text pulses in place while new text streams in,
+                // then the text itself swaps via `.contentTransition`.
                 if draft.alarmType == .pro,
-                   !proPreviewIsGenerating,
                    let first = proPreviewScripts?.first {
                     proResultCard(text: first)
                         .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .opacity(proPreviewIsGenerating ? 0.55 : 1)
+                        .animation(
+                            proPreviewIsGenerating
+                                ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                                : .easeInOut(duration: 0.25),
+                            value: proPreviewIsGenerating
+                        )
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.95).combined(with: .opacity),
                             removal: .opacity
@@ -412,10 +450,6 @@ struct CreateAlarmView: View {
             .padding(.top, 8)
             .animation(.spring(response: 0.5, dampingFraction: 0.82), value: proPreviewScripts)
             .animation(.easeInOut(duration: 0.25), value: proPreviewError)
-        }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
-        .mask(scrollFadeMask)
     }
 
     private var compactPlayableVoiceCard: some View {
@@ -446,6 +480,8 @@ struct CreateAlarmView: View {
                 .foregroundStyle(.white.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: text)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 16)
@@ -985,6 +1021,20 @@ struct CreateAlarmView: View {
         }
     }
 
+    /// Flash the step-2 primary button to the green "Success" state for
+    /// 1.5s after a successful Generate Text / Regenerate. Cancels any
+    /// in-flight timer so rapid regenerations chain cleanly.
+    private func triggerProPreviewSuccess() {
+        proPreviewSuccessTask?.cancel()
+        showProPreviewSuccess = true
+
+        proPreviewSuccessTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            showProPreviewSuccess = false
+        }
+    }
+
     private func toggleAlarmPreview() {
         if voicePlayer.isPlaying {
             voicePlayer.stop()
@@ -1366,7 +1416,7 @@ struct CreateAlarmView: View {
         let state = stepTwoButtonState
 
         Button {
-            guard state.enabled else { return }
+            guard state.enabled, !showProPreviewSuccess else { return }
             HapticManager.shared.buttonTap()
             state.action()
         } label: {
@@ -1382,8 +1432,33 @@ struct CreateAlarmView: View {
             .animation(.easeInOut(duration: 0.25), value: state.showSpinner)
             .animation(.easeInOut(duration: 0.25), value: state.label)
         }
-        .primaryButton(isEnabled: state.enabled)
-        .disabled(!state.enabled)
+        .primaryButton(isEnabled: state.enabled && !showProPreviewSuccess)
+        .disabled(!state.enabled || showProPreviewSuccess)
+        .overlay {
+            if showProPreviewSuccess {
+                Capsule()
+                    .fill(Color(hex: "4AFF8E"))
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color(hex: "4AFF8E").opacity(0.8), lineWidth: 1.5)
+                            .blur(radius: 3)
+                    }
+                    .overlay {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Success")
+                                .font(AppTypography.button)
+                                .tracking(AppTypography.buttonTracking)
+                        }
+                        .foregroundStyle(.black)
+                    }
+                    .shadow(color: Color(hex: "4AFF8E").opacity(0.35), radius: 18, y: 0)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: showProPreviewSuccess)
     }
 
     private struct StepTwoButtonState {
@@ -1842,10 +1917,12 @@ struct CreateAlarmView: View {
             return
         }
 
+        // Keep the previous preview mounted (if any) while regenerating —
+        // the card pulses via the `.opacity(...)` on the result view instead
+        // of unmounting and re-mounting, which would cause a visible jump.
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
             proPreviewIsGenerating = true
             proPreviewError = nil
-            proPreviewScripts = nil
         }
 
         do {
@@ -1862,6 +1939,11 @@ struct CreateAlarmView: View {
                 proPreviewIsGenerating = false
             }
             HapticManager.shared.softTap()
+            // Animate the ScrollView back to the top so the new preview
+            // card (now sitting between voice and CustomizeCard) is
+            // immediately in view.
+            stepTwoScrollToTopToken &+= 1
+            triggerProPreviewSuccess()
         } catch {
             let description = (error as? APIError)?.errorDescription ?? "Please try again."
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
