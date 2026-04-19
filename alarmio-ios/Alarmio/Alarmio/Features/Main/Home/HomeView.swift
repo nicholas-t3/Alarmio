@@ -37,6 +37,11 @@ struct HomeView: View {
     @State private var editingAlarmId: UUID?
     @State private var showEditModal = false
     @State private var emptyStateOpacity: Double = 0
+    /// Single shared player for the home-screen alarm preview taps.
+    /// Tracked alongside `playingAlarmId` so only one alarm can preview
+    /// at a time — tapping Play on alarm B automatically stops alarm A.
+    @State private var homePreviewPlayer = VoicePreviewPlayer()
+    @State private var playingAlarmId: UUID?
 
     // MARK: - Body
 
@@ -222,6 +227,7 @@ struct HomeView: View {
                 ForEach(sortedAlarms, id: \.id) { alarm in
                     AlarmCardView(
                         alarm: alarm,
+                        isPlayingThis: playingAlarmId == alarm.id && homePreviewPlayer.isPlaying,
                         onToggle: {
                             // Only enforce auth when flipping OFF→ON. Turning
                             // an alarm off doesn't require permission.
@@ -233,10 +239,10 @@ struct HomeView: View {
                             Task { await alarmStore.toggleAlarm(id: alarm.id) }
                         },
                         onEdit: {
-                            HapticManager.shared.softTap()
                             editingAlarmId = alarm.id
                             showEditModal = true
-                        }
+                        },
+                        onTogglePlay: { toggleHomePreview(for: alarm) }
                     )
                     .premiumBlur(
                         isVisible: alarmsVisible,
@@ -397,6 +403,26 @@ struct HomeView: View {
 
     private func deleteAlarm(id: UUID) {
         Task { await alarmStore.deleteAlarm(id: id) }
+    }
+
+    /// Shared home-preview toggle — tapping Play on another alarm while
+    /// one is already playing stops the previous and starts the new one.
+    /// Tapping Play on the currently-playing alarm stops it.
+    private func toggleHomePreview(for alarm: AlarmConfiguration) {
+        let isThisPlaying = playingAlarmId == alarm.id && homePreviewPlayer.isPlaying
+
+        // Stop whatever is currently playing.
+        homePreviewPlayer.stop()
+
+        if isThisPlaying {
+            playingAlarmId = nil
+            return
+        }
+
+        guard let fileName = alarm.soundFileName else { return }
+        let url = alarmStore.audioFileManager.soundFileURL(named: fileName)
+        homePreviewPlayer.playFromFile(url: url, persona: alarm.voicePersona)
+        playingAlarmId = alarm.id
     }
 }
 

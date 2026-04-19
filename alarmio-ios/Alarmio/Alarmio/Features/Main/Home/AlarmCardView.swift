@@ -13,93 +13,120 @@ struct AlarmCardView: View {
     // MARK: - Constants
 
     let alarm: AlarmConfiguration
+    /// True when the shared home-screen player is currently playing this
+    /// alarm's generated audio. Drives the Play ↔ Stop symbol swap.
+    let isPlayingThis: Bool
     let onToggle: () -> Void
     let onEdit: () -> Void
+    let onTogglePlay: () -> Void
 
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // Whole card is a Button → edit sheet. The Play + Toggle buttons
+        // below sit on top and claim their own tap regions; SwiftUI's
+        // hit testing picks the innermost Button for the hit location,
+        // so they never fall through to the outer edit tap.
+        Button {
+            HapticManager.shared.softTap()
+            onEdit()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
 
-            // Time row — time left, toggle right
-            HStack(alignment: .center) {
-                if let time = alarm.wakeTime {
-                    Text(time, format: .dateTime.hour().minute())
-                        .font(.system(size: 42, weight: .light, design: .rounded))
-                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 1 : 0.3))
-                        .minimumScaleFactor(0.7)
-                }
-
-                Spacer()
-
-                // Toggle — visual only, tap fires callback
-                Toggle("", isOn: .constant(alarm.isEnabled))
-                    .labelsHidden()
-                    .allowsHitTesting(false)
-                    .overlay {
-                        Color.clear.contentShape(Rectangle())
-                            .onTapGesture { onToggle() }
-                    }
-            }
-
-            // Detail row — schedule + persona left, edit button right
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-
-                    // Name (optional, primary info line)
-                    if let name = alarm.name, !name.isEmpty {
-                        Text(name)
-                            .font(AppTypography.labelSmall)
-                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.95 : 0.4))
-                            .lineLimit(1)
+                // Time row — time left, toggle right
+                HStack(alignment: .center) {
+                    if let time = alarm.wakeTime {
+                        Text(time, format: .dateTime.hour().minute())
+                            .font(.system(size: 42, weight: .light, design: .rounded))
+                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 1 : 0.3))
+                            .minimumScaleFactor(0.7)
                     }
 
-                    // Schedule
-                    Text(scheduleSummary)
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.85 : 0.35))
+                    Spacer()
 
-                    // Tone icon (or crown for pro) + persona name
-                    if let persona = alarm.voicePersona {
-                        HStack(spacing: 6) {
-                            if alarm.alarmType == .pro {
-                                Image(systemName: "crown.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color(hex: "E9C46A"))
-                            } else if let tone = alarm.tone {
-                                Image(systemName: tone.icon)
-                                    .font(.system(size: 11))
+                    // Toggle — visual only, tap fires callback. A clear
+                    // overlay eats the tap so it doesn't propagate up to
+                    // the card-level edit tap.
+                    Toggle("", isOn: .constant(alarm.isEnabled))
+                        .labelsHidden()
+                        .allowsHitTesting(false)
+                        .overlay {
+                            Button(action: onToggle) {
+                                Color.clear.contentShape(Rectangle())
                             }
-
-                            Text(persona.displayName)
-                                .font(AppTypography.caption)
-                                .tracking(0.3)
+                            .buttonStyle(.plain)
                         }
-                        .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.5 : 0.2))
+                }
+
+                // Detail row — schedule + persona left, play/stop button right
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+
+                        // Name (optional, primary info line)
+                        if let name = alarm.name, !name.isEmpty {
+                            Text(name)
+                                .font(AppTypography.labelSmall)
+                                .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.95 : 0.4))
+                                .lineLimit(1)
+                        }
+
+                        // Schedule
+                        Text(scheduleSummary)
+                            .font(AppTypography.labelSmall)
+                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.85 : 0.35))
+
+                        // Tone icon (or crown for pro) + persona name
+                        if let persona = alarm.voicePersona {
+                            HStack(spacing: 6) {
+                                if alarm.alarmType == .pro {
+                                    Image(systemName: "crown.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: "E9C46A"))
+                                } else if let tone = alarm.tone {
+                                    Image(systemName: tone.icon)
+                                        .font(.system(size: 11))
+                                }
+
+                                Text(persona.displayName)
+                                    .font(AppTypography.caption)
+                                    .tracking(0.3)
+                            }
+                            .foregroundStyle(.white.opacity(alarm.isEnabled ? 0.5 : 0.2))
+                        }
                     }
-                }
 
-                Spacer()
+                    Spacer()
 
-                // Edit
-                Button {
-                    onEdit()
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    // Play / Stop — previews the alarm's generated audio.
+                    // Inner Button claims the tap for its own frame; taps
+                    // outside it fall through to the outer card button.
+                    Button {
+                        HapticManager.shared.buttonTap()
+                        onTogglePlay()
+                    } label: {
+                        Image(systemName: isPlayingThis ? "stop.fill" : "play.fill")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(alarm.soundFileName == nil)
+                    .opacity(alarm.soundFileName == nil ? 0.35 : 1)
+                    .padding(.trailing, -6)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlayingThis)
                 }
-                .padding(.trailing, -6)
             }
+            .padding(.vertical, 20)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
+            .opacity(alarm.isEnabled ? 1.0 : 0.7)
+            .animation(.easeOut(duration: 0.3), value: alarm.isEnabled)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))
-        .opacity(alarm.isEnabled ? 1.0 : 0.7)
-        .animation(.easeOut(duration: 0.3), value: alarm.isEnabled)
+        .buttonStyle(.plain)
     }
 
     // MARK: - Private Methods
@@ -142,8 +169,10 @@ struct AlarmCardView: View {
                 tone: .calm,
                 voicePersona: .soothingSarah
             ),
+            isPlayingThis: false,
             onToggle: {},
-            onEdit: {}
+            onEdit: {},
+            onTogglePlay: {}
         )
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
