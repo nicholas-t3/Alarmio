@@ -68,6 +68,22 @@ struct AlarmioWidgetLiveActivity: Widget {
     }
 }
 
+// MARK: - Title Resolution
+
+/// Pull the user-facing title from the alarm's presentation config.
+/// Source of truth is `AlarmScheduler.buildAlarmTitle` which returns the
+/// user's custom name or "Alarmio Alarm". The same title is written to
+/// both `.alert` and `.countdown` presentations, so either state's title
+/// is fine — fall back through both.
+private func alarmTitle(
+    from context: ActivityViewContext<AlarmAttributes<AlarmioMetadata>>
+) -> String {
+    if let countdown = context.attributes.presentation.countdown {
+        return String(localized: countdown.title)
+    }
+    return String(localized: context.attributes.presentation.alert.title)
+}
+
 // MARK: - Theme
 
 /// Widget-safe palette. No materials, no glassEffect.
@@ -173,7 +189,7 @@ private struct LockScreenView: View {
 
                 // Title + rings-at line
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Alarmio")
+                    Text(alarmTitle(from: context))
                         .font(.headline)
                         .foregroundStyle(.white)
                         .lineLimit(1)
@@ -252,7 +268,7 @@ private struct ExpandedIslandContent: View {
                 // Right — name pushed toward the divider
                 HStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Alarmio")
+                        Text(alarmTitle(from: context))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
