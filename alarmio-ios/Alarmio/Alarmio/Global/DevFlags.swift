@@ -16,10 +16,14 @@ enum DevFlags {
     /// Supabase Edge Function + ElevenLabs call entirely and instead
     /// reuses the bundled `alarm1.mp3`/`alarm2.mp3`/`alarm3.mp3` test
     /// files, copying them into the per-alarm indexed filenames the rest
-    /// of the system expects. Saves ~40k tokens per scheduling test.
+    /// of the system expects. Saves ~40k ElevenLabs credits per test.
     ///
     /// Indices 0..2 map to alarm1/alarm2/alarm3; index ≥3 falls back to
     /// alarm1. All filename/nonce plumbing matches the production path
     /// so `AudioFileManager.soundFileName(for:)` resolves normally.
+    ///
+    /// **Scope:** audio only. Text generation (`generateCustomAlarmText`,
+    /// `rewriteAlarmTimes`) ignores this flag and always hits OpenAI —
+    /// text is cheap, and the preview the user approves has to be real.
     static let skipGeneration: Bool = true
 }

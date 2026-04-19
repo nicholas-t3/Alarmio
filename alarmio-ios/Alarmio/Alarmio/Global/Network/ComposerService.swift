@@ -101,16 +101,6 @@ final class ComposerService {
         snoozeCount: Int,
         baseScript: String? = nil
     ) async throws -> [String] {
-        if DevFlags.skipGeneration {
-            try await Task.sleep(nanoseconds: 1_500_000_000)
-            return stubCustomAlarmScripts(
-                prompt: prompt,
-                includes: includes,
-                snoozeCount: snoozeCount,
-                baseScript: baseScript
-            )
-        }
-
         let request = GenerateCustomAlarmTextRequest.from(
             alarm: draft,
             timezone: TimeZone.current,
@@ -146,11 +136,6 @@ final class ComposerService {
         oldLeave: Date?,
         newLeave: Date?
     ) async throws -> [String] {
-        if DevFlags.skipGeneration {
-            try await Task.sleep(nanoseconds: 800_000_000)
-            return scripts.map { stubRewriteScript($0, oldWake: oldWake, newWake: newWake) }
-        }
-
         let request = RewriteAlarmTimesRequest.from(
             alarm: draft,
             timezone: TimeZone.current,
@@ -170,42 +155,6 @@ final class ComposerService {
 
         print("[Composer] <<< rewrote \(response.scripts.count) scripts")
         return response.scripts
-    }
-
-    private func stubRewriteScript(_ script: String, oldWake: Date?, newWake: Date?) -> String {
-        guard let oldWake, let newWake else { return script }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return script.replacingOccurrences(of: f.string(from: oldWake), with: f.string(from: newWake))
-    }
-
-    private func stubCustomAlarmScripts(
-        prompt: String,
-        includes: Set<CustomPromptInclude>,
-        snoozeCount: Int,
-        baseScript: String?
-    ) -> [String] {
-        let includeList = includes.map(\.label).sorted().joined(separator: ", ")
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        let promptLine = trimmed.isEmpty ? "(no prompt)" : trimmed
-
-        if baseScript != nil {
-            return (0..<snoozeCount).map { i in
-                "Stub snooze \(i + 1). Still time to get up — includes: \(includeList.isEmpty ? "none" : includeList)."
-            }
-        }
-
-        let main = """
-        Good morning. This is a stubbed preview while the backend is offline.
-        Prompt: \(promptLine)
-        Includes: \(includeList.isEmpty ? "(none)" : includeList)
-        Time to rise — today is going to be a good one.
-        """
-        let snoozes = (0..<snoozeCount).map { i in
-            "Stub snooze \(i + 1). You hit snooze — time to get moving."
-        }
-        return [main] + snoozes
     }
 
     // MARK: - Dev skip path

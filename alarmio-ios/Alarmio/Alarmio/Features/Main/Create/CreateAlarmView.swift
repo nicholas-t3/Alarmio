@@ -353,6 +353,30 @@ struct CreateAlarmView: View {
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0, duration: 0.4)
 
+                // Pro text preview — sits BETWEEN the voice card and
+                // CustomizeCard so it reads as the primary artifact of
+                // "Generate Text". Same spring-scale-in / opacity-out
+                // transition the old ProPromptView used.
+                if draft.alarmType == .pro,
+                   !proPreviewIsGenerating,
+                   let first = proPreviewScripts?.first {
+                    proResultCard(text: first)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                }
+
+                // Pro error card — shown in place of the preview on failure.
+                if draft.alarmType == .pro,
+                   !proPreviewIsGenerating,
+                   let err = proPreviewError {
+                    proErrorCard(message: err)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .transition(.opacity)
+                }
+
                 // Customize (tone + reason + intensity + leave time + pro
                 // row + inline Pro rows when Pro is on).
                 CustomizeCard(
@@ -381,27 +405,6 @@ struct CreateAlarmView: View {
                 )
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.4)
-
-                // Pro text preview — only when Pro and we have a result.
-                if draft.alarmType == .pro,
-                   !proPreviewIsGenerating,
-                   let first = proPreviewScripts?.first {
-                    proResultCard(text: first)
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.95).combined(with: .opacity),
-                            removal: .opacity
-                        ))
-                }
-
-                // Pro error card — shown in place of the preview on failure.
-                if draft.alarmType == .pro,
-                   !proPreviewIsGenerating,
-                   let err = proPreviewError {
-                    proErrorCard(message: err)
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .transition(.opacity)
-                }
 
                 Spacer()
                     .frame(height: 20)

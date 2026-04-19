@@ -794,18 +794,17 @@ struct CustomizeCard: View {
             }
             .padding(.vertical, 14)
 
-            // Caption — uses the same `inlineExpandable` premiumBlur +
-            // height-clip pattern as Leave Time's inline picker so it
-            // disappears cleanly instead of sliding over neighboring rows.
+            // Caption — centered to match the Leave Time picker's caption.
+            // `inlineExpandable` uses the same premiumBlur + height-clip
+            // so it disappears cleanly instead of sliding.
             inlineExpandable(isOpen: creativeSnoozes) {
-                HStack {
-                    Text("We'll change the snooze message, but it'll still fit your vibe. Turn this off to repeat the same alarm each time.")
-                        .font(AppTypography.labelSmall)
-                        .foregroundStyle(.white.opacity(0.5))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.leading, 32)
+                Text("We'll change the snooze message, but it'll still fit your vibe. Turn this off to repeat the same alarm each time.")
+                    .font(AppTypography.labelSmall)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
             }
         }
     }
