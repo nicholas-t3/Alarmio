@@ -1469,6 +1469,16 @@ struct CreateAlarmView: View {
                 proPreviewSnapshot = ProPreviewInputs.from(draft)
                 proPreviewIsGenerating = false
             }
+            // Seed `lastProSnapshot` with a draft copy that carries the
+            // freshly-generated scripts. This is what `reconcileThenAdvanceToCustomize`
+            // compares against when the user goes back to step 1, tweaks
+            // the wake/leave time, and taps Next — so time drift triggers
+            // a surgical script rewrite on the existing preview without
+            // waiting for "Generate Now" to be tapped.
+            var seed = draft
+            seed.approvedScripts = scripts
+            seed.alarmType = .pro
+            lastProSnapshot = seed
             HapticManager.shared.softTap()
             // Animate the ScrollView back to the top so the new preview
             // card (now sitting between voice and CustomizeCard) is

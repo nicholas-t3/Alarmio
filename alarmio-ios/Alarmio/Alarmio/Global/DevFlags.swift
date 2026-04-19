@@ -26,4 +26,13 @@ enum DevFlags {
     /// `rewriteAlarmTimes`) ignores this flag and always hits OpenAI —
     /// text is cheap, and the preview the user approves has to be real.
     static let skipGeneration: Bool = false
+
+    /// When true, `performRegeneration()` on the edit sheet throws
+    /// immediately with a fake error so the regen failure UI
+    /// ("Please try again" red flash + toast) can be tested without
+    /// having to coax ElevenLabs into a real 409.
+    ///
+    /// Scoped to the edit sheet — leaves audio/text generation paths
+    /// in other flows alone.
+    static let forceEditRegenerationError: Bool = false
 }

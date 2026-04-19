@@ -143,6 +143,12 @@ struct EditAlarmSheetContent: View {
     /// guard so our own internal writes don't trip the "user made an
     /// edit, regeneration is now stale" path.
     @State private var suppressRegenInvalidate: Bool = false
+    /// Flips true after a failed regen. Drives the style-page footer
+    /// button into a red "Please try again" state. Cleared automatically
+    /// on any user edit (via `invalidateRegenerationFlag`) or on the
+    /// next successful regen.
+    @State private var regenerationError: Bool = false
+    @State private var regenerationErrorTask: Task<Void, Never>?
     /// Reconciled approvedScripts from the last regeneration. Nil means
     /// either this is a basic alarm or reconcile hasn't run yet. When
     /// non-nil, `commitSave` uses these instead of the original alarm's
@@ -405,6 +411,15 @@ struct EditAlarmSheetContent: View {
             saveSuccessTask = nil
             showSaveSuccess = false
         }
+        // Clear the red error state — user has made a new edit, they
+        // should see the normal Regenerate affordance, not the retry.
+        if regenerationError {
+            regenerationErrorTask?.cancel()
+            regenerationErrorTask = nil
+            withAnimation(.easeOut(duration: 0.2)) {
+                regenerationError = false
+            }
+        }
     }
 
     private func triggerSaveSuccess() {
@@ -412,9 +427,25 @@ struct EditAlarmSheetContent: View {
         showSaveSuccess = true
 
         saveSuccessTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1500))
+            try? await Task.sleep(for: .milliseconds(2500))
             guard !Task.isCancelled else { return }
             showSaveSuccess = false
+        }
+    }
+
+    /// Flashes the footer button into its red "Please try again" state
+    /// for 2.5s, then restores it to the regular Regenerate label —
+    /// same cadence as `triggerSaveSuccess`.
+    private func triggerRegenerationError() {
+        regenerationErrorTask?.cancel()
+        regenerationError = true
+
+        regenerationErrorTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.25)) {
+                regenerationError = false
+            }
         }
     }
 
@@ -548,8 +579,8 @@ struct EditAlarmSheetContent: View {
                         .contentTransition(.numericText())
                 }
             }
-            .primaryButton(isEnabled: hasChanges && !isRegenerating && !showSaveSuccess)
-            .disabled(!hasChanges || isRegenerating || showSaveSuccess)
+            .primaryButton(isEnabled: hasChanges && !isRegenerating && !showSaveSuccess && !regenerationError)
+            .disabled(!hasChanges || isRegenerating || showSaveSuccess || regenerationError)
             .overlay {
                 if showSaveSuccess {
                     Capsule()
@@ -572,9 +603,31 @@ struct EditAlarmSheetContent: View {
                         .shadow(color: Color(hex: "4AFF8E").opacity(0.35), radius: 18, y: 0)
                         .transition(.opacity)
                         .allowsHitTesting(false)
+                } else if regenerationError {
+                    Capsule()
+                        .fill(Color(hex: "FF5C5C"))
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(Color(hex: "FF5C5C").opacity(0.8), lineWidth: 1.5)
+                                .blur(radius: 3)
+                        }
+                        .overlay {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Please try again")
+                                    .font(AppTypography.button)
+                                    .tracking(AppTypography.buttonTracking)
+                            }
+                            .foregroundStyle(.white)
+                        }
+                        .shadow(color: Color(hex: "FF5C5C").opacity(0.35), radius: 18, y: 0)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: showSaveSuccess)
+            .animation(.easeInOut(duration: 0.35), value: regenerationError)
             .padding(.top, 8)
 
             // Delete
@@ -1098,8 +1151,8 @@ struct EditAlarmSheetContent: View {
             .animation(.easeInOut(duration: 0.25), value: state.showSpinner)
             .animation(.easeInOut(duration: 0.25), value: state.label)
         }
-        .primaryButton(isEnabled: state.enabled && !showSaveSuccess)
-        .disabled(!state.enabled || showSaveSuccess)
+        .primaryButton(isEnabled: state.enabled && !showSaveSuccess && !regenerationError)
+        .disabled(!state.enabled || showSaveSuccess || regenerationError)
         .overlay {
             if showSaveSuccess {
                 Capsule()
@@ -1122,9 +1175,31 @@ struct EditAlarmSheetContent: View {
                     .shadow(color: Color(hex: "4AFF8E").opacity(0.35), radius: 18, y: 0)
                     .transition(.opacity)
                     .allowsHitTesting(false)
+            } else if regenerationError {
+                Capsule()
+                    .fill(Color(hex: "FF5C5C"))
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(Color(hex: "FF5C5C").opacity(0.8), lineWidth: 1.5)
+                            .blur(radius: 3)
+                    }
+                    .overlay {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Please try again")
+                                .font(AppTypography.button)
+                                .tracking(AppTypography.buttonTracking)
+                        }
+                        .foregroundStyle(.white)
+                    }
+                    .shadow(color: Color(hex: "FF5C5C").opacity(0.35), radius: 18, y: 0)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
             }
         }
         .animation(.easeInOut(duration: 0.35), value: showSaveSuccess)
+        .animation(.easeInOut(duration: 0.35), value: regenerationError)
     }
 
     private struct StylePageFooterState {
@@ -1153,6 +1228,15 @@ struct EditAlarmSheetContent: View {
                 enabled: false,
                 showSpinner: true,
                 action: {}
+            )
+        }
+
+        if regenerationError {
+            return StylePageFooterState(
+                label: "Please try again",
+                enabled: basicReady && proReady,
+                showSpinner: false,
+                action: { regenerateAlarm() }
             )
         }
 
@@ -1357,6 +1441,7 @@ struct EditAlarmSheetContent: View {
                 editSoundFileName = newFileName
                 logFileState(for: newFileName)
                 audioRegeneratedForCurrentEdits = true
+                regenerationError = false
                 // Sync the pro preview card's text with whatever
                 // `performRegeneration` reconciled. Otherwise the card
                 // keeps showing stale text after a successful regen.
@@ -1426,6 +1511,17 @@ struct EditAlarmSheetContent: View {
     }
 
     private func performRegeneration() async throws -> String {
+        if DevFlags.forceEditRegenerationError {
+            // Fake a real-feeling round-trip before throwing so the UI
+            // goes through the isRegenerating spinner state.
+            try await Task.sleep(for: .milliseconds(800))
+            throw APIError.unknown(NSError(
+                domain: "DevFlags.forceEditRegenerationError",
+                code: -999,
+                userInfo: [NSLocalizedDescriptionKey: "Forced failure (dev flag)"]
+            ))
+        }
+
         guard let composerService else {
             throw APIError.unknown(NSError(
                 domain: "ComposerService",
@@ -1562,15 +1658,13 @@ struct EditAlarmSheetContent: View {
 
     private func showRegenerationError(_ error: Error) {
         print("[EditAlarm] Regenerate failed: \(error)")
-        let code: String
-        if let apiError = error as? APIError {
-            code = apiError.errorDescription ?? String(describing: apiError)
-        } else {
-            code = (error as NSError).domain + ":\((error as NSError).code)"
-        }
         HapticManager.shared.error()
+        // Flash the footer button into the "Please try again" state
+        // (inline red treatment) for 2.5s — primary signal since toasts
+        // can slide behind the sheet. The toast below is a backup.
+        triggerRegenerationError()
         alertManager.showToast(
-            message: "Something went wrong. Please try again. (\(code))",
+            message: "Something went wrong. Please try again.",
             kind: .failure,
             duration: 3.5
         )
