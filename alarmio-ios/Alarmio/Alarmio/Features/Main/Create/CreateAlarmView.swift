@@ -676,6 +676,15 @@ struct CreateAlarmView: View {
         guard !isTransitioning else { return }
         isTransitioning = true
 
+        // Reset step 2's visibility gates so they're `false` at the
+        // moment the phase flips — otherwise step 2 mounts with
+        // `cardsVisible` still true from its earlier life and the
+        // `premiumBlur(isVisible:)` wrappers see no change, i.e. a pop
+        // instead of a blur-in. Mirrors `transitionToPhase`'s forward
+        // ordering (cardsVisible=false → swap → cardsVisible=true).
+        cardsVisible = false
+        buttonVisible = false
+
         // Fade the confirmation content out first.
         withAnimation(.easeInOut(duration: 0.3)) {
             confirmationCardVisible = false
@@ -1213,7 +1222,7 @@ struct CreateAlarmView: View {
 
         if isDirty {
             return StepTwoButtonState(
-                label: "Regenerate",
+                label: "Regenerate Text",
                 enabled: promptOK && basicReady,
                 showSpinner: false,
                 action: { Task { await runProPreview() } }
