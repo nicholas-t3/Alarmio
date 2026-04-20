@@ -311,8 +311,19 @@ final class AlarmStore {
     }()
 
     func startObserving() async {
-        // Observation reserved for future use.
-        // Auto-disable of one-time alarms is handled in rescheduleAllEnabled() on launch.
+        AlarmDebugLog.log("observer.start", "subscribing to AlarmManager.alarmUpdates")
+        do {
+            for try await alarms in scheduler.manager.alarmUpdates {
+                for alarm in alarms {
+                    AlarmDebugLog.log(
+                        "alarm.state",
+                        "id=\(alarm.id) state=\(alarm.state) schedule=\(String(describing: alarm.schedule))"
+                    )
+                }
+            }
+        } catch {
+            AlarmDebugLog.log("observer.error", "\(error)")
+        }
     }
 }
 

@@ -36,6 +36,11 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        let t0 = Date()
+        AlarmDebugLog.log("snooze.enter", "alarmID=\(alarmID)")
+        defer {
+            AlarmDebugLog.log("snooze.exit", "alarmID=\(alarmID) elapsed=\(Int(Date().timeIntervalSince(t0) * 1000))ms")
+        }
         print("[SnoozeAlarmIntent] fired for alarmID=\(alarmID)")
 
         guard let uuid = UUID(uuidString: alarmID) else {
@@ -196,7 +201,15 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         try? AlarmManager.shared.cancel(id: alarmID)
         try? await Task.sleep(nanoseconds: 200_000_000)
 
-        _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
+        AlarmDebugLog.log("snooze.schedule.request", "id=\(alarmID) scheduleDate=\(scheduleDate) preAlert=\(Int(preAlert))s snoozesRemaining=\(snoozesRemaining) sound=\(soundName ?? "<default>")")
+        do {
+            _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
+            AlarmDebugLog.log("snooze.schedule.result", "id=\(alarmID) ok")
+        } catch {
+            let ns = error as NSError
+            AlarmDebugLog.log("snooze.schedule.error", "id=\(alarmID) domain=\(ns.domain) code=\(ns.code) userInfo=\(ns.userInfo)")
+            throw error
+        }
 
         // AlarmKit manages the native countdown Live Activity itself —
         // no ActivityKit call needed here. The LA appears automatically

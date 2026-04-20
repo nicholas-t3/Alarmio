@@ -23,6 +23,7 @@ struct StopAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        AlarmDebugLog.log("stop.enter", "alarmID=\(alarmID)")
         print("[StopAlarmIntent] fired for alarmID=\(alarmID)")
 
         guard let uuid = UUID(uuidString: alarmID) else {

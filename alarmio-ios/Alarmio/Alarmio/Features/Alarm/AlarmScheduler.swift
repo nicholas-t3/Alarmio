@@ -159,11 +159,20 @@ final class AlarmScheduler {
             sound: sound
         )
 
+        AlarmDebugLog.log("schedule.request", "id=\(config.id) isRepeating=\(isRepeating) headroom=\(Int(headroom))s intended=\(intendedFireDate) desiredPreAlert=\(Int(desiredPreAlert))s safePreAlert=\(Int(safePreAlert))s snoozesRemaining=\(snoozesRemaining) includeCountdown=\(includeCountdown) sound=\(soundName ?? "<default>")")
+
         // H6: race-safe reschedule. Any live edit during an active countdown
         // hits the UUID-release race unless we sleep 200ms between cancel
         // and schedule. Silent `Code=0` otherwise.
-        try await performSafeReschedule(id: config.id, configuration: alarmConfig)
-        print("[AlarmScheduler] scheduled successfully")
+        do {
+            try await performSafeReschedule(id: config.id, configuration: alarmConfig)
+            AlarmDebugLog.log("schedule.result", "id=\(config.id) ok")
+            print("[AlarmScheduler] scheduled successfully")
+        } catch {
+            let ns = error as NSError
+            AlarmDebugLog.log("schedule.error", "id=\(config.id) domain=\(ns.domain) code=\(ns.code) userInfo=\(ns.userInfo) description=\(ns.localizedDescription)")
+            throw error
+        }
     }
 
     /// H6: `AlarmManager.schedule(id:)` immediately after `cancel(id:)` or

@@ -20,6 +20,7 @@ struct SettingsView: View {
 
     @State private var showPaywall = false
     @State private var safariURL: IdentifiableURL?
+    @State private var shareItems: [Any]?
 
     // MARK: - Constants
 
@@ -68,6 +69,11 @@ struct SettingsView: View {
                     HapticManager.shared.softTap()
                     restorePurchases()
                 }
+
+                settingsRow(icon: "square.and.arrow.up", title: "Export Alarm Logs") {
+                    HapticManager.shared.softTap()
+                    exportAlarmLogs()
+                }
             }
 
             #if DEBUG
@@ -102,6 +108,24 @@ struct SettingsView: View {
             SafariView(url: item.url)
                 .ignoresSafeArea()
         }
+        .sheet(isPresented: Binding(
+            get: { shareItems != nil },
+            set: { if !$0 { shareItems = nil } }
+        )) {
+            if let items = shareItems {
+                ShareSheet(items: items)
+            }
+        }
+    }
+
+    // MARK: - Alarm Log Export
+
+    private func exportAlarmLogs() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("alarmio-alarm-log-\(Int(Date().timeIntervalSince1970)).txt")
+        let content = AlarmDebugLog.readAll()
+        try? content.write(to: tmp, atomically: true, encoding: .utf8)
+        shareItems = [tmp]
     }
 
     // MARK: - Subviews
@@ -324,6 +348,16 @@ struct SettingsView: View {
 private struct IdentifiableURL: Identifiable {
     let url: URL
     var id: String { url.absoluteString }
+}
+
+// MARK: - ShareSheet
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Previews
