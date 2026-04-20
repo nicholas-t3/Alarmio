@@ -129,16 +129,11 @@ struct AlarmConfiguration: Codable, Sendable, Identifiable, Equatable {
     /// Whether this is a demo alarm for UI testing purposes.
     var isDemo: Bool = false
 
-    /// When true, AlarmKit shows a native countdown Live Activity on the
-    /// lock screen and Dynamic Island up to `liveActivityLeadHours` hours
-    /// before this alarm fires. Maps to AlarmKit's `countdownDuration.preAlert`
-    /// — iOS manages the Activity lifecycle entirely, no push / server.
-    /// The scheduler clamps the countdown down if headroom is tight so the
-    /// alarm always rings at the intended time.
+    /// Dead field kept for Codable back-compat with alarms persisted by
+    /// earlier builds that shipped a Live Activity countdown option.
+    /// Not read by the scheduler in the current production shape.
     var liveActivityEnabled: Bool = true
 
-    /// Desired countdown window in hours. Clamped to 1...9 at the UI layer.
-    /// Actual window may be shorter if the first fire is less than this
-    /// many hours away — the alarm still rings at the intended time.
+    /// Dead field kept for Codable back-compat. See `liveActivityEnabled`.
     var liveActivityLeadHours: Int = 9
 }

@@ -167,27 +167,19 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
             secondaryIntent = nil
         }
 
-        // H2 + H3: schedule IS the countdown start for .fixed + preAlert.
-        // Ring time = schedule + preAlert. We want ring = now + snoozeDuration,
-        // so schedule = now + buffer, preAlert = snoozeDuration - buffer.
-        // Gives the user a countdown LA for the whole snooze window.
+        // Fire the rescheduled alarm at `now + snoozeDuration + buffer`.
+        // The buffer protects against AlarmKit dropping a date that lands
+        // at-or-before "now" after IPC latency (H3). No preAlert, no
+        // Countdown presentation — same shape as the initial schedule.
         let schedulingBuffer: TimeInterval = 3
-        let scheduleDate = Date().addingTimeInterval(schedulingBuffer)
-        let preAlert = max(1, snoozeDurationSeconds - schedulingBuffer)
-
-        // H5: Countdown presentation must match countdownDuration. Both
-        // always set here — snooze always has a countdown window.
-        let presentation = AlarmPresentation(
-            alert: alert,
-            countdown: AlarmPresentation.Countdown(title: title, pauseButton: nil)
-        )
+        let fireDate = Date().addingTimeInterval(snoozeDurationSeconds + schedulingBuffer)
 
         let sound: ActivityKit.AlertConfiguration.AlertSound = soundName.map { .named($0) } ?? .default
         let config = AlarmManager.AlarmConfiguration<AlarmioMetadata>(
-            countdownDuration: Alarm.CountdownDuration(preAlert: preAlert, postAlert: nil),
-            schedule: .fixed(scheduleDate),
+            countdownDuration: nil,
+            schedule: .fixed(fireDate),
             attributes: AlarmAttributes<AlarmioMetadata>(
-                presentation: presentation,
+                presentation: AlarmPresentation(alert: alert),
                 tintColor: .blue
             ),
             stopIntent: StopAlarmIntent(alarmID: alarmID.uuidString),
@@ -201,7 +193,7 @@ struct SnoozeAlarmIntent: LiveActivityIntent {
         try? AlarmManager.shared.cancel(id: alarmID)
         try? await Task.sleep(nanoseconds: 200_000_000)
 
-        AlarmDebugLog.log("snooze.schedule.request", "id=\(alarmID) scheduleDate=\(scheduleDate) preAlert=\(Int(preAlert))s snoozesRemaining=\(snoozesRemaining) sound=\(soundName ?? "<default>")")
+        AlarmDebugLog.log("snooze.schedule.request", "id=\(alarmID) fireDate=\(fireDate) snoozesRemaining=\(snoozesRemaining) sound=\(soundName ?? "<default>")")
         do {
             _ = try await AlarmManager.shared.schedule(id: alarmID, configuration: config)
             AlarmDebugLog.log("snooze.schedule.result", "id=\(alarmID) ok")
