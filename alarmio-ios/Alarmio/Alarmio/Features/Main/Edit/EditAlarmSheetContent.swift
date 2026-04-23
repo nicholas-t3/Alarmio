@@ -294,6 +294,21 @@ struct EditAlarmSheetContent: View {
             || editCustomPrompt != (alarm.customPrompt ?? "")
             || editCustomPromptIncludes != alarm.customPromptIncludes
             || editCreativeSnoozes != alarm.creativeSnoozes
+            || hasSnoozeCountChange
+    }
+
+    // Snooze count only affects audio when the alarm actually produces
+    // per-snooze files: Basic alarms always do; Pro alarms only when
+    // creativeSnoozes is on. snoozeInterval never affects audio.
+    private var snoozeCountAffectsAudio: Bool {
+        editAlarmType == .basic || editCreativeSnoozes
+    }
+
+    // Only an INCREASE needs regeneration (missing files to generate).
+    // A decrease just leaves orphaned files, which is fine — the scheduler
+    // only reads the indices it needs, and commitSave persists the new cap.
+    private var hasSnoozeCountChange: Bool {
+        editMaxSnoozes > alarm.maxSnoozes && snoozeCountAffectsAudio
     }
 
     private var hasAudioAffectingChanges: Bool {
@@ -391,6 +406,7 @@ struct EditAlarmSheetContent: View {
         .onChange(of: editCustomPrompt) { invalidateRegenerationFlag() }
         .onChange(of: editCustomPromptIncludes) { invalidateRegenerationFlag() }
         .onChange(of: editCreativeSnoozes) { invalidateRegenerationFlag() }
+        .onChange(of: editMaxSnoozes) { invalidateRegenerationFlag() }
         .onDisappear {
             alarmAudioPlayer.stop()
             voicePersonaPlayer.stop()

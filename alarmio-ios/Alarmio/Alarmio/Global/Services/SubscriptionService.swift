@@ -30,7 +30,7 @@ final class SubscriptionService {
 
     /// Identifier for the Pro entitlement configured in the RevenueCat
     /// dashboard. Must match exactly.
-    static let entitlementId = "pro"
+    static let entitlementId = "Alarmio Pro"
     private static let overrideKey = "alarmio.dev.subscriptionOverride"
 
     // MARK: - Types

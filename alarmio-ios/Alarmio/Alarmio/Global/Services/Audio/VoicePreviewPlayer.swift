@@ -11,7 +11,7 @@ import SwiftUI
 
 @Observable
 @MainActor
-final class VoicePreviewPlayer {
+final class VoicePreviewPlayer: NSObject {
 
     // MARK: - State
 
@@ -64,6 +64,7 @@ final class VoicePreviewPlayer {
 
             let player = try AVAudioPlayer(contentsOf: url)
             player.isMeteringEnabled = true
+            player.delegate = self
             player.prepareToPlay()
             player.play()
 
@@ -156,6 +157,17 @@ final class VoicePreviewPlayer {
         }
 
         bands = smoothedBands
+    }
+}
+
+// MARK: - AVAudioPlayerDelegate
+
+extension VoicePreviewPlayer: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.audioPlayer === player else { return }
+            self.stop()
+        }
     }
 }
 
