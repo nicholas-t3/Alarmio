@@ -32,6 +32,10 @@ struct HomeView: View {
     /// rate-limits requestReview to 3 per 365 days regardless.
     @AppStorage("hasRequestedPostOnboardingReview") private var hasRequestedPostOnboardingReview = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    // QA: forced to false each launch so the tip re-appears. Restore the
+    // line below when done QA'ing.
+    @State private var volumeTipDismissed = false
+    // @AppStorage("volumeTipDismissed") private var volumeTipDismissed = false
     @State private var showCreateAlarm = false
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?
@@ -264,6 +268,29 @@ struct HomeView: View {
                             Label("Delete", systemImage: "trash")
                         }
                     }
+                }
+
+                // Volume tip coach mark — shown below all alarms until
+                // the user dismisses the paired modal in any way.
+                if !volumeTipDismissed {
+                    VolumeTipCard(onDismiss: {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            volumeTipDismissed = true
+                        }
+                    })
+                    .premiumBlur(
+                        isVisible: alarmsVisible,
+                        delay: Double(sortedAlarms.count) * 0.08 + 0.1,
+                        duration: 0.4
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: AppSpacing.itemGap(deviceInfo.spacingScale) / 2,
+                        leading: AppSpacing.screenHorizontal,
+                        bottom: AppSpacing.itemGap(deviceInfo.spacingScale) / 2,
+                        trailing: AppSpacing.screenHorizontal
+                    ))
                 }
 
                 // Bottom spacer to clear FAB

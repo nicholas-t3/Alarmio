@@ -30,15 +30,17 @@ final class AlertManager {
         message: String,
         dismissible: Bool = true,
         primaryAction: AlertAction? = nil,
-        secondaryAction: AlertAction? = nil
+        secondaryAction: AlertAction? = nil,
+        onDismiss: (() -> Void)? = nil
     ) {
-        let alert = AlertItem(
+        var alert = AlertItem(
             title: title,
             message: message,
             dismissible: dismissible,
             primaryAction: primaryAction,
             secondaryAction: secondaryAction
         )
+        alert.onDismiss = onDismiss
         currentAlert = alert
 
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {

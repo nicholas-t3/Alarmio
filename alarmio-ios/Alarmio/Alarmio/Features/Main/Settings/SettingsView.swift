@@ -71,10 +71,10 @@ struct SettingsView: View {
                     restorePurchases()
                 }
 
-                settingsRow(icon: "square.and.arrow.up", title: "Export Alarm Logs") {
-                    HapticManager.shared.softTap()
-                    exportAlarmLogs()
-                }
+                // settingsRow(icon: "square.and.arrow.up", title: "Export Alarm Logs") {
+                //     HapticManager.shared.softTap()
+                //     exportAlarmLogs()
+                // }
             }
 
             #if DEBUG
