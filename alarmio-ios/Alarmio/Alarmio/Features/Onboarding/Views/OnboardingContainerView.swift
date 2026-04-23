@@ -39,6 +39,8 @@ struct OnboardingContainerView: View {
     @Environment(\.composerService) private var composerService
     @Environment(\.alarmStore) private var alarmStore
     @Environment(\.alertManager) private var alertManager
+    @Environment(\.subscriptionService) private var subscriptionService
+    @Environment(\.proLimitCounter) private var proLimitCounter
     @State private var manager = OnboardingManager()
     @State private var deviceInfo = DeviceInfo()
     @State private var splashVisible = true
@@ -75,6 +77,9 @@ struct OnboardingContainerView: View {
     /// the scene returns to active (handles the Settings round-trip).
     @State private var authorizationState: AlarmManager.AuthorizationState = .notDetermined
     @State private var isRequestingPermission = false
+    @State private var showPaywall = false
+    /// Action to re-fire if the user subscribes inside the paywall sheet.
+    @State private var pendingActionAfterPaywall: (() -> Void)?
 
     // MARK: - Body
 
@@ -175,6 +180,15 @@ struct OnboardingContainerView: View {
             proxy.size
         } action: { size in
             deviceInfo.updateScreenSize(width: size.width, height: size.height)
+        }
+        .sheet(isPresented: $showPaywall, onDismiss: {
+            let action = pendingActionAfterPaywall
+            pendingActionAfterPaywall = nil
+            if subscriptionService.isPro, let action {
+                action()
+            }
+        }) {
+            PaywallSheet()
         }
         // Pick up auth changes on return from Settings. If the user
         // granted permission over there, push them forward immediately.
@@ -428,6 +442,15 @@ struct OnboardingContainerView: View {
     /// alarm-preview Play button.
     private func regenerateConfirmationAlarm() {
         guard !isRegeneratingAudio else { return }
+
+        // Free users capped at 10 onboarding generations. Paywall up if
+        // exhausted; re-fire on subscribe.
+        if !proLimitCounter.canUseOnboarding(isPro: subscriptionService.isPro) {
+            pendingActionAfterPaywall = { regenerateConfirmationAlarm() }
+            showPaywall = true
+            return
+        }
+
         isRegeneratingAudio = true
         HapticManager.shared.buttonTap()
 
@@ -443,6 +466,9 @@ struct OnboardingContainerView: View {
                 let newFileName = try await composerService.generateAndDownloadAudio(
                     for: manager.configuration
                 )
+                if !subscriptionService.isPro {
+                    proLimitCounter.incrementOnboarding()
+                }
                 manager.configuration.soundFileName = newFileName
                 manager.committedConfiguration = manager.configuration
                 regenerationNonce &+= 1
@@ -653,6 +679,17 @@ struct OnboardingContainerView: View {
         starSpinTask?.cancel()
         statusCycleTask?.cancel()
 
+        // Free users capped at 10 onboarding generations. If exhausted,
+        // show the paywall and bounce the user back to the snooze step so
+        // they can resume from a safe place. If they subscribe inside the
+        // paywall, re-fire startGeneration automatically.
+        if !proLimitCounter.canUseOnboarding(isPro: subscriptionService.isPro) {
+            pendingActionAfterPaywall = { startGeneration() }
+            manager.currentStep = .snooze
+            showPaywall = true
+            return
+        }
+
         animateSunrise(duration: 8.0)
         animateStarSpin()
 
@@ -684,6 +721,9 @@ struct OnboardingContainerView: View {
                 let fileName = try await composerService.generateAndDownloadAudio(
                     for: manager.configuration
                 )
+                if !subscriptionService.isPro {
+                    proLimitCounter.incrementOnboarding()
+                }
                 manager.configuration.soundFileName = fileName
                 // Freeze the committed snapshot so the confirmation screen
                 // can compare against it to detect dirty state.

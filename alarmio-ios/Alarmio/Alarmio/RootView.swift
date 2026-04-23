@@ -22,6 +22,7 @@ struct RootView: View {
     @State private var alarmStore: AlarmStore
     @State private var composerService: ComposerService
     @State private var subscriptionService = SubscriptionService()
+    @State private var proLimitCounter = ProLimitCounter()
 
     // MARK: - Init
 
@@ -59,6 +60,7 @@ struct RootView: View {
         .environment(\.alarmStore, alarmStore)
         .environment(\.composerService, composerService)
         .environment(\.subscriptionService, subscriptionService)
+        .environment(\.proLimitCounter, proLimitCounter)
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { size in

@@ -108,6 +108,8 @@ struct EditAlarmSheetContent: View {
     @Environment(\.alarmStore) private var alarmStore
     @Environment(\.composerService) private var composerService
     @Environment(\.alertManager) private var alertManager
+    @Environment(\.subscriptionService) private var subscriptionService
+    @Environment(\.proLimitCounter) private var proLimitCounter
 
     // MARK: - State
 
@@ -155,6 +157,9 @@ struct EditAlarmSheetContent: View {
     /// scripts so the persisted config matches the audio on disk.
     @State private var reconciledApprovedScripts: [String]?
     @State private var showSaveSuccess = false
+    @State private var showPaywall = false
+    /// Action to re-fire if the user subscribes inside the paywall sheet.
+    @State private var pendingActionAfterPaywall: (() -> Void)?
     @State private var saveSuccessTask: Task<Void, Never>?
 
     // Pro fields — editable when the alarm is (or becomes) a pro alarm.
@@ -410,6 +415,28 @@ struct EditAlarmSheetContent: View {
         .onDisappear {
             alarmAudioPlayer.stop()
             voicePersonaPlayer.stop()
+        }
+        .sheet(isPresented: $showPaywall, onDismiss: {
+            let action = pendingActionAfterPaywall
+            pendingActionAfterPaywall = nil
+            if subscriptionService.isPro, let action {
+                action()
+            }
+        }) {
+            PaywallSheet()
+        }
+    }
+
+    /// Runs `action` if the user is Pro or still has free generations left.
+    /// Otherwise stashes the action, shows the paywall, and re-fires on
+    /// successful subscribe. Used by both `saveTapped` (when regen is
+    /// pending) and `regenerateAlarm`.
+    private func gateMainGeneration(action: @escaping () -> Void) {
+        if proLimitCounter.canUseMain(isPro: subscriptionService.isPro) {
+            action()
+        } else {
+            pendingActionAfterPaywall = action
+            showPaywall = true
         }
     }
 
@@ -1252,7 +1279,7 @@ struct EditAlarmSheetContent: View {
                 label: "Please try again",
                 enabled: basicReady && proReady,
                 showSpinner: false,
-                action: { regenerateAlarm() }
+                action: { gateMainGeneration { regenerateAlarm() } }
             )
         }
 
@@ -1260,7 +1287,7 @@ struct EditAlarmSheetContent: View {
             label: "Regenerate",
             enabled: audioDirty && basicReady && proReady,
             showSpinner: false,
-            action: { regenerateAlarm() }
+            action: { gateMainGeneration { regenerateAlarm() } }
         )
     }
 
@@ -1494,7 +1521,7 @@ struct EditAlarmSheetContent: View {
 
     private func saveTapped() {
         if needsRegeneration {
-            regenerateThenSave()
+            gateMainGeneration { regenerateThenSave() }
         } else {
             HapticManager.shared.success()
             commitSave(soundFileName: editSoundFileName)
@@ -1610,7 +1637,14 @@ struct EditAlarmSheetContent: View {
         }
 
         print("[EditAlarm] Calling composer — voice=\(editVoicePersona?.rawValue ?? "nil"), tone=\(editTone?.rawValue ?? "nil"), intensity=\(editIntensity?.rawValue ?? "nil"), why=\(editWhyContext?.rawValue ?? "nil"), time=\(config.wakeTime?.description ?? "nil"), alarmType=\(config.alarmType.rawValue), approvedCount=\(config.approvedScripts?.count ?? 0)")
-        return try await composerService.generateAndDownloadAudio(for: config)
+        let fileName = try await composerService.generateAndDownloadAudio(for: config)
+        // Free users spend one generation on successful audio production.
+        // Pro subscribers never count. Single chokepoint shared by both
+        // `regenerateAlarm()` and `regenerateThenSave()`.
+        if !subscriptionService.isPro {
+            proLimitCounter.incrementMain()
+        }
+        return fileName
     }
 
     private func logFileState(for fileName: String) {

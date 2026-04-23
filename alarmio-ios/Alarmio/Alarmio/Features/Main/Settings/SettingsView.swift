@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Environment(\.deviceInfo) private var deviceInfo
     @Environment(\.subscriptionService) private var subscription
     @Environment(\.alertManager) private var alertManager
+    @Environment(\.proLimitCounter) private var proLimitCounter
 
     // MARK: - State
 
@@ -266,12 +267,61 @@ struct SettingsView: View {
                     subscription.setSimulatorOverride(nil)
                 }
             }
+
+            Text("DEBUG — PRO LIMIT")
+                .font(AppTypography.caption)
+                .tracking(AppTypography.captionTracking)
+                .foregroundStyle(.orange.opacity(0.6))
+                .padding(.horizontal, AppSpacing.rowHorizontal)
+                .padding(.top, 8)
+
+            VStack(spacing: 2) {
+                debugReadoutRow(
+                    title: "Main",
+                    value: "\(proLimitCounter.mainCount) / \(ProLimitCounter.mainCap)"
+                )
+
+                debugReadoutRow(
+                    title: "Onboarding",
+                    value: "\(proLimitCounter.onboardingCount) / \(ProLimitCounter.onboardingCap)"
+                )
+
+                debugRow(title: "Reset Main Counter", isActive: false) {
+                    proLimitCounter.resetMain()
+                }
+
+                debugRow(title: "Reset All Counters", isActive: false) {
+                    proLimitCounter.resetAll()
+                }
+            }
         }
         .padding(.vertical, 8)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(.orange.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    private func debugReadoutRow(title: String, value: String) -> some View {
+        HStack {
+            Image(systemName: "number")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.3))
+                .frame(width: AppSpacing.rowIconWidth)
+
+            Text(title)
+                .font(AppTypography.labelMedium)
+                .foregroundStyle(.white.opacity(0.85))
+
+            Spacer()
+
+            Text(value)
+                .font(AppTypography.labelMedium)
+                .foregroundStyle(.orange.opacity(0.85))
+                .contentTransition(.numericText())
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, AppSpacing.rowHorizontal)
     }
 
     private func debugRow(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {

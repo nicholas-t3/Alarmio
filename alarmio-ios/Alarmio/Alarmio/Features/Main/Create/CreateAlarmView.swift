@@ -18,6 +18,7 @@ struct CreateAlarmView: View {
     @Environment(\.alertManager) private var alertManager
     @Environment(\.alarmStore) private var alarmStore
     @Environment(\.subscriptionService) private var subscriptionService
+    @Environment(\.proLimitCounter) private var proLimitCounter
 
     // MARK: - State
 
@@ -36,6 +37,10 @@ struct CreateAlarmView: View {
     )
     @State private var step: Step
     @State private var showPaywall: Bool = false
+    /// Action to re-fire if the user subscribes inside the paywall sheet.
+    /// Cleared on sheet dismiss regardless of outcome. Consumed when
+    /// `subscriptionService.isPro` flips to true while the paywall is up.
+    @State private var pendingActionAfterPaywall: (() -> Void)?
     /// All scripts returned from the last preview call — `[0]` is the main
     /// wake-up message shown to the user; `[1...]` are snoozes (if creative
     /// snoozes are on and snoozes are configured). Saved to
@@ -185,8 +190,29 @@ struct CreateAlarmView: View {
         //     print("[draft] ────────────────────────────────────────────")
         //     dump(newValue)
         // }
-        .sheet(isPresented: $showPaywall) {
+        .sheet(isPresented: $showPaywall, onDismiss: {
+            // If the user subscribed, fire the pending action. Otherwise
+            // drop it — they chose not to proceed.
+            let action = pendingActionAfterPaywall
+            pendingActionAfterPaywall = nil
+            if subscriptionService.isPro, let action {
+                action()
+            }
+        }) {
             PaywallSheet()
+        }
+    }
+
+    /// Runs `action` if the user is Pro or still has free generations left.
+    /// Otherwise stashes the action, shows the paywall, and re-fires on
+    /// successful subscribe. Used by both the basic "Create Alarm" and Pro
+    /// "Generate Now" paths.
+    private func gateMainGeneration(action: @escaping () -> Void) {
+        if proLimitCounter.canUseMain(isPro: subscriptionService.isPro) {
+            action()
+        } else {
+            pendingActionAfterPaywall = action
+            showPaywall = true
         }
     }
 
@@ -621,6 +647,7 @@ struct CreateAlarmView: View {
                 .shadow(color: .black.opacity(0.6), radius: 8, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.3), radius: 16, x: 0, y: 0)
                 .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.bottom, 44)
                 .premiumBlur(isVisible: statusTextVisible, duration: 0.4, disableScale: true, disableOffset: true)
 
             Spacer()
@@ -941,6 +968,11 @@ struct CreateAlarmView: View {
                 }
 
                 let initialFileName = try await composerService.generateAndDownloadAudio(for: draft)
+                // Free users spend one generation on successful audio
+                // production. Pro subscribers never count.
+                if !subscriptionService.isPro {
+                    proLimitCounter.incrementMain()
+                }
                 statusTask.cancel()
                 statusTextVisible = false
                 promoteDraftToCommitted(soundFileName: initialFileName)
@@ -1200,7 +1232,7 @@ struct CreateAlarmView: View {
                 label: "Create Alarm",
                 enabled: basicReady,
                 showSpinner: false,
-                action: { startGeneration() }
+                action: { gateMainGeneration { startGeneration() } }
             )
         }
 
@@ -1236,11 +1268,13 @@ struct CreateAlarmView: View {
             enabled: basicReady,
             showSpinner: false,
             action: {
-                draft.approvedScripts = proPreviewScripts
-                draft.alarmType = .pro
-                proSavedThisVisit = true
-                lastProSnapshot = draft
-                startGeneration()
+                gateMainGeneration {
+                    draft.approvedScripts = proPreviewScripts
+                    draft.alarmType = .pro
+                    proSavedThisVisit = true
+                    lastProSnapshot = draft
+                    startGeneration()
+                }
             }
         )
     }
