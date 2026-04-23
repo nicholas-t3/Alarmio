@@ -32,10 +32,7 @@ struct HomeView: View {
     /// rate-limits requestReview to 3 per 365 days regardless.
     @AppStorage("hasRequestedPostOnboardingReview") private var hasRequestedPostOnboardingReview = false
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    // QA: forced to false each launch so the tip re-appears. Restore the
-    // line below when done QA'ing.
-    @State private var volumeTipDismissed = false
-    // @AppStorage("volumeTipDismissed") private var volumeTipDismissed = false
+    @AppStorage("volumeTipDismissed") private var volumeTipDismissed = false
     @State private var showCreateAlarm = false
     @State private var showSettings = false
     @State private var editingAlarmId: UUID?

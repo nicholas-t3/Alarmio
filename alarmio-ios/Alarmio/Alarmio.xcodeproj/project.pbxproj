@@ -17,6 +17,7 @@
 		E18A8BFF2F8FFD3B00F62B7C /* AlarmioWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E18A8BF02F8FFD3900F62B7C /* AlarmioWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E18F86782F8D513600D8EF4A /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = E18F86772F8D513600D8EF4A /* RevenueCat */; };
 		E18F867A2F8D513600D8EF4A /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = E18F86792F8D513600D8EF4A /* RevenueCatUI */; };
+		E1C8BAB92F9A74A700D918E2 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1C8BAB82F9A74A700D918E2 /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 		E1B4885F2F87B7960038F812 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		E1B488612F87B7960038F812 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		E1B488752F87B7E00038F812 /* AlarmioWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AlarmioWidgetExtension.entitlements; sourceTree = "<group>"; };
+		E1C8BAB82F9A74A700D918E2 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -138,6 +140,7 @@
 				E1898E992F8811C800CEEB21 /* Supabase in Frameworks */,
 				E1898E972F880F5400CEEB21 /* Storage in Frameworks */,
 				E18F867A2F8D513600D8EF4A /* RevenueCatUI in Frameworks */,
+				E1C8BAB92F9A74A700D918E2 /* StoreKit.framework in Frameworks */,
 				E18F86782F8D513600D8EF4A /* RevenueCat in Frameworks */,
 				E1898E952F880F5400CEEB21 /* PostgREST in Frameworks */,
 				E1898E932F880F5400CEEB21 /* Functions in Frameworks */,
@@ -173,6 +176,7 @@
 		E1B4885E2F87B7960038F812 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E1C8BAB82F9A74A700D918E2 /* StoreKit.framework */,
 				E1B4885F2F87B7960038F812 /* WidgetKit.framework */,
 				E1B488612F87B7960038F812 /* SwiftUI.framework */,
 			);

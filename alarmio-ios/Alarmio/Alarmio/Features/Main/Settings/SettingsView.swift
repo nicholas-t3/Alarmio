@@ -12,6 +12,7 @@ struct SettingsView: View {
 
     // MARK: - Environment
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.deviceInfo) private var deviceInfo
     @Environment(\.subscriptionService) private var subscription
     @Environment(\.alertManager) private var alertManager
@@ -47,10 +48,16 @@ struct SettingsView: View {
 
             // Subscription badge
             subscriptionBadge
+                .padding(.top, 12)
                 .padding(.bottom, 28)
 
             // Menu rows
             VStack(spacing: 2) {
+                settingsRow(icon: "speaker.wave.3.fill", title: "Alarm Volume") {
+                    HapticManager.shared.softTap()
+                    showVolumeGuide()
+                }
+
                 settingsRow(icon: "doc.text", title: "Terms of Service") {
                     HapticManager.shared.softTap()
                     safariURL = IdentifiableURL(url: termsURL)
@@ -77,13 +84,12 @@ struct SettingsView: View {
                 // }
             }
 
-            #if DEBUG
-            debugSubscriptionMenu
-                .padding(.top, 24)
-            #endif
+            // #if DEBUG
+            // debugSubscriptionMenu
+            //     .padding(.top, 24)
+            // #endif
 
             Spacer()
-                .frame(height: 24)
 
             // App info footer
             VStack(spacing: 6) {
@@ -101,7 +107,8 @@ struct SettingsView: View {
                 .frame(height: 12)
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
-        .padding(.vertical, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
         .sheet(isPresented: $showPaywall) {
             PaywallSheet()
         }
@@ -117,6 +124,37 @@ struct SettingsView: View {
                 ShareSheet(items: items)
             }
         }
+    }
+
+    // MARK: - Volume Guide
+
+    private func showVolumeGuide() {
+        // Dismiss the settings sheet first, then present the modal on the
+        // next runloop so it lands on the home presentation context.
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            presentVolumeModal()
+        }
+    }
+
+    private func presentVolumeModal() {
+        alertManager.showModal(
+            title: "Alarm Volume",
+            message: """
+                1. Open Settings, then tap Sounds & Haptics.
+                2. Drag the "Ringtone and Alert Volume" slider to your desired volume.
+
+                Silent mode and Focus modes don't silence Alarmio — it will always ring.
+                """,
+            dismissible: true,
+            primaryAction: AlertAction(label: "Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            secondaryAction: AlertAction(label: "Got It") {}
+        )
     }
 
     // MARK: - Alarm Log Export
