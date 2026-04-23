@@ -25,7 +25,7 @@ enum DevFlags {
     /// **Scope:** audio only. Text generation (`generateCustomAlarmText`,
     /// `rewriteAlarmTimes`) ignores this flag and always hits OpenAI —
     /// text is cheap, and the preview the user approves has to be real.
-    static let skipGeneration: Bool = true
+    static let skipGeneration: Bool = false
 
     /// When true, `performRegeneration()` on the edit sheet throws
     /// immediately with a fake error so the regen failure UI
