@@ -80,6 +80,10 @@ struct OnboardingContainerView: View {
     @State private var showPaywall = false
     /// Action to re-fire if the user subscribes inside the paywall sheet.
     @State private var pendingActionAfterPaywall: (() -> Void)?
+    /// Action to fire when the paywall dismisses for ANY reason (subscribe
+    /// OR close). Used by the final Schedule Alarm step — we show the
+    /// paywall as a last conversion nudge but never block scheduling.
+    @State private var pendingUnconditionalAfterPaywall: (() -> Void)?
 
     // MARK: - Body
 
@@ -177,11 +181,14 @@ struct OnboardingContainerView: View {
         .environment(manager)
         .environment(\.deviceInfo, deviceInfo)
         .sheet(isPresented: $showPaywall, onDismiss: {
-            let action = pendingActionAfterPaywall
+            let gatedAction = pendingActionAfterPaywall
+            let unconditional = pendingUnconditionalAfterPaywall
             pendingActionAfterPaywall = nil
-            if subscriptionService.isPro, let action {
-                action()
+            pendingUnconditionalAfterPaywall = nil
+            if subscriptionService.isPro, let gatedAction {
+                gatedAction()
             }
+            unconditional?()
         }) {
             PaywallSheet()
         }
@@ -681,6 +688,14 @@ struct OnboardingContainerView: View {
         if !proLimitCounter.canUseOnboarding(isPro: subscriptionService.isPro) {
             pendingActionAfterPaywall = { startGeneration() }
             manager.currentStep = .snooze
+            // Restore the snooze step chrome — navigateForward hid the
+            // Continue button before we routed here, and nothing else will
+            // bring it back if the user dismisses the paywall without
+            // subscribing.
+            contentVisible = true
+            backVisible = manager.canGoBack
+            buttonVisible = true
+            buttonLabel = "Continue"
             showPaywall = true
             return
         }
@@ -867,6 +882,21 @@ struct OnboardingContainerView: View {
     /// completion flag (RootView reacts with a .premiumBlur transition
     /// into HomeView, which blurs in). Never snap.
     private func scheduleAlarm() {
+        guard !isScheduling else { return }
+
+        // Last-chance paywall nudge. If the user is already Pro we skip it;
+        // otherwise we show the paywall and continue scheduling when it
+        // dismisses — whether they subscribed or closed it.
+        if !subscriptionService.isPro {
+            pendingUnconditionalAfterPaywall = { performScheduleAlarm() }
+            showPaywall = true
+            return
+        }
+
+        performScheduleAlarm()
+    }
+
+    private func performScheduleAlarm() {
         guard !isScheduling else { return }
         isScheduling = true
         HapticManager.shared.success()

@@ -42,7 +42,9 @@ struct RootView: View {
 
             // Root branch — @AppStorage reads synchronously so the correct
             // view mounts on first frame, no black-screen flicker.
-            if hasCompletedOnboarding {
+            // DevFlags.forceOnboarding overrides the stored flag so we can
+            // retest onboarding without reinstalling.
+            if hasCompletedOnboarding, !DevFlags.forceOnboarding {
                 HomeView()
                     .transition(.premiumBlur)
             } else {

@@ -35,4 +35,10 @@ enum DevFlags {
     /// Scoped to the edit sheet — leaves audio/text generation paths
     /// in other flows alone.
     static let forceEditRegenerationError: Bool = false
+
+    /// When true, `RootView` always mounts `OnboardingContainerView` on
+    /// launch regardless of the `hasCompletedOnboarding` flag in
+    /// `UserDefaults`. Useful for testing the onboarding flow repeatedly
+    /// without needing to delete the app. Leave false for shipping.
+    static let forceOnboarding: Bool = false
 }
