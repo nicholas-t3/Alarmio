@@ -19,6 +19,7 @@ struct OnboardingSnoozeView: View {
 
     @State private var contentVisible = false
     @State private var snoozeCount: Int = 2
+    @State private var isUnlimited: Bool = false
     @State private var snoozeInterval: Int = 5
 
     // MARK: - Constants
@@ -26,11 +27,11 @@ struct OnboardingSnoozeView: View {
     let onReadyForButton: () -> Void
 
     private let minCount: Int = 0
-    private let maxCount: Int = 5
+    private let maxCount: Int = 3
     private let minInterval: Int = 1
     private let maxInterval: Int = 15
 
-    private var showsInterval: Bool { snoozeCount > 0 }
+    private var showsInterval: Bool { snoozeCount > 0 || isUnlimited }
 
     // MARK: - Body
 
@@ -68,6 +69,7 @@ struct OnboardingSnoozeView: View {
             // Seed the manager so .canContinue is satisfied and the user
             // sees a real default if they tap Continue immediately.
             manager.configuration.maxSnoozes = snoozeCount
+            manager.configuration.unlimitedSnooze = isUnlimited
             manager.setSnoozeInterval(snoozeInterval)
 
             try? await Task.sleep(for: .milliseconds(100))
@@ -116,7 +118,12 @@ struct OnboardingSnoozeView: View {
 
             // Big value
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                if snoozeCount == 0 {
+                if isUnlimited {
+                    Text("Unlimited")
+                        .font(.system(size: 42, weight: .light, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                } else if snoozeCount == 0 {
                     Text("Off")
                         .font(.system(size: 50, weight: .light, design: .rounded))
                         .foregroundStyle(.white)
@@ -135,22 +142,38 @@ struct OnboardingSnoozeView: View {
             }
             .frame(minHeight: 54)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: snoozeCount)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isUnlimited)
 
-            // Stepper
+            // Stepper — ladder is 0 → 1 → 2 → 3 → Unlimited, matching SnoozeCard.
             stepper(
                 value: snoozeCount,
                 decrement: {
-                    let next = max(minCount, snoozeCount - 1)
-                    snoozeCount = next
-                    manager.configuration.maxSnoozes = next
+                    if isUnlimited {
+                        isUnlimited = false
+                        snoozeCount = maxCount
+                        manager.configuration.unlimitedSnooze = false
+                        manager.configuration.maxSnoozes = maxCount
+                    } else {
+                        let next = max(minCount, snoozeCount - 1)
+                        snoozeCount = next
+                        manager.configuration.maxSnoozes = next
+                    }
                 },
                 increment: {
-                    let next = min(maxCount, snoozeCount + 1)
-                    snoozeCount = next
-                    manager.configuration.maxSnoozes = next
+                    if isUnlimited {
+                        return
+                    }
+                    if snoozeCount >= maxCount {
+                        isUnlimited = true
+                        manager.configuration.unlimitedSnooze = true
+                    } else {
+                        let next = snoozeCount + 1
+                        snoozeCount = next
+                        manager.configuration.maxSnoozes = next
+                    }
                 },
-                canDecrement: snoozeCount > minCount,
-                canIncrement: snoozeCount < maxCount
+                canDecrement: isUnlimited || snoozeCount > minCount,
+                canIncrement: !isUnlimited
             )
         }
     }

@@ -31,7 +31,6 @@ struct OnboardingConfirmationView: View {
     @State private var cardsVisible = false
     @State private var voicePlayer = VoicePreviewPlayer()
     @State private var voiceIndex: Int = 0
-    @State private var showNameSheet: Bool = false
     @State private var proToggle: Bool = false
     /// Flips true after a regeneration completes; drives a pulsing opacity
     /// on the alarm-preview Play button to nudge the user to preview the
@@ -101,14 +100,6 @@ struct OnboardingConfirmationView: View {
                 }
             }
         }
-        .sheet(isPresented: $showNameSheet) {
-            NameAlarmSheet(initialName: manager.configuration.name ?? "") { newName in
-                manager.configuration.name = newName.isEmpty ? nil : newName
-            }
-            .presentationDetents([.height(240)])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(Color(hex: "0f1a2e"))
-        }
     }
 
     /// The snapshot of the most recently-generated audio. Used for the
@@ -170,14 +161,6 @@ struct OnboardingConfirmationView: View {
                 compactPlayableVoiceSection
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .premiumBlur(isVisible: cardsVisible, delay: 0.1, duration: 0.5)
-
-                // Name row
-                NameRowCard(name: manager.configuration.name, style: .clear) {
-                    HapticManager.shared.softTap()
-                    showNameSheet = true
-                }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
-                .premiumBlur(isVisible: cardsVisible, delay: 0.15, duration: 0.5)
 
                 // Customize (no Pro row in onboarding)
                 CustomizeCard(
