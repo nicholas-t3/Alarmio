@@ -1476,6 +1476,10 @@ struct CreateAlarmView: View {
             // Keep the Pro screen's scratchpad in sync so if the user re-enters
             // the Pro screen via the row, they see the updated text.
             proPreviewScripts = reconciled.approvedScripts
+            // The reconciler already produced fresh scripts for the current
+            // draft — mark step 2's dirtiness snapshot as clean so the CTA
+            // reads "Create Alarm", not "Regenerate Text".
+            proPreviewSnapshot = ProPreviewInputs.from(reconciled)
 
             let afterScripts = reconciled.approvedScripts ?? []
             print("[reconcile] AFTER scripts (count=\(afterScripts.count)):")
