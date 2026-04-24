@@ -52,8 +52,7 @@ final class ComposerService {
 
         print("[Composer] <<< composition_id=\(response.composition_id), files=\(response.files.count)")
         for file in response.files {
-            let scriptPreview = String(file.script_text.prefix(60))
-            print("[Composer]     file[\(file.index)] path=\(file.storage_path) script=\"\(scriptPreview)...\"")
+            print("[Composer]     file[\(file.index)] path=\(file.storage_path) script=\"\(file.script_text)\"")
         }
 
         // Don't purge old files — caller may abandon the regeneration without
@@ -118,6 +117,9 @@ final class ComposerService {
         )
 
         print("[Composer] <<< generated \(response.scripts.count) scripts")
+        for (index, script) in response.scripts.enumerated() {
+            print("[Composer]     script[\(index)]=\"\(script)\"")
+        }
         return response.scripts
     }
 

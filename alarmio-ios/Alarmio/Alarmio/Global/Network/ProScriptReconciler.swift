@@ -18,6 +18,7 @@ struct ProPreviewInputs: Equatable {
     let creativeSnoozes: Bool
     let leaveTime: Date?
     let maxSnoozes: Int
+    let snoozeInterval: Int
     let unlimitedSnooze: Bool
     let tone: AlarmTone?
     let whyContext: WhyContext?
@@ -30,6 +31,7 @@ struct ProPreviewInputs: Equatable {
             creativeSnoozes: draft.creativeSnoozes,
             leaveTime: draft.leaveTime,
             maxSnoozes: draft.maxSnoozes,
+            snoozeInterval: draft.snoozeInterval,
             unlimitedSnooze: draft.unlimitedSnooze,
             tone: draft.tone,
             whyContext: draft.whyContext,

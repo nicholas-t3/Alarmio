@@ -107,6 +107,7 @@ struct EditAlarmSheetContent: View {
             creativeSnoozes: alarm.creativeSnoozes,
             leaveTime: alarm.leaveTime,
             maxSnoozes: alarm.maxSnoozes,
+            snoozeInterval: alarm.snoozeInterval,
             unlimitedSnooze: false,
             tone: alarm.tone,
             whyContext: alarm.whyContext,
@@ -320,11 +321,13 @@ struct EditAlarmSheetContent: View {
             || editCustomPromptIncludes != alarm.customPromptIncludes
             || editCreativeSnoozes != alarm.creativeSnoozes
             || hasSnoozeCountChange
+            || hasSnoozeIntervalChange
     }
 
-    // Snooze count only affects audio when the alarm actually produces
-    // per-snooze files: Basic alarms always do; Pro alarms only when
-    // creativeSnoozes is on. snoozeInterval never affects audio.
+    // Snooze count or interval only affects audio when the alarm actually
+    // produces per-snooze files: Basic alarms always do; Pro alarms only
+    // when creativeSnoozes is on. In Pro-without-creative, snoozes reuse
+    // the main audio file and the interval is never voiced.
     private var snoozeCountAffectsAudio: Bool {
         editAlarmType == .basic || editCreativeSnoozes
     }
@@ -334,6 +337,12 @@ struct EditAlarmSheetContent: View {
     // only reads the indices it needs, and commitSave persists the new cap.
     private var hasSnoozeCountChange: Bool {
         editMaxSnoozes > alarm.maxSnoozes && snoozeCountAffectsAudio
+    }
+
+    // Interval drift shifts every snooze fire time, which is referenced
+    // verbatim in the generated scripts — must regenerate.
+    private var hasSnoozeIntervalChange: Bool {
+        editSnoozeInterval != alarm.snoozeInterval && snoozeCountAffectsAudio
     }
 
     private var hasAudioAffectingChanges: Bool {
@@ -432,6 +441,7 @@ struct EditAlarmSheetContent: View {
         .onChange(of: editCustomPromptIncludes) { invalidateRegenerationFlag() }
         .onChange(of: editCreativeSnoozes) { invalidateRegenerationFlag() }
         .onChange(of: editMaxSnoozes) { invalidateRegenerationFlag() }
+        .onChange(of: editSnoozeInterval) { invalidateRegenerationFlag() }
         .onDisappear {
             alarmAudioPlayer.stop()
             voicePersonaPlayer.stop()
@@ -1118,6 +1128,7 @@ struct EditAlarmSheetContent: View {
             creativeSnoozes: editCreativeSnoozes,
             leaveTime: editLeaveTime,
             maxSnoozes: editMaxSnoozes,
+            snoozeInterval: editSnoozeInterval,
             unlimitedSnooze: false,
             tone: editTone,
             whyContext: editWhyContext,
@@ -1145,6 +1156,7 @@ struct EditAlarmSheetContent: View {
         draft.whyContext = editWhyContext
         draft.leaveTime = editLeaveTime
         draft.maxSnoozes = editMaxSnoozes
+        draft.snoozeInterval = editSnoozeInterval
         draft.customPrompt = promptText
         draft.customPromptIncludes = editCustomPromptIncludes
         draft.creativeSnoozes = editCreativeSnoozes
@@ -1622,6 +1634,10 @@ struct EditAlarmSheetContent: View {
         // committed alarm, we need a full text regenerate first.
         // Otherwise the audio would be generated using the old scripts.
         if config.alarmType == .pro {
+            // The reconciler has no snooze-interval rewrite path, so an
+            // interval change would silently leave the old scripts (voicing
+            // the old times) unless we force a full regenerate here.
+            let intervalAffectsAudio = config.creativeSnoozes
             let proTextDrifted =
                 (alarm.customPrompt ?? "") != (config.customPrompt ?? "")
                 || alarm.customPromptIncludes != config.customPromptIncludes
@@ -1631,6 +1647,7 @@ struct EditAlarmSheetContent: View {
                 || alarm.whyContext != config.whyContext
                 || alarm.alarmType != config.alarmType   // flipped basic→pro mid-edit
                 || (config.approvedScripts ?? []).isEmpty
+                || (alarm.snoozeInterval != config.snoozeInterval && intervalAffectsAudio)
 
             if proTextDrifted {
                 let snoozeCount: Int = {
