@@ -7,7 +7,6 @@
 //
 
 import SwiftUI
-import UIKit
 
 struct VolumeTipCard: View {
 
@@ -84,12 +83,7 @@ struct VolumeTipCard: View {
                 Silent mode and Focus modes don't silence Alarmio — it will always ring.
                 """,
             dismissible: true,
-            primaryAction: AlertAction(label: "Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            },
-            secondaryAction: AlertAction(label: "Got It") {},
+            primaryAction: AlertAction(label: "Got It") {},
             onDismiss: onDismiss
         )
     }
