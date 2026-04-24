@@ -221,13 +221,20 @@ struct CreateAlarmView: View {
     private var header: some View {
         HStack {
 
-            // Back / Close — hidden during generating + confirming.
-            // On confirming, AlarmReadyView owns its own Edit button.
-            let hideBack = (phase == .generating) || (phase == .confirming)
+            // Back / Close — hidden during generating.
+            // On confirming, the back button routes through the same
+            // skip-the-loading-screen path as AlarmReadyView's Edit button
+            // so the user lands back on step 2 (customize) without re-
+            // running the generating phase.
+            let hideBack = (phase == .generating)
 
             if !hideBack {
                 Button {
                     HapticManager.shared.buttonTap()
+                    if phase == .confirming {
+                        handleReadyEditTap()
+                        return
+                    }
                     switch step {
                     case .configure:
                         dismiss()
@@ -235,7 +242,7 @@ struct CreateAlarmView: View {
                         transitionToStep(.configure)
                     }
                 } label: {
-                    Image(systemName: step == .configure ? "xmark" : "chevron.left")
+                    Image(systemName: step == .configure && phase != .confirming ? "xmark" : "chevron.left")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
@@ -766,6 +773,7 @@ struct CreateAlarmView: View {
                     .tracking(AppTypography.headlineLargeTracking)
                     .foregroundStyle(.white)
             }
+            .padding(.bottom, 44)
             .premiumBlur(isVisible: confirmationHeroVisible, duration: 0.5)
 
             Spacer()
@@ -1280,6 +1288,17 @@ struct CreateAlarmView: View {
     }
 
     private func commitAndSchedule() {
+        // Free tier = 1 alarm max. If the user already has a real alarm
+        // and isn't Pro, block Schedule with the paywall. Demo alarms
+        // don't count. Pro users schedule freely. Re-fires on subscribe.
+        let realAlarmCount = alarmStore.alarms.filter { !$0.isDemo }.count
+        if !subscriptionService.isPro && realAlarmCount >= 1 {
+            print("[ProLimit] schedule gate: alarmCount=\(realAlarmCount) isPro=false → paywall")
+            pendingActionAfterPaywall = { commitAndSchedule() }
+            showPaywall = true
+            return
+        }
+
         var configured = committed
         configured.isEnabled = true
         // Basic alarms drop any Pro-only fields left over from an

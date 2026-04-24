@@ -176,11 +176,6 @@ struct OnboardingContainerView: View {
         }
         .environment(manager)
         .environment(\.deviceInfo, deviceInfo)
-        .onGeometryChange(for: CGSize.self) { proxy in
-            proxy.size
-        } action: { size in
-            deviceInfo.updateScreenSize(width: size.width, height: size.height)
-        }
         .sheet(isPresented: $showPaywall, onDismiss: {
             let action = pendingActionAfterPaywall
             pendingActionAfterPaywall = nil

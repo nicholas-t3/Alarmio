@@ -61,11 +61,6 @@ struct RootView: View {
         .environment(\.composerService, composerService)
         .environment(\.subscriptionService, subscriptionService)
         .environment(\.proLimitCounter, proLimitCounter)
-        .onGeometryChange(for: CGSize.self) { proxy in
-            proxy.size
-        } action: { size in
-            deviceInfo.updateScreenSize(width: size.width, height: size.height)
-        }
         .task {
             // Local-first boot: alarms live in the App Group defaults and
             // must render even with no network. Auth and reschedule run in

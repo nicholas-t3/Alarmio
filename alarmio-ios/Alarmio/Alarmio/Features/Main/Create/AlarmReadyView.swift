@@ -55,17 +55,17 @@ struct AlarmReadyView: View {
 
             VStack(spacing: 0) {
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 24 * deviceInfo.spacingScale)
 
                 // Hero: wake time
                 heroBlock
-                    .padding(.top, 64)
+                    .padding(.top, 64 * deviceInfo.spacingScale)
                     .premiumBlur(isVisible: heroVisible, delay: 0, duration: 0.55)
 
-                Spacer().frame(height: 28)
+                Spacer().frame(height: 28 * deviceInfo.spacingScale)
 
                 // Details + name + edit, staggered in together.
-                VStack(spacing: 12) {
+                VStack(spacing: 12 * deviceInfo.spacingScale) {
                     detailsCard
                     nameRow
                     editButton
@@ -155,7 +155,7 @@ struct AlarmReadyView: View {
     // MARK: - Details Card
 
     private var detailsCard: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 16 * deviceInfo.spacingScale) {
 
             // Voice row
             HStack(spacing: 12) {
@@ -187,7 +187,7 @@ struct AlarmReadyView: View {
             // Play
             playButton
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 16 * deviceInfo.spacingScale)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20))

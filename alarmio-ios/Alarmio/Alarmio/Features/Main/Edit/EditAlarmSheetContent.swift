@@ -11,8 +11,28 @@ import SwiftUI
 // MARK: - Custom Detents
 
 struct EditSummaryDetent: CustomPresentationDetent {
+    /// Set once at app launch from `DeviceInfo.screenHeight`. The detent
+    /// API is static and has no access to environment, so we inject the
+    /// real hardware height here.
+    static var hardwareScreenHeight: CGFloat = 852
+
     static func height(in context: Context) -> CGFloat? {
-        context.maxDetentValue * 0.85
+        let screen = hardwareScreenHeight
+        let max = context.maxDetentValue
+        let result: CGFloat
+        let bucket: String
+        if screen < 750 {
+            result = max
+            bucket = "COMPACT (full screen)"
+        } else if screen > 900 {
+            result = max * 0.75
+            bucket = "LARGE (0.75)"
+        } else {
+            result = max * 0.85
+            bucket = "STANDARD (0.85)"
+        }
+        print("[EditSummaryDetent] screen=\(Int(screen))pt maxDetentValue=\(Int(max)) → \(bucket) → height=\(Int(result))")
+        return result
     }
 }
 
