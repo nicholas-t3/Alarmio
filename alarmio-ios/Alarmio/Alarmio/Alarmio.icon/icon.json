@@ -6,11 +6,36 @@
     {
       "layers" : [
         {
+          "glass" : false,
+          "image-name" : "Alarmio logo_Alarmio Logo - solid.png",
+          "name" : "Alarmio logo_Alarmio Logo - solid",
+          "position" : {
+            "scale" : 0.3,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
           "blend-mode" : "normal",
           "glass" : false,
           "image-name" : "nicholas_2d_minimalist_analog_clock_on_a_moonlight_sky_--v_7_58440bb9-142b-43b2-904a-9c5367af029a_2.png",
           "name" : "nicholas_2d_minimalist_analog_clock_on_a_moonlight_sky_--v_7_58440bb9-142b-43b2-904a-9c5367af029a_2"
         }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+
       ],
       "shadow" : {
         "kind" : "neutral",
