@@ -30,33 +30,60 @@ struct SplashContentView: View {
             // Logo
             VStack(spacing: 12) {
 
-                // Logo text — hidden dot seeds numericText, blur-in synced with morph
-                ZStack {
-                    // Navy glow behind — visible on dark backgrounds
-                    Text(logoText)
-                        .font(AppTypography.logo)
-                        .foregroundStyle(Color(hex: "3A6EAA").opacity(0.7))
-                        .blur(radius: 12)
+                // Logo mark + wordmark. Image fades in with the wordmark
+                // via the shared `logoVisible` blur so the dot→alarmio
+                // morph stays uncluttered.
+                VStack(spacing: -8) {
 
-                    // Navy left/right edges
-                    Text(logoText)
-                        .font(AppTypography.logo)
-                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
-                        .offset(x: -1.2)
+                    ZStack {
+                        // Navy glow behind — matches the wordmark glow stack
+                        Image("AlarmioLogo")
+                            .resizable()
+                            .renderingMode(.template)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 96, height: 96)
+                            .foregroundStyle(Color(hex: "3A6EAA").opacity(0.7))
+                            .blur(radius: 12)
 
-                    Text(logoText)
-                        .font(AppTypography.logo)
-                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
-                        .offset(x: 1.2)
+                        // White logo on top
+                        Image("AlarmioLogo")
+                            .resizable()
+                            .renderingMode(.template)
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 96, height: 96)
+                            .foregroundStyle(.white)
+                    }
+                    .premiumBlur(isVisible: logoVisible, duration: 0.6)
 
-                    // White text on top
-                    Text(logoText)
-                        .font(AppTypography.logo)
-                        .foregroundStyle(.white)
+                    // Logo text — hidden dot seeds numericText, blur-in synced with morph
+                    ZStack {
+                        // Navy glow behind — visible on dark backgrounds
+                        Text(logoText)
+                            .font(AppTypography.logo)
+                            .foregroundStyle(Color(hex: "3A6EAA").opacity(0.7))
+                            .blur(radius: 12)
+
+                        // Navy left/right edges
+                        Text(logoText)
+                            .font(AppTypography.logo)
+                            .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                            .offset(x: -1.2)
+
+                        Text(logoText)
+                            .font(AppTypography.logo)
+                            .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                            .offset(x: 1.2)
+
+                        // White text on top
+                        Text(logoText)
+                            .font(AppTypography.logo)
+                            .foregroundStyle(.white)
+                    }
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: logoText)
+                    .premiumBlur(isVisible: logoVisible, duration: 0.6)
                 }
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: logoText)
-                .premiumBlur(isVisible: logoVisible, duration: 0.6)
+                .padding(.bottom, 110)
 
                 // Glow underneath logo
                 Ellipse()

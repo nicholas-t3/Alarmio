@@ -31,7 +31,7 @@ struct EditSummaryDetent: CustomPresentationDetent {
             result = max * 0.85
             bucket = "STANDARD (0.85)"
         }
-        print("[EditSummaryDetent] screen=\(Int(screen))pt maxDetentValue=\(Int(max)) → \(bucket) → height=\(Int(result))")
+        //print("[EditSummaryDetent] screen=\(Int(screen))pt maxDetentValue=\(Int(max)) → \(bucket) → height=\(Int(result))")
         return result
     }
 }
@@ -83,6 +83,7 @@ struct EditAlarmSheetContent: View {
         _editDays = State(initialValue: Set(alarm.repeatDays ?? []))
         _editSnoozeInterval = State(initialValue: alarm.snoozeInterval)
         _editMaxSnoozes = State(initialValue: alarm.maxSnoozes)
+        _editUnlimitedSnooze = State(initialValue: alarm.unlimitedSnooze)
         _editVoicePersona = State(initialValue: alarm.voicePersona)
         _editTone = State(initialValue: alarm.tone)
         _editIntensity = State(initialValue: alarm.intensity)
@@ -108,7 +109,7 @@ struct EditAlarmSheetContent: View {
             leaveTime: alarm.leaveTime,
             maxSnoozes: alarm.maxSnoozes,
             snoozeInterval: alarm.snoozeInterval,
-            unlimitedSnooze: false,
+            unlimitedSnooze: alarm.unlimitedSnooze,
             tone: alarm.tone,
             whyContext: alarm.whyContext,
             intensity: alarm.intensity
@@ -140,6 +141,7 @@ struct EditAlarmSheetContent: View {
     @State private var editDays: Set<Int>
     @State private var editSnoozeInterval: Int
     @State private var editMaxSnoozes: Int
+    @State private var editUnlimitedSnooze: Bool
     @State private var editVoicePersona: VoicePersona?
     @State private var editTone: AlarmTone?
     @State private var editIntensity: AlarmIntensity?
@@ -245,14 +247,19 @@ struct EditAlarmSheetContent: View {
     }
 
     private var snoozeSummary: String {
+        if editUnlimitedSnooze {
+            return "Unlimited × \(editSnoozeInterval) min"
+        }
         if editMaxSnoozes == 0 {
             return "Off"
-        } else {
-            return "\(editMaxSnoozes) × \(editSnoozeInterval) min"
         }
+        return "\(editMaxSnoozes) × \(editSnoozeInterval) min"
     }
 
     private var snoozeDetail: String? {
+        if editUnlimitedSnooze {
+            return "Every \(editSnoozeInterval) min"
+        }
         if editMaxSnoozes == 0 { return nil }
         let total = editMaxSnoozes * editSnoozeInterval
         return "\(total) min total"
@@ -273,6 +280,7 @@ struct EditAlarmSheetContent: View {
             || editDays != originalDays
             || editSnoozeInterval != alarm.snoozeInterval
             || editMaxSnoozes != alarm.maxSnoozes
+            || editUnlimitedSnooze != alarm.unlimitedSnooze
             || editVoicePersona != alarm.voicePersona
             || editTone != alarm.tone
             || editIntensity != alarm.intensity
@@ -322,6 +330,7 @@ struct EditAlarmSheetContent: View {
             || editCreativeSnoozes != alarm.creativeSnoozes
             || hasSnoozeCountChange
             || hasSnoozeIntervalChange
+            || hasUnlimitedToggle
     }
 
     // Snooze count or interval only affects audio when the alarm actually
@@ -343,6 +352,12 @@ struct EditAlarmSheetContent: View {
     // verbatim in the generated scripts — must regenerate.
     private var hasSnoozeIntervalChange: Bool {
         editSnoozeInterval != alarm.snoozeInterval && snoozeCountAffectsAudio
+    }
+
+    // Unlimited toggle changes the script-set shape (loop vs bounded), so
+    // we have to regenerate whenever the alarm produces per-snooze audio.
+    private var hasUnlimitedToggle: Bool {
+        editUnlimitedSnooze != alarm.unlimitedSnooze && snoozeCountAffectsAudio
     }
 
     private var hasAudioAffectingChanges: Bool {
@@ -442,6 +457,7 @@ struct EditAlarmSheetContent: View {
         .onChange(of: editCreativeSnoozes) { invalidateRegenerationFlag() }
         .onChange(of: editMaxSnoozes) { invalidateRegenerationFlag() }
         .onChange(of: editSnoozeInterval) { invalidateRegenerationFlag() }
+        .onChange(of: editUnlimitedSnooze) { invalidateRegenerationFlag() }
         .onDisappear {
             alarmAudioPlayer.stop()
             voicePersonaPlayer.stop()
@@ -827,6 +843,8 @@ struct EditAlarmSheetContent: View {
             SnoozeCard(
                 maxSnoozes: $editMaxSnoozes,
                 snoozeInterval: $editSnoozeInterval,
+                unlimitedSnooze: $editUnlimitedSnooze,
+                allowUnlimited: true,
                 mode: .edit
             )
 
@@ -1129,7 +1147,7 @@ struct EditAlarmSheetContent: View {
             leaveTime: editLeaveTime,
             maxSnoozes: editMaxSnoozes,
             snoozeInterval: editSnoozeInterval,
-            unlimitedSnooze: false,
+            unlimitedSnooze: editUnlimitedSnooze,
             tone: editTone,
             whyContext: editWhyContext,
             intensity: editIntensity
@@ -1156,6 +1174,7 @@ struct EditAlarmSheetContent: View {
         draft.whyContext = editWhyContext
         draft.leaveTime = editLeaveTime
         draft.maxSnoozes = editMaxSnoozes
+        draft.unlimitedSnooze = editUnlimitedSnooze
         draft.snoozeInterval = editSnoozeInterval
         draft.customPrompt = promptText
         draft.customPromptIncludes = editCustomPromptIncludes
@@ -1163,9 +1182,7 @@ struct EditAlarmSheetContent: View {
 
         let snoozeCount: Int = {
             guard editCreativeSnoozes else { return 0 }
-            // Edit sheet doesn't expose unlimitedSnooze currently; treat
-            // as limited by default.
-            return editMaxSnoozes
+            return editUnlimitedSnooze ? 1 : editMaxSnoozes
         }()
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -1621,6 +1638,7 @@ struct EditAlarmSheetContent: View {
         config.leaveTime = editLeaveTime
         config.snoozeInterval = editSnoozeInterval
         config.maxSnoozes = editMaxSnoozes
+        config.unlimitedSnooze = editUnlimitedSnooze
         // Pro fields — all mutable via the new Pro page.
         config.alarmType = editAlarmType
         config.approvedScripts = editApprovedScripts
@@ -1648,6 +1666,7 @@ struct EditAlarmSheetContent: View {
                 || alarm.alarmType != config.alarmType   // flipped basic→pro mid-edit
                 || (config.approvedScripts ?? []).isEmpty
                 || (alarm.snoozeInterval != config.snoozeInterval && intervalAffectsAudio)
+                || (alarm.unlimitedSnooze != config.unlimitedSnooze && config.creativeSnoozes)
 
             if proTextDrifted {
                 let snoozeCount: Int = {
@@ -1697,6 +1716,7 @@ struct EditAlarmSheetContent: View {
         updated.repeatDays = editDays.isEmpty ? nil : Array(editDays).sorted()
         updated.snoozeInterval = editSnoozeInterval
         updated.maxSnoozes = editMaxSnoozes
+        updated.unlimitedSnooze = editUnlimitedSnooze
         updated.voicePersona = editVoicePersona
         updated.tone = editTone
         updated.intensity = editIntensity

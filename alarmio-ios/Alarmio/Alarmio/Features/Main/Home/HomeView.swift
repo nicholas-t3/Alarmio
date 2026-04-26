@@ -161,27 +161,48 @@ struct HomeView: View {
     private var headerBar: some View {
         HStack {
 
-            // Logo with glow layers (matches splash pattern)
-            ZStack {
-                Text("alarmio")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(hex: "3A6EAA").opacity(glowPulse ? 0.5 : 0.3))
-                    .blur(radius: 6)
-                    .animation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true), value: glowPulse)
+            // Logo mark + wordmark with glow layers (matches splash pattern)
+            HStack(spacing: 6) {
 
-                Text("alarmio")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
-                    .offset(x: -0.8)
+                ZStack {
+                    Image("AlarmioLogo")
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(Color(hex: "3A6EAA").opacity(glowPulse ? 0.5 : 0.3))
+                        .blur(radius: 6)
+                        .animation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true), value: glowPulse)
 
-                Text("alarmio")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                    .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
-                    .offset(x: 0.8)
+                    Image("AlarmioLogo")
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(.white)
+                }
 
-                Text("alarmio")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                ZStack {
+                    Text("alarmio")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(hex: "3A6EAA").opacity(glowPulse ? 0.5 : 0.3))
+                        .blur(radius: 6)
+                        .animation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true), value: glowPulse)
+
+                    Text("alarmio")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                        .offset(x: -0.8)
+
+                    Text("alarmio")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(Color(hex: "2A5A9A").opacity(0.7))
+                        .offset(x: 0.8)
+
+                    Text("alarmio")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                }
             }
             .onAppear {
                 glowPulse = true
