@@ -162,6 +162,11 @@ struct EditAlarmSheetContent: View {
     @State private var voiceIndex: Int
     @State private var isRegenerating = false
     @State private var audioRegeneratedForCurrentEdits = false
+    /// Flips true after a successful regen on the style page; drives a
+    /// pulsing green halo on the alarm-preview Play button to nudge the
+    /// user to listen to the freshly-generated audio. Cleared on tap or
+    /// when any edit invalidates the regen.
+    @State private var playPulseActive: Bool = false
     /// Set to true while the regen-success path is writing the freshly
     /// reconciled scripts back into `editApprovedScripts`. The
     /// `invalidateRegenerationFlag` onChange handlers respect this
@@ -493,6 +498,13 @@ struct EditAlarmSheetContent: View {
         guard !suppressRegenInvalidate else { return }
         if audioRegeneratedForCurrentEdits {
             audioRegeneratedForCurrentEdits = false
+        }
+        // Pulse only advertises fresh audio — clear it the moment the
+        // user makes any edit that drifts the config away from what's on disk.
+        if playPulseActive {
+            withAnimation(.easeOut(duration: 0.25)) {
+                playPulseActive = false
+            }
         }
         // Any fresh edit cancels the lingering success state immediately
         if showSaveSuccess {
@@ -1089,7 +1101,8 @@ struct EditAlarmSheetContent: View {
     /// Inline copy so the edit sheet can show the pro text preview between
     /// voice and CustomizeCard without pulling in ProPromptView.
     private func proResultCard(text: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 14) {
+
             Text("PREVIEW")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
@@ -1098,12 +1111,13 @@ struct EditAlarmSheetContent: View {
             Text(Self.stripTTSTags(text))
                 .font(AppTypography.labelMedium)
                 .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: text)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: .edit))
@@ -1416,12 +1430,23 @@ struct EditAlarmSheetContent: View {
                 .foregroundStyle(.white)
                 .frame(height: 40)
                 .frame(maxWidth: .infinity)
-                .background(.white.opacity(0.12))
+                .background(.white.opacity(playPulseActive ? 0.28 : 0.12))
                 .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(hex: "4AFF8E").opacity(playPulseActive ? 0.55 : 0), lineWidth: 1.2)
+                )
+                .shadow(color: Color(hex: "4AFF8E").opacity(playPulseActive ? 0.28 : 0), radius: 14, y: 0)
             }
             .disabled(editSoundFileName == nil)
             .opacity(editSoundFileName == nil ? 0.4 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: isPlaying)
+            .animation(
+                playPulseActive
+                    ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
+                    : .easeInOut(duration: 0.35),
+                value: playPulseActive
+            )
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
@@ -1510,6 +1535,12 @@ struct EditAlarmSheetContent: View {
     }
 
     private func toggleAlarmAudioPreview() {
+        // User engaged with the Play button — clear the post-regen pulse.
+        if playPulseActive {
+            withAnimation(.easeOut(duration: 0.25)) {
+                playPulseActive = false
+            }
+        }
         if alarmAudioPlayer.isPlaying {
             alarmAudioPlayer.stop()
         } else if let fileName = editSoundFileName {
@@ -1560,6 +1591,11 @@ struct EditAlarmSheetContent: View {
                 styleScrollToTopToken &+= 1
                 isRegenerating = false
                 HapticManager.shared.success()
+                // Pulse the Play button to draw the user toward previewing
+                // the freshly-generated audio.
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    playPulseActive = true
+                }
                 triggerSaveSuccess()
             } catch {
                 isRegenerating = false

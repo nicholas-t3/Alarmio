@@ -229,7 +229,8 @@ struct ProPromptView: View {
     }
 
     private func resultCard(text: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 14) {
+
             Text("PREVIEW")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
@@ -238,10 +239,11 @@ struct ProPromptView: View {
             Text(Self.stripTTSTags(text))
                 .font(AppTypography.labelMedium)
                 .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: .standard))

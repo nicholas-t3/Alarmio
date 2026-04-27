@@ -40,7 +40,7 @@ struct VolumeTipCard: View {
 
                 // Copy
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Alarm too quiet?")
+                    Text("Alarm too loud?")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundStyle(.white)
 

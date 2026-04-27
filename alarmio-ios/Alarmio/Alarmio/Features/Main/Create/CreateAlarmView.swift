@@ -459,7 +459,8 @@ struct CreateAlarmView: View {
     /// Intentionally near-duplicate; will de-dup after the confirmation
     /// phase is redesigned to match.
     private func proResultCard(text: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(spacing: 14) {
+
             Text("PREVIEW")
                 .font(AppTypography.caption)
                 .tracking(AppTypography.captionTracking)
@@ -468,12 +469,13 @@ struct CreateAlarmView: View {
             Text(Self.stripTTSTags(text))
                 .font(AppTypography.labelMedium)
                 .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: text)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .modifier(CardGlassModifier(mode: .standard))
