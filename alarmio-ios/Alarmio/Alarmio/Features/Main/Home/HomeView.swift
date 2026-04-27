@@ -83,6 +83,22 @@ struct HomeView: View {
                 try? await Task.sleep(for: .milliseconds(800))
                 requestAppReview()
             }
+
+        }
+        // Fire the volume modal whenever the alarm count exceeds the
+        // last value we synced to UserDefaults. Persisting the count
+        // sidesteps the AlarmStore.load() race (alarms hydrate 0 → N
+        // asynchronously after launch, which an in-memory baseline would
+        // misread as fresh inserts) and naturally covers post-onboarding
+        // first arrival (stored = 0, current ≥ 1 → fires).
+        .onChange(of: alarmStore.alarms.count) { _, newCount in
+            VolumeConfirmModal.presentIfNeededForCurrentCount(newCount, via: alertManager)
+        }
+        .task {
+            // Same check on mount, in case the count was already at its
+            // final value before any onChange fires (e.g. cold launch
+            // post-onboarding).
+            VolumeConfirmModal.presentIfNeededForCurrentCount(alarmStore.alarms.count, via: alertManager)
         }
         .onChange(of: alarmStore.alarms.isEmpty) { _, isEmpty in
             // Trigger card animation once alarms first populate (load is async
@@ -259,6 +275,9 @@ struct HomeView: View {
                                 return
                             }
                             Task { await alarmStore.toggleAlarm(id: alarm.id) }
+                            if turningOn {
+                                VolumeConfirmModal.presentIfNeeded(via: alertManager)
+                            }
                         },
                         onEdit: {
                             editingAlarmId = alarm.id
